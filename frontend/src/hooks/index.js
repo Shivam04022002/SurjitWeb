@@ -16,8 +16,7 @@ export const useLeadership = () =>
 export const useProductCategories = () =>
     useApi(apiService.getProductCategories, [], { cacheKey: 'product-categories' });
 
-// Active categories, ordered by displayOrder, each with the `firstProductSlug`
-// its nav link points at. Backs the header dropdown and the /products redirect.
+// Active categories, ordered by displayOrder. Backs the header dropdown.
 export const useActiveProductCategories = () =>
     useApi(apiService.getActiveProductCategories, [], { cacheKey: 'active-product-categories' });
 
@@ -28,6 +27,53 @@ export const useCategoryWithProducts = (categorySlug) =>
         cacheKey: `category-products-${categorySlug}`,
         enabled: !!categorySlug,
     });
+
+// Works out which product /products or /products/:slug should open. Categories
+// and products are all the API offers, so the choice of landing product is made
+// here: the category's product list already arrives active-only and ordered by
+// displayOrder, so the first entry is the one to open.
+//
+// `slug` may be a category slug, a legacy product slug, or absent for bare
+// /products. Categories win over products where the two collide, matching the
+// URL scheme. Returns a tagged result so the route can redirect or explain
+// itself; `forSlug` lets the caller ignore a result left over from a previous
+// slug while the next one is still in flight.
+export const useProductNavTarget = (slug) =>
+    useApi(async () => {
+        const forSlug = slug || null;
+        const target = (categorySlug, productSlug) =>
+            ({ kind: 'product', categorySlug, productSlug, forSlug });
+
+        // Bare /products: open the first category that has anything to show,
+        // rather than dead-ending on an empty one that happens to sort first.
+        if (!slug) {
+            const categories = await apiService.getActiveProductCategories();
+            for (const category of categories) {
+                const { products } = await apiService.getCategoryWithProducts(category.slug);
+                if (products?.length) return target(category.slug, products[0].slug);
+            }
+            return { kind: 'no-products', forSlug };
+        }
+
+        try {
+            const { category, products } = await apiService.getCategoryWithProducts(slug);
+            if (products?.length) return target(category.slug, products[0].slug);
+            return { kind: 'empty-category', category, forSlug };
+        } catch (err) {
+            if (err?.response?.status !== 404) throw err;
+        }
+
+        // Not a category — fall back to a legacy /products/:productSlug link.
+        try {
+            const product = await apiService.getProductBySlug(slug);
+            return product?.category?.slug
+                ? target(product.category.slug, product.slug)
+                : { kind: 'not-found', forSlug };
+        } catch (err) {
+            if (err?.response?.status === 404) return { kind: 'not-found', forSlug };
+            throw err;
+        }
+    }, [slug], { cacheKey: `product-nav-${slug || 'root'}` });
 
 export const useProducts = () =>
     useApi(apiService.getProducts, [], { cacheKey: 'products' });

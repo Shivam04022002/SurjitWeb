@@ -18,17 +18,12 @@ const Navbar = () => {
   const primaryBtnText = settings?.headerPrimaryButtonText || 'Apply Now';
   const primaryBtnUrl = settings?.headerPrimaryButtonUrl || '/loan-application';
 
-  // Categories, not products, but each links straight to its first active
-  // product — there is no category page. Categories with nothing to open are
-  // dropped. The API filters inactive ones and orders by displayOrder; the
-  // static list is only a fallback for a failed fetch, and its /products/:slug
-  // paths redirect to the same place.
-  const cmsProductDropdown = (cmsCategories || [])
-    .filter(c => c.firstProductSlug)
-    .map(c => ({ name: c.name, path: `/products/${c.slug}/${c.firstProductSlug}` }));
-
-  const productDropdown = cmsProductDropdown.length > 0
-    ? cmsProductDropdown
+  // Categories, not products. Each links to /products/:categorySlug, which
+  // resolves to that category's first active product — there is no category
+  // page. The API already filters out inactive ones and orders by displayOrder;
+  // the static list is only a fallback for a failed fetch.
+  const productDropdown = (cmsCategories && cmsCategories.length > 0)
+    ? cmsCategories.map(c => ({ name: c.name, path: `/products/${c.slug}` }))
     : [
         { name: 'Business Loan', path: '/products/business-loan' },
         { name: 'Commercial Vehicle Loan', path: '/products/commercial-vehicle-loan' },

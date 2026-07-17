@@ -40,28 +40,16 @@ router.get('/about/leadership', asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Leadership team fetched successfully', { members });
 }));
 
-// ── Product Categories (navigation only) ───────────────────────────────────────
-// Drives the header dropdown: active categories, ordered by displayOrder. There
-// is no category page, so a category link has to resolve to a product — each
-// entry carries `firstProductSlug`, the category's first active product. It is
-// null when the category has no active products, and the nav then omits it.
+// ── Product Categories ─────────────────────────────────────────────────────────
+// Active categories, ordered by displayOrder. Drives the header dropdown.
 router.get('/product-categories', asyncHandler(async (req, res) => {
     const categories = await productCategoryService.getActiveCategories();
-    const firstProducts = await productService.getFirstActiveProductPerCategory(
-        categories.map(c => c._id)
-    );
-
-    const withLandingProduct = categories.map(category => ({
-        ...category,
-        firstProductSlug: firstProducts.get(String(category._id))?.slug || null
-    }));
-
-    return sendSuccess(res, 'Product categories fetched successfully', { categories: withLandingProduct });
+    return sendSuccess(res, 'Product categories fetched successfully', { categories });
 }));
 
-// Backs the product slider on a product page: the category and every active
-// product in it, in one round trip. Also resolves /products/:categorySlug
-// redirects.
+// A category and its active products, ordered by displayOrder, in one round
+// trip. Backs the product slider, and the frontend reads products[0] from here
+// to resolve a category link to a product.
 router.get('/product-categories/:slug/products', asyncHandler(async (req, res) => {
     const category = await productCategoryService.getActiveCategoryBySlug(req.params.slug);
     const products = await productService.getActiveProductsByCategory(category._id);

@@ -20,23 +20,6 @@ const getActiveProductsByCategory = async (categoryId) => {
         .lean();
 };
 
-// The landing product for each of the given categories: the first active one by
-// displayOrder. Backs the header dropdown, where a category links straight to a
-// product page. One aggregation rather than a query per category.
-// Returns a Map keyed by category id string; a category with no active products
-// is absent from the Map.
-const getFirstActiveProductPerCategory = async (categoryIds) => {
-    if (!categoryIds || categoryIds.length === 0) return new Map();
-
-    const rows = await Product.aggregate([
-        { $match: { category: { $in: categoryIds }, isActive: true } },
-        { $sort: { displayOrder: 1, createdAt: 1 } },
-        { $group: { _id: '$category', slug: { $first: '$slug' }, name: { $first: '$name' } } }
-    ]);
-
-    return new Map(rows.map(r => [String(r._id), { slug: r.slug, name: r.name }]));
-};
-
 const getProductById = async (id) => {
     const product = await Product.findById(id).populate('category', 'name slug');
     if (!product) {
@@ -107,7 +90,6 @@ const reorderProducts = async (orderedIds) => {
 module.exports = {
     getAllProducts,
     getActiveProductsByCategory,
-    getFirstActiveProductPerCategory,
     getProductById,
     createProduct,
     updateProduct,
