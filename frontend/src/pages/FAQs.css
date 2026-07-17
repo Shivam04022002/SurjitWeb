@@ -1,0 +1,79 @@
+.faqs-page {
+    padding-top: 80px;
+}
+
+/* FAQs Hero - Brand Sync */
+.faqs-hero {
+    padding: 70px 0 60px;
+    background: linear-gradient(135deg, var(--primary-100) 0%, var(--primary-50) 100%) !important;
+    text-align: center;
+    color: var(--gray-900);
+}
+
+.faqs-hero h1 {
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    color: var(--primary-900); /* Brown type heading */
+    margin-bottom: var(--space-4);
+    font-weight: 700;
+}
+
+.faqs-hero p {
+    font-size: 1.125rem;
+    color: var(--gray-600);
+    font-weight: 500;
+    margin: 0;
+}
+
+/* FAQs Main */
+.faqs-main {
+    background: white;
+}
+
+.faq-category {
+    margin-bottom: var(--space-12);
+}
+
+.faq-category:last-child {
+    margin-bottom: 0;
+}
+
+.faq-category h2 {
+    font-size: 1.5rem;
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-4);
+    border-bottom: 2px solid var(--primary-100);
+}
+
+/* CTA */
+.faqs-cta {
+    padding: var(--space-16) 0;
+    background: var(--gray-50);
+}
+
+.faqs-cta .cta-content {
+    text-align: center;
+}
+
+.faqs-cta h2 {
+    font-size: 2rem;
+    margin-bottom: var(--space-3);
+}
+
+.faqs-cta p {
+    font-size: 1.125rem;
+    color: var(--gray-600);
+    margin-bottom: var(--space-6);
+}
+
+.faqs-cta .cta-buttons {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-4);
+}
+
+@media (max-width: 640px) {
+    .faqs-cta .cta-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+}

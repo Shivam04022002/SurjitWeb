@@ -1,0 +1,302 @@
+.loan-application-page {
+    padding-top: 80px;
+    min-height: 100vh;
+}
+
+.application-hero {
+    padding: var(--space-12) 0;
+    background: linear-gradient(135deg, var(--primary-600) 0%, var(--primary-800) 100%);
+    text-align: center;
+    color: white;
+}
+
+.application-hero h1 {
+    font-size: clamp(2rem, 4vw, 2.5rem);
+    color: white;
+    margin-bottom: var(--space-3);
+}
+
+.application-hero p {
+    font-size: 1.125rem;
+    color: rgba(255, 255, 255, 0.9);
+    margin: 0;
+}
+
+.progress-section {
+    background: white;
+    padding: var(--space-6) 0;
+    border-bottom: 1px solid var(--gray-200);
+    position: sticky;
+    top: 70px;
+    z-index: 100;
+}
+
+.progress-steps {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-8);
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    opacity: 0.5;
+    transition: all var(--transition-normal);
+}
+
+.step.active {
+    opacity: 1;
+}
+
+.step-circle {
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gray-100);
+    border-radius: 50%;
+    color: var(--gray-500);
+}
+
+.step.active .step-circle {
+    background: var(--primary-600);
+    color: white;
+}
+
+.step.completed .step-circle {
+    background: var(--secondary-500);
+    color: white;
+}
+
+.step-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--gray-600);
+}
+
+.step.active .step-title {
+    color: var(--primary-600);
+}
+
+.application-form-section {
+    padding: var(--space-12) 0;
+    background: var(--gray-50);
+}
+
+.application-form {
+    max-width: 800px;
+    margin: 0 auto;
+    background: white;
+    padding: var(--space-10);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-lg);
+}
+
+.form-step h2 {
+    font-size: 1.75rem;
+    margin-bottom: var(--space-2);
+}
+
+.form-step>p {
+    color: var(--gray-600);
+    margin-bottom: var(--space-8);
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-5);
+}
+
+.form-group.full-width {
+    grid-column: 1 / -1;
+}
+
+.loan-type-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+}
+
+.loan-type-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-5);
+    background: var(--gray-50);
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+}
+
+.loan-type-card:hover {
+    border-color: var(--primary-300);
+}
+
+.loan-type-card.selected {
+    background: var(--primary-50);
+    border-color: var(--primary-500);
+}
+
+.loan-type-card input {
+    display: none;
+}
+
+.card-icon {
+    font-size: 2rem;
+}
+
+.card-label {
+    font-weight: 600;
+    color: var(--gray-700);
+}
+
+.documents-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-6);
+    margin-bottom: var(--space-8);
+}
+
+.document-upload {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-6);
+    background: var(--gray-50);
+    border: 2px dashed var(--gray-300);
+    border-radius: var(--radius-xl);
+    text-align: center;
+}
+
+.document-upload:hover {
+    border-color: var(--primary-400);
+    background: var(--primary-50);
+}
+
+.upload-icon {
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: white;
+    color: var(--primary-500);
+    border-radius: var(--radius-lg);
+}
+
+.document-upload h4 {
+    font-size: 1rem;
+    margin: 0;
+}
+
+.document-upload p {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    margin: 0;
+}
+
+.form-consent {
+    margin-bottom: var(--space-6);
+}
+
+.consent-check {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+    cursor: pointer;
+}
+
+.consent-check input {
+    margin-top: 4px;
+}
+
+.consent-check span {
+    font-size: 0.875rem;
+    color: var(--gray-600);
+}
+
+.form-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-top: var(--space-10);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--gray-200);
+}
+
+.application-success {
+    max-width: 500px;
+    margin: var(--space-20) auto;
+    padding: var(--space-12);
+    background: white;
+    border-radius: var(--radius-2xl);
+    text-align: center;
+    box-shadow: var(--shadow-xl);
+}
+
+.success-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--space-6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--secondary-100);
+    color: var(--secondary-600);
+    border-radius: 50%;
+}
+
+.application-success h2 {
+    font-size: 1.75rem;
+    margin-bottom: var(--space-4);
+}
+
+.application-success p {
+    color: var(--gray-600);
+    margin-bottom: var(--space-4);
+}
+
+.reference {
+    font-weight: 600;
+    color: var(--primary-600);
+}
+
+@media (max-width: 768px) {
+    .progress-steps {
+        gap: var(--space-4);
+    }
+
+    .step-circle {
+        width: 40px;
+        height: 40px;
+    }
+
+    .step-title {
+        font-size: 0.75rem;
+    }
+
+    .application-form {
+        padding: var(--space-6);
+    }
+
+    .form-grid,
+    .loan-type-cards,
+    .documents-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .form-actions {
+        flex-direction: column;
+    }
+
+    .form-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}

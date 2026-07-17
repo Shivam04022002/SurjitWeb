@@ -1,0 +1,235 @@
+.career-page {
+    padding-top: 80px;
+}
+
+/* Career Hero - Brand Sync */
+.career-hero {
+    padding: 70px 0 60px;
+    background: linear-gradient(135deg, var(--primary-100) 0%, var(--primary-50) 100%) !important;
+    text-align: center;
+    color: var(--gray-900);
+}
+
+.career-hero h1 {
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    color: var(--primary-900); /* Brown type heading */
+    margin-bottom: var(--space-4);
+    font-weight: 700;
+}
+
+.career-hero p {
+    font-size: 1.125rem;
+    color: var(--gray-600);
+    font-weight: 500;
+}
+
+/* Jobs Section */
+.jobs-section {
+    background: var(--gray-50);
+}
+
+.jobs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: var(--space-6);
+}
+
+.job-card {
+    background: white;
+    padding: var(--space-6);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-normal);
+}
+
+.job-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.job-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+
+.job-icon {
+    color: var(--primary-500);
+}
+
+.job-header h3 {
+    font-size: 1.125rem;
+    margin: 0;
+}
+
+.job-location {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    color: var(--gray-500);
+    font-size: 0.875rem;
+    margin-bottom: var(--space-4);
+}
+
+.job-location svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.job-description {
+    margin-bottom: var(--space-6);
+    line-height: 1.6;
+}
+
+/* Benefits Section */
+.benefits-section {
+    background: white;
+}
+
+.benefits-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-6);
+}
+
+.benefit-card {
+    text-align: center;
+    padding: var(--space-6);
+    background: var(--gray-50);
+    border-radius: var(--radius-xl);
+}
+
+.benefit-icon {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, var(--primary-500) 0%, var(--secondary-500) 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--space-4);
+    color: white;
+}
+
+.benefit-card h4 {
+    margin-bottom: var(--space-2);
+}
+
+.benefit-card p {
+    font-size: 0.9375rem;
+}
+
+/* Life @ Surjit Section */
+.life-section {
+    background: var(--gray-50);
+}
+
+.life-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-6);
+}
+
+.life-card {
+    background: white;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-normal);
+}
+
+.life-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.life-image {
+    height: 180px;
+    background: linear-gradient(135deg, var(--primary-400) 0%, var(--secondary-400) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    overflow: hidden;
+}
+
+.life-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-normal);
+}
+
+.life-card:hover .life-image img {
+    transform: scale(1.1);
+}
+
+.life-content {
+    padding: var(--space-5);
+}
+
+.life-content h4 {
+    margin-bottom: var(--space-2);
+    font-size: 1rem;
+}
+
+.life-content p {
+    font-size: 0.875rem;
+    margin-bottom: var(--space-3);
+}
+
+.view-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--primary-600);
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+.view-link:hover {
+    text-decoration: underline;
+}
+
+/* Career CTA */
+.career-cta {
+    background: linear-gradient(180deg, var(--primary-100) 0%, var(--primary-50) 100%);
+    text-align: center;
+    color: var(--gray-900);
+    padding: var(--space-20) 0;
+}
+
+.career-cta .cta-content h2 {
+    color: var(--primary-900); /* Brown type heading */
+    margin-bottom: var(--space-4);
+}
+
+.career-cta .cta-content p {
+    color: var(--gray-600);
+    font-size: 1.125rem;
+    margin-bottom: var(--space-6);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .benefits-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .life-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .jobs-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .benefits-grid,
+    .life-grid {
+        grid-template-columns: 1fr;
+    }
+}

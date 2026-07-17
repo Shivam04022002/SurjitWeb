@@ -1,0 +1,89 @@
+.event-gallery-page {
+    min-height: 100vh;
+    background-color: #f8fafc;
+    padding-top: 80px;
+}
+
+.gallery-header-section {
+    background: linear-gradient(135deg, #CE8112 0%, #AF6A0A 100%);
+    color: white;
+    padding: 60px 0;
+    text-align: center;
+}
+
+.gallery-header-section h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.back-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    color: white;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 24px;
+    opacity: 0.9;
+    transition: all 0.2s ease;
+}
+
+.back-link:hover {
+    opacity: 1;
+    transform: translateX(-5px);
+}
+
+.gallery-masonry {
+    columns: 3 300px;
+    column-gap: 24px;
+    width: 100%;
+}
+
+.gallery-item {
+    break-inside: avoid;
+    margin-bottom: 24px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+    background: white;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gallery-item img {
+    width: 100%;
+    display: block;
+    transition: transform 0.5s ease;
+}
+
+.gallery-item:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
+
+.gallery-item:hover img {
+    transform: scale(1.05);
+}
+
+@media (max-width: 1024px) {
+    .gallery-masonry {
+        columns: 2 300px;
+    }
+}
+
+@media (max-width: 640px) {
+    .gallery-masonry {
+        columns: 1;
+    }
+    
+    .gallery-header-section {
+        padding: 40px 0;
+    }
+    
+    .gallery-header-section h1 {
+        font-size: 1.8rem;
+    }
+}

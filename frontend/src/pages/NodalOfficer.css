@@ -1,0 +1,99 @@
+.nodal-page {
+    padding-top: 80px;
+}
+
+.nodal-hero {
+    padding: 70px 0 60px;
+    background: linear-gradient(135deg, var(--primary-100) 0%, var(--primary-50) 100%) !important;
+    text-align: center;
+    color: var(--gray-900);
+}
+
+.nodal-hero h1 {
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    color: var(--primary-900); /* Brown type heading */
+    margin-bottom: var(--space-4);
+    font-weight: 700;
+}
+
+.nodal-hero p {
+    font-size: 1.125rem;
+    color: var(--gray-600);
+    font-weight: 500;
+    margin: 0;
+}
+
+.nodal-content {
+    background: var(--gray-50);
+}
+
+.nodal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-8);
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.nodal-card {
+    background: white;
+    padding: var(--space-8);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-lg);
+}
+
+.nodal-card h2 {
+    font-size: 1.25rem;
+    color: var(--primary-700);
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-4);
+    border-bottom: 2px solid var(--primary-100);
+}
+
+.officer-info h3 {
+    font-size: 1.5rem;
+    margin-bottom: var(--space-2);
+}
+
+.officer-title {
+    color: var(--gray-600);
+    font-size: 0.9375rem;
+    margin-bottom: var(--space-6);
+}
+
+.contact-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.contact-row {
+    display: flex;
+    gap: var(--space-3);
+}
+
+.contact-row svg {
+    flex-shrink: 0;
+    color: var(--primary-500);
+    margin-top: 2px;
+}
+
+.contact-row address {
+    font-style: normal;
+    color: var(--gray-700);
+    line-height: 1.6;
+}
+
+.contact-row a {
+    color: var(--gray-700);
+}
+
+.contact-row a:hover {
+    color: var(--primary-600);
+}
+
+@media (max-width: 768px) {
+    .nodal-grid {
+        grid-template-columns: 1fr;
+    }
+}

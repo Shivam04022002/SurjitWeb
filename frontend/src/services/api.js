@@ -1,0 +1,74 @@
+import axios from 'axios';
+
+const BASE_URL = `${import.meta.env.VITE_API_URL}/public`;
+
+const api = axios.create({
+    baseURL: BASE_URL,
+    timeout: 15000,
+    withCredentials: false,
+    headers: {
+        'Content-Type': 'application/json',
+    },
+});
+
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response) {
+            console.error(`API Error [${error.response.status}]:`, error.response.data?.message || error.message);
+        } else if (error.request) {
+            console.error('API Error: No response from server');
+        } else {
+            console.error('API Error:', error.message);
+        }
+        return Promise.reject(error);
+    }
+);
+
+// ── Global Settings ────────────────────────────────────────────────────────────
+export const getSettings = () => api.get('/settings').then(r => r.data.data.settings);
+
+// ── About ──────────────────────────────────────────────────────────────────────
+export const getCompanyInfo = () => api.get('/about/company').then(r => r.data.data.company);
+export const getDirectors = () => api.get('/about/directors').then(r => r.data.data.directors);
+export const getLeadership = () => api.get('/about/leadership').then(r => r.data.data.members);
+
+// ── Products ───────────────────────────────────────────────────────────────────
+export const getProductCategories = () => api.get('/products/categories').then(r => r.data.data.categories);
+export const getProducts = () => api.get('/products').then(r => r.data.data.products);
+export const getProductBySlug = (slug) => api.get(`/products/by-slug/${slug}`).then(r => r.data.data.product);
+export const getProductFeatures = (productId) => api.get(`/products/${productId}/features`).then(r => r.data.data.features);
+export const getProductEligibility = (productId) => api.get(`/products/${productId}/eligibility`).then(r => r.data.data.eligibility);
+export const getProductDocuments = (productId) => api.get(`/products/${productId}/documents`).then(r => r.data.data.documents);
+export const getProductInterestRates = (productId) => api.get(`/products/${productId}/interest-rates`).then(r => r.data.data.rates);
+export const getProductFaqs = (productId) => api.get(`/products/${productId}/faqs`).then(r => r.data.data.faqs);
+export const getProductEmi = (productId) => api.get(`/products/${productId}/emi`).then(r => r.data.data.emi);
+export const getProductSeo = (productId) => api.get(`/products/${productId}/seo`).then(r => r.data.data.seo);
+
+// ── Career ─────────────────────────────────────────────────────────────────────
+export const getCareerSettings = () => api.get('/careers/settings').then(r => r.data.data.settings);
+export const getJobs = () => api.get('/careers/jobs').then(r => r.data.data.jobs);
+export const getJobById = (id) => api.get(`/careers/jobs/${id}`).then(r => r.data.data.job);
+
+// ── Gallery ────────────────────────────────────────────────────────────────────
+export const getGalleryAlbums = () => api.get('/gallery/albums').then(r => r.data.data.albums);
+export const getGalleryAlbum = (id) => api.get(`/gallery/albums/${id}`).then(r => r.data.data.album);
+export const getAlbumImages = (albumId) => api.get(`/gallery/albums/${albumId}/images`).then(r => r.data.data.images);
+
+// ── Contact / Application (existing non-public endpoints) ─────────────────────
+const rawApi = axios.create({
+    baseURL: import.meta.env.VITE_API_URL,
+    timeout: 30000,
+    withCredentials: false,
+});
+
+export const submitJobApplication = (formData) =>
+    rawApi.post('/v1/careers/applications', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+export const submitContact = (data) => rawApi.post('/contact', data);
+
+export const submitLoanApplication = (data) => rawApi.post('/loan-application', data);
+
+export default api;
