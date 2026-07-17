@@ -62,7 +62,13 @@ api.interceptors.response.use(
         return api(originalRequest)
       }
 
-      window.location.href = '/login'
+      // Only hard-navigate from an authenticated page. On /login the profile
+      // check 401s by design, and redirecting to the current URL reloads the
+      // document, remounts AuthProvider, and re-fires the same failing check --
+      // an endless reload loop. ProtectedRoute already handles the routing.
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
     }
 
     return Promise.reject(error)
