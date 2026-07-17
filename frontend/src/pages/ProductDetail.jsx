@@ -3,9 +3,11 @@ import EMICalculator from '../components/EMICalculator';
 import FAQAccordion from '../components/FAQAccordion';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
+import ProductSlider from '../components/ProductSlider';
 import { ArrowRight, Check, FileText, RefreshCw } from 'lucide-react';
 import './ProductPage.css';
 import {
+    useCategoryWithProducts,
     useProductBySlug,
     useProductFeatures,
     useProductEligibility,
@@ -39,6 +41,10 @@ const ProductDetail = () => {
     const { data: interestRates, loading: ratesLoading } = useProductInterestRates(productId);
     const { data: faqs, loading: faqsLoading } = useProductFaqs(productId);
     const { data: seo } = useProductSeo(productId);
+
+    // Siblings for the slider. Waits on the product, since that is what names
+    // the category; cached per category, so moving between siblings reuses it.
+    const { data: categoryData } = useCategoryWithProducts(product?.category?.slug);
 
     if (productLoading) {
         return (
@@ -82,6 +88,8 @@ const ProductDetail = () => {
     if (actualCategorySlug && actualCategorySlug !== categorySlug) {
         return <Navigate to={`/products/${actualCategorySlug}/${product.slug}`} replace />;
     }
+
+    const siblingProducts = categoryData?.category ? (categoryData.products || []) : [];
 
     const displayFeatures = features && features.length > 0 ? features : (product.features || []);
     const displayEligibility = eligibility && eligibility.length > 0 ? eligibility : (product.eligibility || []);
@@ -140,6 +148,17 @@ const ProductDetail = () => {
                     </div>
                 </div>
             </section>
+
+            {/* Other products in this category. Hidden when this is the only one,
+                since the slider would then just repeat the page you are on. */}
+            {siblingProducts.length > 1 && (
+                <ProductSlider
+                    categoryName={categoryData.category.name}
+                    categorySlug={categoryData.category.slug}
+                    products={siblingProducts}
+                    currentSlug={product.slug}
+                />
+            )}
 
             {/* Features */}
             <section id="features-and-benefits" className="product-features section">

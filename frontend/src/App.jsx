@@ -3,12 +3,12 @@ import { Suspense, lazy } from 'react';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
+import PageLoader from './components/PageLoader';
 import './index.css';
 
 const Home = lazy(() => import('./pages/Home'));
 const About = lazy(() => import('./pages/About'));
-const ProductCategories = lazy(() => import('./pages/ProductCategories'));
-const CategoryPage = lazy(() => import('./pages/CategoryPage'));
+const ProductsRedirect = lazy(() => import('./pages/ProductsRedirect'));
 const ProductDetail = lazy(() => import('./pages/ProductDetail'));
 const Contact = lazy(() => import('./pages/Contact'));
 const Career = lazy(() => import('./pages/Career'));
@@ -23,13 +23,6 @@ const NodalOfficer = lazy(() => import('./pages/NodalOfficer'));
 const JobApply = lazy(() => import('./pages/JobApply'));
 const EventGallery = lazy(() => import('./pages/EventGallery'));
 
-const PageLoader = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-    <div style={{ width: 40, height: 40, border: '3px solid #f3f3f3', borderTop: '3px solid #CE8112', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-  </div>
-);
-
 function App() {
   return (
     <Router>
@@ -41,10 +34,11 @@ function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<About />} />
-              <Route path="/products" element={<ProductCategories />} />
-              {/* Category page. Also absorbs legacy /products/:productSlug links and
-                  redirects them to the category-scoped URL. */}
-              <Route path="/products/:categorySlug" element={<CategoryPage />} />
+              {/* A product page is the only product UI. These two paths render
+                  nothing of their own — they resolve a category (or a legacy
+                  product slug) to a product URL and redirect. */}
+              <Route path="/products" element={<ProductsRedirect />} />
+              <Route path="/products/:categorySlug" element={<ProductsRedirect />} />
               <Route path="/products/:categorySlug/:productSlug" element={<ProductDetail />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/career" element={<Career />} />

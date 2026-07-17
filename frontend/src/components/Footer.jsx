@@ -39,10 +39,14 @@ const Footer = () => {
         { name: 'FAQs', path: '/faqs' },
     ];
 
-    // Categories rather than products, matching the header. The API already drops
-    // inactive entries and orders by displayOrder.
-    const productLinks = (categories && categories.length > 0)
-        ? categories.map(c => ({ name: c.name, path: `/products/${c.slug}` }))
+    // Categories rather than products, matching the header: each opens its first
+    // active product, and a category with none is dropped.
+    const cmsProductLinks = (categories || [])
+        .filter(c => c.firstProductSlug)
+        .map(c => ({ name: c.name, path: `/products/${c.slug}/${c.firstProductSlug}` }));
+
+    const productLinks = cmsProductLinks.length > 0
+        ? cmsProductLinks
         : [
             { name: 'Business Loan', path: '/products/business-loan' },
             { name: 'Commercial Vehicle Loan', path: '/products/commercial-vehicle-loan' },

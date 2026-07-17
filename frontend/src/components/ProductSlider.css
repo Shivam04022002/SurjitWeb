@@ -1,0 +1,228 @@
+.product-slider-section {
+    background: var(--gray-50);
+}
+
+.product-slider-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-6);
+}
+
+.product-slider-header h2 {
+    font-size: 1.75rem;
+    color: var(--gray-900);
+    margin: 0;
+}
+
+.product-slider-arrows {
+    display: flex;
+    gap: var(--space-2);
+    flex-shrink: 0;
+}
+
+.product-slider-arrow {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--gray-200);
+    background: white;
+    color: var(--gray-700);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.product-slider-arrow:hover:not(:disabled) {
+    background: var(--primary-500);
+    border-color: var(--primary-500);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.product-slider-arrow:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* Native horizontal scroll: touch swipe and trackpad gestures come for free,
+   and the arrows just drive scrollLeft. Matches the blogs row on the homepage. */
+.product-slider-track {
+    margin-top: var(--space-8);
+    display: flex;
+    overflow-x: auto;
+    gap: var(--space-8);
+    padding: var(--space-2) var(--space-2) var(--space-6);
+    scroll-snap-type: x mandatory;
+    /* Matches padding-left, so the first card snaps flush at scrollLeft 0.
+       Without it, snapping rests the track 8px in and the left arrow never
+       reads as being at the start. */
+    scroll-padding-left: var(--space-2);
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-200) transparent;
+}
+
+.product-slider-track::-webkit-scrollbar {
+    height: 6px;
+}
+
+.product-slider-track::-webkit-scrollbar-track {
+    background: var(--gray-100);
+    border-radius: var(--radius-full);
+}
+
+.product-slider-track::-webkit-scrollbar-thumb {
+    background: var(--primary-200);
+    border-radius: var(--radius-full);
+}
+
+.product-slider-track::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-300);
+}
+
+/* 4 cards on a wide desktop; the media queries below step down to 1 on mobile.
+   Gap is var(--space-8) = 32px, so each card gives up gap * (n-1) / n. */
+.product-slide {
+    flex: 0 0 calc(25% - 24px);
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: var(--radius-2xl);
+    overflow: hidden;
+    border: 1px solid var(--gray-100);
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
+    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    scroll-snap-align: start;
+}
+
+.product-slide:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+    border-color: var(--primary-200);
+}
+
+.product-slide.is-current {
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 2px var(--primary-500), 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+}
+
+.product-slide-media {
+    position: relative;
+    display: block;
+    height: 170px;
+    background: linear-gradient(135deg, var(--primary-500) 0%, var(--primary-700) 100%);
+    overflow: hidden;
+}
+
+.product-slide-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.6s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+.product-slide:hover .product-slide-media img {
+    transform: scale(1.08);
+}
+
+.product-slide-initial {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.product-slide-badge {
+    position: absolute;
+    top: var(--space-3);
+    left: var(--space-3);
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    background: white;
+    color: var(--primary-700);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.product-slide-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    padding: var(--space-5);
+}
+
+.product-slide-title {
+    font-size: 1.125rem;
+    margin: 0 0 var(--space-2);
+}
+
+.product-slide-title a {
+    color: var(--gray-900);
+    text-decoration: none;
+}
+
+.product-slide-title a:hover {
+    color: var(--primary-600);
+}
+
+.product-slide-desc {
+    color: var(--gray-500);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0 0 var(--space-5);
+    /* Uneven CMS copy would otherwise leave the Apply buttons on ragged lines. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.product-slide-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: auto;
+}
+
+.product-slide-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--primary-600);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.product-slide-more:hover {
+    gap: 8px;
+}
+
+@media (max-width: 1200px) {
+    .product-slide {
+        flex: 0 0 calc(33.333% - 21.333px);
+    }
+}
+
+@media (max-width: 1024px) {
+    .product-slide {
+        flex: 0 0 calc(50% - 16px);
+    }
+}
+
+@media (max-width: 640px) {
+    .product-slider-header h2 {
+        font-size: 1.375rem;
+    }
+
+    .product-slide {
+        flex: 0 0 100%;
+    }
+}
