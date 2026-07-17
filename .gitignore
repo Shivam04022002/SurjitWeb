@@ -1,22 +1,31 @@
-# Dependencies
+# ─── Dependencies ────────────────────────────────────────────────────────────
 node_modules/
+**/node_modules/
 
-# Environment / secrets
+# ─── Environment / secrets ───────────────────────────────────────────────────
+# Ignore every .env variant at any depth, but keep the example templates.
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
 
-# Build output
+# ─── Build output ────────────────────────────────────────────────────────────
 dist/
 dist-ssr/
 build/
+**/dist/
+**/build/
 
-# Uploaded files (includes customer documents — never commit)
+# ─── Uploaded files (customer documents — Aadhaar, bank statements — NEVER commit) ─
+# Match a folder named "uploads" anywhere, whether or not it currently exists.
+uploads
 uploads/
-backend/uploads/
-backend/src/uploads/
+**/uploads
+**/uploads/
 
-# Logs
+# ─── Logs ────────────────────────────────────────────────────────────────────
 logs/
 *.log
 npm-debug.log*
@@ -24,8 +33,16 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# OS / editor
+# ─── Runtime / coverage ──────────────────────────────────────────────────────
+.cache/
+coverage/
+*.pid
+*.seed
+
+# ─── OS / editor ─────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 .idea/
+.vscode/
 *.swp
+*.suo
