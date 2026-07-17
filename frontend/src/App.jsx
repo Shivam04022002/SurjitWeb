@@ -7,6 +7,8 @@ import './index.css';
 
 const Home = lazy(() => import('./pages/Home'));
 const About = lazy(() => import('./pages/About'));
+const ProductCategories = lazy(() => import('./pages/ProductCategories'));
+const CategoryPage = lazy(() => import('./pages/CategoryPage'));
 const ProductDetail = lazy(() => import('./pages/ProductDetail'));
 const Contact = lazy(() => import('./pages/Contact'));
 const Career = lazy(() => import('./pages/Career'));
@@ -39,7 +41,11 @@ function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<About />} />
-              <Route path="/products/:slug" element={<ProductDetail />} />
+              <Route path="/products" element={<ProductCategories />} />
+              {/* Category page. Also absorbs legacy /products/:productSlug links and
+                  redirects them to the category-scoped URL. */}
+              <Route path="/products/:categorySlug" element={<CategoryPage />} />
+              <Route path="/products/:categorySlug/:productSlug" element={<ProductDetail />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/career" element={<Career />} />
               <Route path="/faqs" element={<FAQs />} />

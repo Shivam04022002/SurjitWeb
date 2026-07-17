@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, ChevronDown, Phone } from 'lucide-react';
 import './Navbar.css';
 import fallbackLogo from "../assets/logo-4-2048x319.png";
-import { useSettings, useProducts } from '../hooks';
+import { useSettings, useActiveProductCategories } from '../hooks';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -11,19 +11,21 @@ const Navbar = () => {
   const [activeDropdown, setActiveDropdown] = useState(null);
   const location = useLocation();
   const { data: settings } = useSettings();
-  const { data: cmsProducts } = useProducts();
+  const { data: cmsCategories } = useActiveProductCategories();
 
   const logo = settings?.primaryLogo?.url || fallbackLogo;
   const phone = settings?.tollFreeNumber || settings?.phone || '1800-3131-265';
   const primaryBtnText = settings?.headerPrimaryButtonText || 'Apply Now';
   const primaryBtnUrl = settings?.headerPrimaryButtonUrl || '/loan-application';
 
-  const productDropdown = (cmsProducts && cmsProducts.length > 0)
-    ? cmsProducts.map(p => ({ name: p.name, path: `/products/${p.slug}` }))
+  // Categories, not products. The API already filters out inactive ones and
+  // orders by displayOrder; the static list is only a fallback for a failed fetch.
+  const productDropdown = (cmsCategories && cmsCategories.length > 0)
+    ? cmsCategories.map(c => ({ name: c.name, path: `/products/${c.slug}` }))
     : [
         { name: 'Business Loan', path: '/products/business-loan' },
         { name: 'Commercial Vehicle Loan', path: '/products/commercial-vehicle-loan' },
-        { name: 'Micro LAP', path: '/products/micro-lap' },
+        { name: 'Loan Against Property', path: '/products/loan-against-property' },
       ];
 
   useEffect(() => {
@@ -53,8 +55,9 @@ const Navbar = () => {
     },
     {
       name: 'Products',
-      path: null,
-      hasPage: false,
+      path: '/products',
+      hasPage: true,
+      matchPrefix: true,
       dropdown: productDropdown
     },
     { name: 'Career', path: '/career' },
@@ -127,7 +130,7 @@ const Navbar = () => {
               ) : (
                 <Link
                   to={link.path}
-                  className={`nav-link ${location.pathname === link.path ? 'active' : ''}`}
+                  className={`nav-link ${(link.matchPrefix ? location.pathname.startsWith(link.path) : location.pathname === link.path) ? 'active' : ''}`}
                   onClick={() => link.dropdown && toggleDropdown(index)}
                 >
                   {link.name}

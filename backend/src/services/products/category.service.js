@@ -6,6 +6,24 @@ const getAllCategories = async () => {
     return ProductCategory.find().sort({ displayOrder: 1, createdAt: 1 });
 };
 
+// Public-facing reads: active categories only, lean since nothing is mutated.
+const getActiveCategories = async () => {
+    return ProductCategory.find({ isActive: true })
+        .sort({ displayOrder: 1, createdAt: 1 })
+        .select('name slug shortDescription bannerImage icon displayOrder')
+        .lean();
+};
+
+const getActiveCategoryBySlug = async (slug) => {
+    const category = await ProductCategory.findOne({ slug, isActive: true })
+        .select('name slug shortDescription bannerImage icon displayOrder')
+        .lean();
+    if (!category) {
+        throw new AppError('Product category not found', HTTP_STATUS.NOT_FOUND);
+    }
+    return category;
+};
+
 const getCategoryById = async (id) => {
     const category = await ProductCategory.findById(id);
     if (!category) {
@@ -71,6 +89,8 @@ const reorderCategories = async (orderedIds) => {
 
 module.exports = {
     getAllCategories,
+    getActiveCategories,
+    getActiveCategoryBySlug,
     getCategoryById,
     createCategory,
     updateCategory,

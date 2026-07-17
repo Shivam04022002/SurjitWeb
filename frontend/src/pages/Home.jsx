@@ -35,7 +35,7 @@ const Home = () => {
             title: p.name,
             description: p.shortDescription || p.description || '',
             icon: p.icon || ['💼', '🛺', '🏠'][i % 3],
-            link: `/products/${p.slug}`,
+            link: p.category?.slug ? `/products/${p.category.slug}/${p.slug}` : `/products/${p.slug}`,
             gradient: GRADIENTS[i % GRADIENTS.length],
             highlight: i === 0,
             features: []

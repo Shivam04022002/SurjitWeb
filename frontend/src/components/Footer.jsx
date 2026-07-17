@@ -14,12 +14,12 @@ import './Footer.css';
 import fallbackLogo from "../assets/logo-4-2048x319.png";
 import pressRelease from "../assets/Press_Release.pdf";
 import annualReturn from "../assets/annual_report_2022-23.pdf";
-import { useSettings, useProducts } from '../hooks';
+import { useSettings, useActiveProductCategories } from '../hooks';
 
 const Footer = () => {
     const currentYear = new Date().getFullYear();
     const { data: settings } = useSettings();
-    const { data: products } = useProducts();
+    const { data: categories } = useActiveProductCategories();
 
     const logo = settings?.whiteLogo?.url || settings?.primaryLogo?.url || fallbackLogo;
     const email = settings?.email || settings?.supportEmail || null;
@@ -39,12 +39,14 @@ const Footer = () => {
         { name: 'FAQs', path: '/faqs' },
     ];
 
-    const productLinks = (products && products.length > 0)
-        ? products.map(p => ({ name: p.name, path: `/products/${p.slug}` }))
+    // Categories rather than products, matching the header. The API already drops
+    // inactive entries and orders by displayOrder.
+    const productLinks = (categories && categories.length > 0)
+        ? categories.map(c => ({ name: c.name, path: `/products/${c.slug}` }))
         : [
             { name: 'Business Loan', path: '/products/business-loan' },
             { name: 'Commercial Vehicle Loan', path: '/products/commercial-vehicle-loan' },
-            { name: 'Micro LAP', path: '/products/micro-lap' },
+            { name: 'Loan Against Property', path: '/products/loan-against-property' },
         ];
 
     const socialMap = [

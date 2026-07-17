@@ -1,0 +1,56 @@
+.breadcrumbs {
+    width: 100%;
+}
+
+.breadcrumbs-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.875rem;
+}
+
+.breadcrumbs-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.breadcrumbs-link {
+    color: inherit;
+    opacity: 0.75;
+    text-decoration: none;
+    transition: opacity 0.2s ease;
+}
+
+.breadcrumbs-link:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+.breadcrumbs-sep {
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+.breadcrumbs-current {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* On the tinted hero the trail sits on a dark background. */
+.breadcrumbs-on-hero .breadcrumbs-list {
+    color: #ffffff;
+}
+
+@media (max-width: 640px) {
+    .breadcrumbs-list {
+        font-size: 0.8125rem;
+    }
+}

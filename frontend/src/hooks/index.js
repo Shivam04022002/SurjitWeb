@@ -16,6 +16,37 @@ export const useLeadership = () =>
 export const useProductCategories = () =>
     useApi(apiService.getProductCategories, [], { cacheKey: 'product-categories' });
 
+// Active categories, ordered by displayOrder. Backs the header dropdown and
+// the /products landing page.
+export const useActiveProductCategories = () =>
+    useApi(apiService.getActiveProductCategories, [], { cacheKey: 'active-product-categories' });
+
+// Resolves the first path segment of /products/:slug, which may be either a
+// category slug (the new scheme) or a product slug (a legacy URL still in the
+// wild). Categories win: a slug shared by both resolves to the category page.
+// Returns a tagged result so the route can render or redirect accordingly.
+export const useCategoryOrLegacyProduct = (slug) =>
+    useApi(async () => {
+        try {
+            const { category, products } = await apiService.getCategoryWithProducts(slug);
+            return { kind: 'category', category, products };
+        } catch (err) {
+            if (err?.response?.status !== 404) throw err;
+        }
+
+        // Not a category — fall back to a legacy product URL so old links survive.
+        try {
+            const product = await apiService.getProductBySlug(slug);
+            return { kind: 'legacy-product', product };
+        } catch (err) {
+            if (err?.response?.status === 404) return { kind: 'not-found' };
+            throw err;
+        }
+    }, [slug], {
+        cacheKey: `category-resolve-${slug}`,
+        enabled: !!slug,
+    });
+
 export const useProducts = () =>
     useApi(apiService.getProducts, [], { cacheKey: 'products' });
 

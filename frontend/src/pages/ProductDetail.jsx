@@ -1,7 +1,8 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import EMICalculator from '../components/EMICalculator';
 import FAQAccordion from '../components/FAQAccordion';
 import SEO from '../components/SEO';
+import Breadcrumbs from '../components/Breadcrumbs';
 import { ArrowRight, Check, FileText, RefreshCw } from 'lucide-react';
 import './ProductPage.css';
 import {
@@ -22,10 +23,14 @@ const SectionSkeleton = ({ lines = 4 }) => (
     </div>
 );
 
-const ProductDetail = () => {
-    const { slug } = useParams();
+const SITE_URL = 'https://surjitfinance.com';
 
-    const { data: product, loading: productLoading, error: productError, refetch: refetchProduct } = useProductBySlug(slug);
+const ProductDetail = () => {
+    // Product slugs are globally unique, so the product resolves from productSlug
+    // alone; categorySlug is validated below to keep one canonical URL per product.
+    const { categorySlug, productSlug } = useParams();
+
+    const { data: product, loading: productLoading, error: productError, refetch: refetchProduct } = useProductBySlug(productSlug);
     const productId = product?._id;
 
     const { data: features, loading: featuresLoading } = useProductFeatures(productId);
@@ -71,6 +76,13 @@ const ProductDetail = () => {
         );
     }
 
+    // The product moved category (or the URL was hand-edited): send the visitor to
+    // the canonical path rather than serving the same product under two URLs.
+    const actualCategorySlug = product.category?.slug;
+    if (actualCategorySlug && actualCategorySlug !== categorySlug) {
+        return <Navigate to={`/products/${actualCategorySlug}/${product.slug}`} replace />;
+    }
+
     const displayFeatures = features && features.length > 0 ? features : (product.features || []);
     const displayEligibility = eligibility && eligibility.length > 0 ? eligibility : (product.eligibility || []);
     const displayDocuments = documents && documents.length > 0 ? documents : (product.documents || []);
@@ -88,7 +100,7 @@ const ProductDetail = () => {
                 title={seo?.metaTitle || product.name}
                 description={seo?.metaDescription || product.shortDescription || product.heroDescription}
                 keywords={seo?.metaKeywords}
-                canonical={seo?.canonicalUrl}
+                canonical={seo?.canonicalUrl || `${SITE_URL}/products/${actualCategorySlug}/${product.slug}`}
                 ogImage={seo?.ogImage?.url}
             />
             {/* Hero */}
@@ -96,6 +108,18 @@ const ProductDetail = () => {
                 <div className="container">
                     <div className="product-hero-content">
                         <div className="product-hero-text">
+                            <div className="breadcrumbs-on-hero" style={{ marginBottom: '1rem' }}>
+                                <Breadcrumbs
+                                    items={[
+                                        { name: 'Home', path: '/' },
+                                        { name: 'Products', path: '/products' },
+                                        ...(product.category
+                                            ? [{ name: product.category.name, path: `/products/${product.category.slug}` }]
+                                            : []),
+                                        { name: product.name },
+                                    ]}
+                                />
+                            </div>
                             <span className="product-badge">{product.category?.name || product.subtitle || 'Product'}</span>
                             <h1>{product.name || product.title}</h1>
                             <p>{product.heroDescription || product.description}</p>

@@ -40,7 +40,24 @@ router.get('/about/leadership', asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Leadership team fetched successfully', { members });
 }));
 
+// ── Product Categories (category-based navigation) ─────────────────────────────
+// Drives the header dropdown and the /products landing page: active categories
+// only, ordered by displayOrder.
+router.get('/product-categories', asyncHandler(async (req, res) => {
+    const categories = await productCategoryService.getActiveCategories();
+    return sendSuccess(res, 'Product categories fetched successfully', { categories });
+}));
+
+// Drives /products/:categorySlug. Returns the category and its products together
+// so the page renders from a single round trip.
+router.get('/product-categories/:slug/products', asyncHandler(async (req, res) => {
+    const category = await productCategoryService.getActiveCategoryBySlug(req.params.slug);
+    const products = await productService.getActiveProductsByCategory(category._id);
+    return sendSuccess(res, 'Category products fetched successfully', { category, products });
+}));
+
 // ── Products ───────────────────────────────────────────────────────────────────
+// Retained as-is: still returns every category (active or not) for existing callers.
 router.get('/products/categories', asyncHandler(async (req, res) => {
     const categories = await productCategoryService.getAllCategories();
     return sendSuccess(res, 'Categories fetched successfully', { categories });

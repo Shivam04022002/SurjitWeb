@@ -1,0 +1,95 @@
+.product-categories-page {
+    width: 100%;
+}
+
+.product-categories-hero {
+    background: linear-gradient(135deg, #3d2c12 0%, #6b4c17 55%, #a06f14 100%);
+    color: #ffffff;
+    padding: 3.5rem 0 3rem;
+}
+
+.product-categories-hero h1 {
+    margin: 1rem 0 0.75rem;
+    font-size: clamp(1.85rem, 4vw, 2.75rem);
+    line-height: 1.15;
+    color: #ffffff;
+}
+
+.product-categories-hero p {
+    margin: 0;
+    max-width: 60ch;
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.product-categories-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.category-tile {
+    display: flex;
+    flex-direction: column;
+    padding: 1.75rem;
+    background: #ffffff;
+    border: 1px solid var(--gray-200, #e5e7eb);
+    border-radius: 14px;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.category-tile:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1);
+    border-color: var(--primary-300, #ffd699);
+}
+
+.category-tile-icon {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+    margin-bottom: 1rem;
+}
+
+.category-tile-title {
+    margin: 0 0 0.6rem;
+    font-size: 1.25rem;
+    line-height: 1.3;
+    color: var(--gray-900, #111827);
+}
+
+.category-tile:hover .category-tile-title {
+    color: var(--primary-700, #cc8816);
+}
+
+.category-tile-desc {
+    margin: 0 0 1.25rem;
+    color: var(--gray-600, #4b5563);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+}
+
+.category-tile-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    /* Pin the CTA to the bottom so tiles align across the row. */
+    margin-top: auto;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    color: var(--primary-700, #cc8816);
+}
+
+@media (max-width: 640px) {
+    .product-categories-hero {
+        padding: 2.5rem 0 2.25rem;
+    }
+
+    .product-categories-grid {
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+    }
+}

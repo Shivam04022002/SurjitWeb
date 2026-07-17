@@ -11,6 +11,15 @@ const getAllProducts = async (filters = {}) => {
         .select('-features -eligibility -documents -interestRates -faqs -emiConfig -seo');
 };
 
+// Public-facing list for a category page. Only the card fields are selected;
+// the heavy section arrays are fetched per-product on the detail page.
+const getActiveProductsByCategory = async (categoryId) => {
+    return Product.find({ category: categoryId, isActive: true })
+        .sort({ displayOrder: 1, createdAt: 1 })
+        .select('name slug shortDescription heroDescription thumbnailImage heroImage bannerImage displayOrder')
+        .lean();
+};
+
 const getProductById = async (id) => {
     const product = await Product.findById(id).populate('category', 'name slug');
     if (!product) {
@@ -80,6 +89,7 @@ const reorderProducts = async (orderedIds) => {
 
 module.exports = {
     getAllProducts,
+    getActiveProductsByCategory,
     getProductById,
     createProduct,
     updateProduct,

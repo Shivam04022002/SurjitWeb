@@ -33,6 +33,15 @@ export const getCompanyInfo = () => api.get('/about/company').then(r => r.data.d
 export const getDirectors = () => api.get('/about/directors').then(r => r.data.data.directors);
 export const getLeadership = () => api.get('/about/leadership').then(r => r.data.data.members);
 
+// ── Product Categories ─────────────────────────────────────────────────────────
+// Active categories only, ordered by displayOrder — drives the nav and /products.
+export const getActiveProductCategories = () =>
+    api.get('/product-categories').then(r => r.data.data.categories);
+
+// Category plus its products in one request — drives /products/:categorySlug.
+export const getCategoryWithProducts = (categorySlug) =>
+    api.get(`/product-categories/${categorySlug}/products`).then(r => r.data.data);
+
 // ── Products ───────────────────────────────────────────────────────────────────
 export const getProductCategories = () => api.get('/products/categories').then(r => r.data.data.categories);
 export const getProducts = () => api.get('/products').then(r => r.data.data.products);

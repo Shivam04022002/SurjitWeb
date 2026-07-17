@@ -97,12 +97,13 @@ const Hero = () => {
             name: p.name,
             tagline: p.shortDescription ? p.shortDescription.split(' ').slice(0, 4).join(' ') + '…' : '',
             slug: p.slug,
+            path: p.category?.slug ? `/products/${p.category.slug}/${p.slug}` : `/products/${p.slug}`,
             cardClass: `hero-card-${i + 1}`,
           }))
         : [
-            { icon: '💼', name: 'Business Loan', tagline: 'Up to ₹1.5 Lakh', slug: 'business-loan', cardClass: 'hero-card-1' },
-            { icon: '🛺', name: 'E-Rickshaw Loan', tagline: 'Easy EMI Options', slug: 'commercial-vehicle-loan', cardClass: 'hero-card-2' },
-            { icon: '🏠', name: 'Micro LAP', tagline: 'Up to 120 Months', slug: 'micro-lap', cardClass: 'hero-card-3' },
+            { icon: '💼', name: 'Business Loan', tagline: 'Up to ₹1.5 Lakh', slug: 'business-loan', path: '/products/business-loan', cardClass: 'hero-card-1' },
+            { icon: '🛺', name: 'E-Rickshaw Loan', tagline: 'Easy EMI Options', slug: 'commercial-vehicle-loan', path: '/products/commercial-vehicle-loan', cardClass: 'hero-card-2' },
+            { icon: '🏠', name: 'Micro LAP', tagline: 'Up to 120 Months', slug: 'micro-lap', path: '/products/loan-against-property', cardClass: 'hero-card-3' },
           ];
 
     return (
@@ -155,7 +156,7 @@ const Hero = () => {
                     <div className="hero-visual animate-fadeInUp stagger-2">
                         <div className="hero-card-stack">
                             {heroProducts.map((p) => (
-                                <Link key={p.slug} to={`/products/${p.slug}`} className={`hero-card ${p.cardClass}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                                <Link key={p.slug} to={p.path} className={`hero-card ${p.cardClass}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                                     <div className="card-icon">{p.icon}</div>
                                     <h3>{p.name}</h3>
                                     <p>{p.tagline}</p>
