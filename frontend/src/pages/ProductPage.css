@@ -969,11 +969,6 @@
 }
 
 /* ── Product Cards Slider ── */
-.product-slider-section {
-    padding: 100px 0 40px;
-    background: linear-gradient(180deg, var(--gray-50) 0%, white 100%);
-}
-
 .slider-header {
     text-align: center;
     margin-bottom: 40px;
@@ -1282,9 +1277,5 @@
 
     .stat-item:last-child {
         border-bottom: none;
-    }
-
-    .product-slider-section {
-        padding: 80px 0 30px;
     }
 }

@@ -1,0 +1,82 @@
+/* Sits directly under the hero and carries its gradient down a shade, so the
+   row reads as part of the hero block rather than a new section. */
+.product-nav {
+    background: linear-gradient(180deg, var(--primary-50) 0%, white 100%);
+    border-bottom: 1px solid rgba(206, 129, 18, 0.12);
+    padding: var(--space-5) 0;
+}
+
+.product-nav-track {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Matches .product-quick-links in the hero — same radius, padding, border and
+   hover, so the two pill rows read as one family. */
+.product-nav-pill {
+    display: inline-block;
+    padding: 9px 20px;
+    background: white;
+    border: 1px solid rgba(206, 129, 18, 0.15);
+    border-radius: 50px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--gray-600);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.3s ease;
+}
+
+.product-nav-pill:hover {
+    background: #FFF9F0;
+    border-color: #CE8112;
+    color: #CE8112;
+}
+
+.product-nav-pill.is-active {
+    background: #CE8112;
+    border-color: #CE8112;
+    color: white;
+    box-shadow: 0 4px 12px rgba(206, 129, 18, 0.25);
+}
+
+.product-nav-pill.is-active:hover {
+    background: #b97210;
+    border-color: #b97210;
+    color: white;
+}
+
+.product-nav-pill:focus-visible {
+    outline: 2px solid #CE8112;
+    outline-offset: 2px;
+}
+
+/* Below the tablet breakpoint the row stops wrapping and scrolls instead, so a
+   long category never stacks into several rows on a small screen. */
+@media (max-width: 768px) {
+    .product-nav-track {
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: auto;
+        /* Bleeds the row to the screen edges so pills scroll past the
+           container padding instead of being clipped mid-pill. */
+        margin: 0 calc(-1 * var(--space-6));
+        padding: 4px var(--space-6);
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .product-nav-track::-webkit-scrollbar {
+        display: none;
+    }
+
+    .product-nav-pill {
+        font-size: 0.85rem;
+        padding: 8px 18px;
+    }
+}

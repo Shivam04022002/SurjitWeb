@@ -3,7 +3,7 @@ import EMICalculator from '../components/EMICalculator';
 import FAQAccordion from '../components/FAQAccordion';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
-import ProductSlider from '../components/ProductSlider';
+import ProductNav from '../components/ProductNav';
 import { ArrowRight, Check, FileText, RefreshCw } from 'lucide-react';
 import './ProductPage.css';
 import {
@@ -46,7 +46,11 @@ const ProductDetail = () => {
     // the category; cached per category, so moving between siblings reuses it.
     const { data: categoryData } = useCategoryWithProducts(product?.category?.slug);
 
-    if (productLoading) {
+    // Only the very first load gets the skeleton. Switching products keeps the
+    // previous one on screen until the next arrives — useApi holds the old data
+    // while it fetches — so the nav stays put and the page does not collapse
+    // and re-expand on every pill click.
+    if (productLoading && !product) {
         return (
             <div className="product-page">
                 <section className="product-hero">
@@ -149,14 +153,17 @@ const ProductDetail = () => {
                 </div>
             </section>
 
-            {/* Other products in this category. Hidden when this is the only one,
-                since the slider would then just repeat the page you are on. */}
+            {/* Switch between the products in this category. Hidden when this is
+                the only one, since the row would then just be the page you are
+                already on. */}
             {siblingProducts.length > 1 && (
-                <ProductSlider
-                    categoryName={categoryData.category.name}
+                <ProductNav
                     categorySlug={categoryData.category.slug}
                     products={siblingProducts}
-                    currentSlug={product.slug}
+                    // Keyed off the URL rather than the loaded product so the
+                    // pill highlights the moment it is clicked, instead of
+                    // waiting for the fetch to come back.
+                    currentSlug={productSlug}
                 />
             )}
 
