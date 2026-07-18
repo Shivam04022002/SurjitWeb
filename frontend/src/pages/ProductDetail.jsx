@@ -4,6 +4,7 @@ import FAQAccordion from '../components/FAQAccordion';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ProductNav from '../components/ProductNav';
+import RelatedProducts from '../components/RelatedProducts';
 import { ArrowRight, Check, FileText, RefreshCw } from 'lucide-react';
 import './ProductPage.css';
 import {
@@ -166,6 +167,16 @@ const ProductDetail = () => {
                     currentSlug={productSlug}
                 />
             )}
+
+            {/* Related products in this category. Reuses the sibling list the
+                pills above already loaded, so it costs no extra request and
+                stays cached as you move between products. */}
+            <RelatedProducts
+                categoryName={categoryData?.category?.name}
+                categorySlug={categoryData?.category?.slug}
+                products={siblingProducts}
+                currentSlug={productSlug}
+            />
 
             {/* Features */}
             <section id="features-and-benefits" className="product-features section">
