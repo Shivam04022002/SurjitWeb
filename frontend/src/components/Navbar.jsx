@@ -63,6 +63,7 @@ const Navbar = () => {
       dropdown: productDropdown
     },
     { name: 'Career', path: '/career' },
+    { name: 'Gallery', path: '/gallery', matchPrefix: true },
     { name: 'Blogs', path: '/blogs' },
     {
       name: 'Customer Service',

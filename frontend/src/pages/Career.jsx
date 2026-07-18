@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
-import { MapPin, BriefcaseIcon, Clock, Users, ArrowRight, ChevronRight, Calendar, Camera, RefreshCw } from 'lucide-react';
+import { MapPin, BriefcaseIcon, Clock, Users, ArrowRight, Calendar, RefreshCw } from 'lucide-react';
 import './Career.css';
 import SEO from '../components/SEO';
-import { useJobs, useGalleryAlbums, useCareerSettings } from '../hooks';
+import { useJobs, useCareerSettings } from '../hooks';
 
 const JobSkeleton = () => (
     <div className="job-card" style={{ opacity: 0.5 }}>
@@ -15,7 +15,6 @@ const JobSkeleton = () => (
 
 const Career = () => {
     const { data: jobs, loading: jobsLoading, error: jobsError, refetch: refetchJobs } = useJobs();
-    const { data: albums, loading: albumsLoading } = useGalleryAlbums();
     const { data: careerSettings } = useCareerSettings();
 
     const benefits = [
@@ -110,55 +109,6 @@ const Career = () => {
                                 <p>{benefit.description}</p>
                             </div>
                         ))}
-                    </div>
-                </div>
-            </section>
-
-            {/* Life @ Surjit Finance */}
-            <section id="life-surjit" className="life-section section">
-                <div className="container">
-                    <div className="section-header">
-                        <h2>Life @ Surjit Finance</h2>
-                        <p>Experience the vibrant culture and team spirit at Surjit Finance</p>
-                    </div>
-
-                    <div className="life-grid">
-                        {albumsLoading
-                            ? Array(4).fill(0).map((_, i) => (
-                                <div key={i} className="life-card" style={{ opacity: 0.5 }}>
-                                    <div className="life-image" style={{ background: '#e5e7eb' }} />
-                                    <div className="life-content">
-                                        <div style={{ height: 16, background: '#e5e7eb', borderRadius: 4, width: '70%', marginBottom: 8 }} />
-                                        <div style={{ height: 12, background: '#e5e7eb', borderRadius: 4, width: '100%' }} />
-                                    </div>
-                                </div>
-                            ))
-                            : (albums && albums.length > 0)
-                                ? albums.map((album) => (
-                                    <div key={album._id} className="life-card">
-                                        <div className="life-image">
-                                            {album.coverImage?.url ? (
-                                                <img src={album.coverImage.url} alt={album.title} />
-                                            ) : (
-                                                <Camera size={40} />
-                                            )}
-                                        </div>
-                                        <div className="life-content">
-                                            <h4>{album.title}</h4>
-                                            <p>{album.description}</p>
-                                            <Link to={`/career/gallery/${album._id}`} className="view-link">
-                                                View
-                                                <ChevronRight size={16} />
-                                            </Link>
-                                        </div>
-                                    </div>
-                                ))
-                                : (
-                                    <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#6b7280' }}>
-                                        Gallery coming soon.
-                                    </p>
-                                )
-                        }
                     </div>
                 </div>
             </section>

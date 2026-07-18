@@ -4,7 +4,8 @@ import {
   TextField, IconButton, Tooltip, Chip, Stack, CircularProgress, Paper
 } from '@mui/material'
 import {
-  CloudUpload, Delete, CheckCircle, Cancel, Save, DragIndicator
+  CloudUpload, Delete, CheckCircle, Cancel, Save,
+  ArrowUpward, ArrowDownward, Videocam, Image as ImageIcon
 } from '@mui/icons-material'
 import { galleryService } from '../../../services/gallery.service'
 
@@ -15,6 +16,7 @@ const ImagesTab = ({ albumId, showToast }) => {
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({ caption: '', altText: '' })
   const [savingId, setSavingId] = useState(null)
+  const [reordering, setReordering] = useState(false)
   const fileInputRef = useRef(null)
 
   const fetchImages = useCallback(async () => {
@@ -40,13 +42,36 @@ const ImagesTab = ({ albumId, showToast }) => {
       const fd = new FormData()
       files.forEach((f) => fd.append('images', f))
       await galleryService.uploadImages(albumId, fd)
-      showToast(`${files.length} image(s) uploaded successfully`)
+      showToast(`${files.length} file(s) uploaded successfully`)
       fetchImages()
     } catch (err) {
       showToast(err?.response?.data?.message || 'Upload failed', 'error')
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  // Reorder by swapping with the neighbour and sending the whole order back.
+  // The list is already sorted by displayOrder, so its index order is the
+  // order the website renders.
+  const handleMove = async (index, direction) => {
+    const target = index + direction
+    if (target < 0 || target >= images.length) return
+
+    const next = [...images]
+    const [moved] = next.splice(index, 1)
+    next.splice(target, 0, moved)
+
+    setImages(next)
+    setReordering(true)
+    try {
+      await galleryService.reorderImages(next.map((i) => i._id))
+    } catch {
+      showToast('Failed to reorder', 'error')
+      fetchImages()
+    } finally {
+      setReordering(false)
     }
   }
 
@@ -79,10 +104,10 @@ const ImagesTab = ({ albumId, showToast }) => {
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this image? This cannot be undone.')) return
+    if (!window.confirm('Delete this item? This cannot be undone.')) return
     try {
       await galleryService.deleteImage(id)
-      showToast('Image deleted')
+      showToast('Item deleted')
       fetchImages()
     } catch {
       showToast('Failed to delete image', 'error')
@@ -115,7 +140,7 @@ const ImagesTab = ({ albumId, showToast }) => {
           type="file"
           hidden
           multiple
-          accept=".jpg,.jpeg,.png,.webp"
+          accept=".jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.ogg,.mov"
           onChange={handleFileSelect}
         />
         {uploading ? (
@@ -126,9 +151,9 @@ const ImagesTab = ({ albumId, showToast }) => {
         ) : (
           <>
             <CloudUpload sx={{ fontSize: 40, color: 'primary.main' }} />
-            <Typography variant="body1" fontWeight={500}>Click to upload images</Typography>
+            <Typography variant="body1" fontWeight={500}>Click to upload images or videos</Typography>
             <Typography variant="caption" color="text.secondary">
-              JPG, JPEG, PNG, WEBP · Max 15 MB per image · Multiple selection supported
+              Images: JPG, PNG, WEBP, GIF · Videos: MP4, WEBM, OGG, MOV · Max 100 MB per file · Multiple selection supported
             </Typography>
             <Button variant="contained" size="small" startIcon={<CloudUpload />} sx={{ mt: 1 }}
               onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click() }}>
@@ -138,36 +163,85 @@ const ImagesTab = ({ albumId, showToast }) => {
         )}
       </Paper>
 
-      {/* Images count */}
+      {/* Media count */}
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="subtitle2" color="text.secondary">
-          {images.length} image{images.length !== 1 ? 's' : ''}
+          {images.length} item{images.length !== 1 ? 's' : ''}
+          {' · '}
+          {images.filter((i) => i.mediaType === 'video').length} video
+          {images.filter((i) => i.mediaType === 'video').length !== 1 ? 's' : ''}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Use the arrows to reorder — this is the order the website shows
         </Typography>
       </Box>
 
       {images.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6 }}>
-          <Typography color="text.secondary">No images in this album yet. Upload some above.</Typography>
+          <Typography color="text.secondary">Nothing in this album yet. Upload images or videos above.</Typography>
         </Box>
       ) : (
         <Grid container spacing={2}>
-          {images.map((image) => (
+          {images.map((image, index) => (
             <Grid item xs={12} sm={6} md={4} lg={3} key={image._id}>
               <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <Box sx={{ position: 'relative' }}>
-                  <CardMedia
-                    component="img"
-                    height="160"
-                    image={image.image.url}
-                    alt={image.altText || image.caption || 'Gallery image'}
-                    sx={{ objectFit: 'cover', bgcolor: 'grey.100' }}
-                  />
-                  <Box sx={{ position: 'absolute', top: 6, right: 6 }}>
+                  {image.mediaType === 'video' ? (
+                    <CardMedia
+                      component="video"
+                      height="160"
+                      src={image.image.url}
+                      controls
+                      preload="metadata"
+                      sx={{ objectFit: 'cover', bgcolor: 'common.black' }}
+                    />
+                  ) : (
+                    <CardMedia
+                      component="img"
+                      height="160"
+                      image={image.image.url}
+                      alt={image.altText || image.caption || 'Gallery image'}
+                      sx={{ objectFit: 'cover', bgcolor: 'grey.100' }}
+                    />
+                  )}
+                  <Box sx={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 0.5 }}>
+                    <Chip
+                      icon={image.mediaType === 'video' ? <Videocam /> : <ImageIcon />}
+                      label={image.mediaType === 'video' ? 'Video' : 'Image'}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}
+                    />
                     <Chip
                       label={image.isActive ? 'Active' : 'Inactive'}
                       color={image.isActive ? 'success' : 'default'}
                       size="small"
                     />
+                  </Box>
+                  <Box sx={{ position: 'absolute', top: 6, left: 6, display: 'flex', gap: 0.5 }}>
+                    <Tooltip title="Move earlier">
+                      <span>
+                        <IconButton
+                          size="small"
+                          disabled={index === 0 || reordering}
+                          onClick={() => handleMove(index, -1)}
+                          sx={{ bgcolor: 'rgba(255,255,255,0.9)', '&:hover': { bgcolor: 'common.white' } }}
+                        >
+                          <ArrowUpward fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Move later">
+                      <span>
+                        <IconButton
+                          size="small"
+                          disabled={index === images.length - 1 || reordering}
+                          onClick={() => handleMove(index, 1)}
+                          sx={{ bgcolor: 'rgba(255,255,255,0.9)', '&:hover': { bgcolor: 'common.white' } }}
+                        >
+                          <ArrowDownward fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                   </Box>
                 </Box>
 

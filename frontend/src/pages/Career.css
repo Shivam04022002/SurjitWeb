@@ -120,79 +120,6 @@
     font-size: 0.9375rem;
 }
 
-/* Life @ Surjit Section */
-.life-section {
-    background: var(--gray-50);
-}
-
-.life-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-6);
-}
-
-.life-card {
-    background: white;
-    border-radius: var(--radius-xl);
-    overflow: hidden;
-    box-shadow: var(--shadow-md);
-    transition: all var(--transition-normal);
-}
-
-.life-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-lg);
-}
-
-.life-image {
-    height: 180px;
-    background: linear-gradient(135deg, var(--primary-400) 0%, var(--secondary-400) 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    overflow: hidden;
-}
-
-.life-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform var(--transition-normal);
-}
-
-.life-card:hover .life-image img {
-    transform: scale(1.1);
-}
-
-.life-content {
-    padding: var(--space-5);
-}
-
-.life-content h4 {
-    margin-bottom: var(--space-2);
-    font-size: 1rem;
-}
-
-.life-content p {
-    font-size: 0.875rem;
-    margin-bottom: var(--space-3);
-}
-
-.view-link {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    color: var(--primary-600);
-    font-weight: 600;
-    font-size: 0.875rem;
-    cursor: pointer;
-}
-
-.view-link:hover {
-    text-decoration: underline;
-}
-
 /* Career CTA */
 .career-cta {
     background: linear-gradient(180deg, var(--primary-100) 0%, var(--primary-50) 100%);
@@ -217,10 +144,6 @@
     .benefits-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-
-    .life-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
 }
 
 @media (max-width: 768px) {
@@ -228,8 +151,7 @@
         grid-template-columns: 1fr;
     }
 
-    .benefits-grid,
-    .life-grid {
+    .benefits-grid {
         grid-template-columns: 1fr;
     }
 }

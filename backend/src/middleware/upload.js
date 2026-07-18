@@ -10,6 +10,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const allowedFileTypes = {
     images: /jpeg|jpg|png|webp|gif|svg/,
     documents: /pdf|doc|docx/,
+    // Gallery albums hold images and videos side by side.
+    media: /jpeg|jpg|png|webp|gif|svg|mp4|webm|ogg|mov|quicktime/,
     all: /jpeg|jpg|png|webp|gif|svg|pdf|doc|docx/
 };
 

@@ -87,3 +87,49 @@
         font-size: 1.8rem;
     }
 }
+
+/* Image tiles became buttons so they are keyboard-reachable and announce
+   themselves; strip the native button chrome so they look exactly as before. */
+.gallery-item-image {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.gallery-item-image:focus-visible {
+    outline: 3px solid var(--primary-500);
+    outline-offset: 3px;
+}
+
+/* Videos sit in the same masonry column but do not lift on hover — the tile
+   is an active player, not a link. */
+.gallery-item-video {
+    position: relative;
+    background: #000;
+}
+
+.gallery-item-video:hover {
+    transform: none;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+}
+
+.gallery-item-video video {
+    width: 100%;
+    display: block;
+    background: #000;
+}
+
+.gallery-item-caption {
+    display: block;
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    color: var(--gray-600);
+    background: white;
+}

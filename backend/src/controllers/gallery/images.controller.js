@@ -14,15 +14,17 @@ const getImagesByAlbum = asyncHandler(async (req, res) => {
 });
 
 const createImages = asyncHandler(async (req, res) => {
-    const files = (req.files || []).map((f) => buildFileResult(f));
+    // buildFileResult is shared across modules and returns only url/fileName/size,
+    // so the mime type is carried alongside it for the image-vs-video split.
+    const files = (req.files || []).map((f) => ({ ...buildFileResult(f), mimeType: f.mimetype }));
 
     if (!files.length) {
         const { AppError } = require('../../middleware/errorHandler');
-        throw new AppError('At least one image file is required', HTTP_STATUS.BAD_REQUEST);
+        throw new AppError('At least one image or video file is required', HTTP_STATUS.BAD_REQUEST);
     }
 
     const images = await imagesService.createImages(req.params.albumId, files, req.body);
-    return sendSuccess(res, `${images.length} image(s) uploaded successfully`, { images }, HTTP_STATUS.CREATED);
+    return sendSuccess(res, `${images.length} file(s) uploaded successfully`, { images }, HTTP_STATUS.CREATED);
 });
 
 const updateImage = asyncHandler(async (req, res) => {

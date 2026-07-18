@@ -14,6 +14,16 @@ const getImagesByAlbum = async (albumId, filters = {}) => {
     return GalleryImage.find(query).sort({ displayOrder: 1, createdAt: -1 });
 };
 
+const VIDEO_EXTENSIONS = /\.(mp4|webm|ogg|ogv|mov)$/i;
+
+// Prefers the mime type the upload reported, falling back to the extension for
+// storage backends that hand back a generic content type.
+const resolveMediaType = (file) => {
+    if (file.mimeType && file.mimeType.startsWith('video/')) return 'video';
+    if (file.mimeType && file.mimeType.startsWith('image/')) return 'image';
+    return VIDEO_EXTENSIONS.test(file.fileName || file.url || '') ? 'video' : 'image';
+};
+
 const createImages = async (albumId, files, bodyData = {}) => {
     const album = await GalleryAlbum.findById(albumId);
     if (!album) throw new AppError('Album not found', HTTP_STATUS.NOT_FOUND);
@@ -23,6 +33,7 @@ const createImages = async (albumId, files, bodyData = {}) => {
     const images = files.map((file, index) => ({
         album: albumId,
         image: { url: file.url, fileName: file.fileName },
+        mediaType: resolveMediaType(file),
         caption: (Array.isArray(bodyData.captions) ? bodyData.captions[index] : bodyData.caption) || '',
         altText: (Array.isArray(bodyData.altTexts) ? bodyData.altTexts[index] : bodyData.altText) || '',
         displayOrder: existingCount + index + 1,

@@ -7,9 +7,20 @@ const galleryImageSchema = new mongoose.Schema({
         required: [true, 'Album reference is required'],
         index: true
     },
+    // Holds the uploaded file for both images and videos. The field keeps its
+    // original name so every existing document, query and API response stays
+    // valid — mediaType below is what distinguishes the two.
     image: {
         url: { type: String, required: [true, 'Image URL is required'] },
         fileName: { type: String, default: '' }
+    },
+    // Mongoose applies this default when hydrating documents that predate the
+    // field, so albums created before video support read back as images with
+    // no migration required.
+    mediaType: {
+        type: String,
+        enum: ['image', 'video'],
+        default: 'image'
     },
     caption: {
         type: String,

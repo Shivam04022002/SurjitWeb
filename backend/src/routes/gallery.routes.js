@@ -30,8 +30,9 @@ const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
 // Cover image upload (single)
 const coverUpload = createUpload({ folder: 'gallery/covers', fileTypes: 'images' }).single('coverImage');
 
-// Multiple image upload
-const imagesUpload = createUpload({ folder: 'gallery/images', fileTypes: 'images', maxSize: 15 * 1024 * 1024 }).array('images', 50);
+// Multiple image/video upload. The field name stays "images" so the existing
+// CMS upload call keeps working; the limit is raised to accommodate video.
+const imagesUpload = createUpload({ folder: 'gallery/images', fileTypes: 'media', maxSize: 100 * 1024 * 1024 }).array('images', 50);
 
 // ZIP upload – memory storage so we can pass the buffer to adm-zip
 const zipUpload = multer({
