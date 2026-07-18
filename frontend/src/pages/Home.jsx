@@ -4,6 +4,11 @@ import ProductCard from '../components/ProductCard';
 import SEO from '../components/SEO';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Users, Building2, Award, TrendingUp } from 'lucide-react';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Navigation, Pagination } from 'swiper/modules';
+import 'swiper/css';
+import 'swiper/css/navigation';
+import 'swiper/css/pagination';
 import './Home.css';
 import { blogs } from '../data/blogs';
 
@@ -74,25 +79,47 @@ const Home = () => {
                         <h2>Our Products</h2>
                         <p>Tailored financial solutions designed to unlock your potential and fuel your ambitions</p>
                     </div>
-                    <div className="products-grid grid grid-3">
-                        {productsLoading
-                            ? Array(3).fill(0).map((_, i) => (
-                                <div key={i} className="product-card" style={{ opacity: 0.5 }}>
-                                    <div style={{ width: 56, height: 56, background: '#e5e7eb', borderRadius: '50%', marginBottom: 16 }} />
-                                    <div style={{ height: 20, background: '#e5e7eb', borderRadius: 4, width: '60%', marginBottom: 12 }} />
-                                    <div style={{ height: 14, background: '#e5e7eb', borderRadius: 4, width: '100%', marginBottom: 6 }} />
-                                    <div style={{ height: 14, background: '#e5e7eb', borderRadius: 4, width: '80%' }} />
-                                </div>
-                            ))
-                            : productsError
-                                ? <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#6b7280' }}>Unable to load products. Please try again later.</p>
-                                : products.length > 0
-                                    ? products.map((product, index) => (
-                                        <ProductCard key={index} {...product} />
-                                    ))
-                                    : <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#6b7280' }}>No products available at the moment.</p>
-                        }
-                    </div>
+                    {productsLoading
+                        ? (
+                            <div className="products-grid grid grid-3">
+                                {Array(3).fill(0).map((_, i) => (
+                                    <div key={i} className="product-card" style={{ opacity: 0.5 }}>
+                                        <div style={{ width: 56, height: 56, background: '#e5e7eb', borderRadius: '50%', marginBottom: 16 }} />
+                                        <div style={{ height: 20, background: '#e5e7eb', borderRadius: 4, width: '60%', marginBottom: 12 }} />
+                                        <div style={{ height: 14, background: '#e5e7eb', borderRadius: 4, width: '100%', marginBottom: 6 }} />
+                                        <div style={{ height: 14, background: '#e5e7eb', borderRadius: 4, width: '80%' }} />
+                                    </div>
+                                ))}
+                            </div>
+                        )
+                        : productsError
+                            ? <p style={{ textAlign: 'center', color: '#6b7280' }}>Unable to load products. Please try again later.</p>
+                            : products.length > 0
+                                ? (
+                                    <div className="products-slider">
+                                        <Swiper
+                                            modules={[Navigation, Pagination]}
+                                            spaceBetween={30}
+                                            slidesPerView={1}
+                                            speed={450}
+                                            grabCursor
+                                            navigation
+                                            pagination={{ clickable: true }}
+                                            breakpoints={{
+                                                768: { slidesPerView: 2 },
+                                                1024: { slidesPerView: 3 }
+                                            }}
+                                        >
+                                            {products.map((product, index) => (
+                                                <SwiperSlide key={index}>
+                                                    <ProductCard {...product} />
+                                                </SwiperSlide>
+                                            ))}
+                                        </Swiper>
+                                    </div>
+                                )
+                                : <p style={{ textAlign: 'center', color: '#6b7280' }}>No products available at the moment.</p>
+                    }
                 </div>
             </section>
 

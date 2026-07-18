@@ -7,6 +7,124 @@
     margin-top: var(--space-8);
 }
 
+/* Products slider — presentation only. The card itself is untouched; these
+   rules just rebuild what the grid used to give it (equal heights) and make
+   room for the parts of the card that paint outside its own box. */
+.products-slider {
+    margin-top: var(--space-8);
+}
+
+/* Swiper clips overflow, and the card paints outside itself in three ways:
+   the "Popular" badge at top:-12px, the -8px hover lift, and shadow-xl.
+   Without this padding all three get cut off. The negative margin keeps the
+   section's outer spacing identical to the grid version. */
+.products-slider .swiper {
+    padding: 28px 4px 56px;
+    margin: -28px -4px -20px;
+}
+
+/* When every card already fits, Swiper locks itself and hides the dots — give
+   the space they'd have taken back, so the section matches the old grid. */
+.products-slider .swiper:has(.swiper-pagination-lock) {
+    padding-bottom: 20px;
+    margin-bottom: -20px;
+}
+
+/* The grid stretched every card to the tallest in the row; Swiper sizes each
+   slide to its own content instead. height:auto + flex hands the row-height
+   behaviour back, so .product-card's height:100% resolves as it did before. */
+.products-slider .swiper-slide {
+    height: auto;
+    display: flex;
+}
+
+.products-slider .swiper-slide>.product-card {
+    width: 100%;
+}
+
+/* Arrows and dots are new UI, so they borrow the site's existing tokens
+   rather than shipping Swiper's default iOS blue. The border matters: these
+   sit over white cards, so a plain white button would be invisible. */
+.products-slider .swiper-button-prev,
+.products-slider .swiper-button-next {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-full);
+    background: white;
+    color: var(--primary-600);
+    border: 1px solid var(--gray-200);
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-normal);
+}
+
+/* Swiper v14 renders an <svg> sized width:100%/height:100% of the button,
+   which overflows the circle. Pin it back to icon size. */
+.products-slider .swiper-button-prev svg,
+.products-slider .swiper-button-next svg {
+    width: 16px;
+    height: 16px;
+}
+
+.products-slider .swiper-button-prev:hover,
+.products-slider .swiper-button-next:hover {
+    background: var(--primary-600);
+    color: white;
+    border-color: var(--primary-600);
+    box-shadow: var(--shadow-lg);
+}
+
+.products-slider .swiper-button-disabled {
+    opacity: 0.35;
+}
+
+.products-slider .swiper-pagination {
+    bottom: 12px;
+}
+
+.products-slider .swiper-pagination-bullet {
+    background: var(--primary-600);
+    opacity: 0.3;
+    transition: all var(--transition-normal);
+}
+
+.products-slider .swiper-pagination-bullet-active {
+    opacity: 1;
+    width: 24px;
+    border-radius: var(--radius-full);
+}
+
+/* Arrows only appear where there is room to put them beside the cards rather
+   than on top of them. The container caps at 1280px with 24px of padding, so
+   below ~1344px the only free space is that 24px — too narrow for a 44px
+   button, and anything wider would either cover the card text or push the
+   page into horizontal scroll. Past that threshold, widen the track by the
+   gutter and pad it straight back: the slides keep their exact x-positions
+   and the arrows sit in the overhang. Narrower screens are touch-first and
+   keep swipe, mouse drag, and the pagination dots. */
+.products-slider .swiper-button-prev,
+.products-slider .swiper-button-next {
+    display: none;
+}
+
+@media (min-width: 1344px) {
+    .products-slider .swiper {
+        padding-left: 56px;
+        padding-right: 56px;
+        margin-left: -56px;
+        margin-right: -56px;
+    }
+
+    .products-slider .swiper-button-prev,
+    .products-slider .swiper-button-next {
+        display: flex;
+    }
+
+    /* Swiper's own lock class must still win when nothing can scroll. */
+    .products-slider .swiper-button-lock {
+        display: none;
+    }
+}
+
 /* Tagline Section */
 .tagline-section {
     padding: var(--space-16) 0;
