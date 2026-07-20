@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { FreeMode } from 'swiper/modules';
+import { FreeMode, Mousewheel } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/free-mode';
 import './ProductNav.css';
@@ -30,7 +30,7 @@ const ProductNav = ({ categorySlug, products, currentSlug }) => {
             <div className="container">
                 <Swiper
                     className="product-nav-track"
-                    modules={[FreeMode]}
+                    modules={[FreeMode, Mousewheel]}
                     // Pills size to their own label rather than a column width.
                     slidesPerView="auto"
                     spaceBetween={12}
@@ -38,6 +38,12 @@ const ProductNav = ({ categorySlug, products, currentSlug }) => {
                     // carousel, so it must not snap to slide boundaries.
                     freeMode={{ enabled: true, momentum: true, sticky: false }}
                     grabCursor
+                    // Trackpad: a two-finger sideways swipe arrives as a wheel
+                    // event, which Swiper ignores unless this is on. forceToAxis
+                    // limits it to horizontal gestures so scrolling the page
+                    // over the strip still scrolls the page, and releaseOnEdges
+                    // hands the scroll back once the strip reaches either end.
+                    mousewheel={{ forceToAxis: true, releaseOnEdges: true, sensitivity: 1 }}
                     // Keeps the row centred, as it was, whenever the pills fit;
                     // it only becomes a left-aligned draggable strip once they
                     // overflow.
