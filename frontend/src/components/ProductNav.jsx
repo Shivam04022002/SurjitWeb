@@ -1,51 +1,65 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { FreeMode } from 'swiper/modules';
+import 'swiper/css';
+import 'swiper/css/free-mode';
 import './ProductNav.css';
 
 // Every active product in the category, straight from the CMS — a product added
 // there becomes a pill here with no further configuration.
 const ProductNav = ({ categorySlug, products, currentSlug }) => {
-    const trackRef = useRef(null);
-    const activeRef = useRef(null);
+    const [swiper, setSwiper] = useState(null);
 
-    // On mobile the row scrolls, so the current product can start off-screen.
-    // Setting scrollLeft directly rather than scrollIntoView, which would also
-    // scroll the page vertically and fight ScrollToTop on every navigation.
-    // The track's left padding is part of the pill's offset, so it comes back
-    // off — otherwise the first pill never rests flush at scrollLeft 0.
+    const activeIndex = products
+        ? products.findIndex((p) => p.slug === currentSlug)
+        : -1;
+
+    // The row scrolls, so the current product can start out of sight. slideTo
+    // rather than scrollIntoView, which would also scroll the page vertically
+    // and fight ScrollToTop on every navigation.
     useEffect(() => {
-        const track = trackRef.current;
-        const pill = activeRef.current;
-        if (!track || !pill) return;
-
-        const padLeft = parseFloat(getComputedStyle(track).paddingLeft) || 0;
-        const target = pill.offsetLeft - track.offsetLeft - padLeft;
-        // Centre it where there is room to; clamped by the browser anyway.
-        track.scrollLeft = Math.max(0, target - (track.clientWidth - pill.offsetWidth) / 2);
-    }, [currentSlug, products]);
+        if (!swiper || swiper.destroyed || activeIndex < 0) return;
+        swiper.slideTo(activeIndex);
+    }, [swiper, activeIndex, products]);
 
     if (!products || products.length === 0) return null;
 
     return (
         <nav className="product-nav" aria-label="Products in this category">
             <div className="container">
-                <ul className="product-nav-track" ref={trackRef}>
+                <Swiper
+                    className="product-nav-track"
+                    modules={[FreeMode]}
+                    // Pills size to their own label rather than a column width.
+                    slidesPerView="auto"
+                    spaceBetween={12}
+                    // Free drag with momentum — this is a scrollable list, not a
+                    // carousel, so it must not snap to slide boundaries.
+                    freeMode={{ enabled: true, momentum: true, sticky: false }}
+                    grabCursor
+                    // Keeps the row centred, as it was, whenever the pills fit;
+                    // it only becomes a left-aligned draggable strip once they
+                    // overflow.
+                    centerInsufficientSlides
+                    watchSlidesProgress
+                    onSwiper={setSwiper}
+                >
                     {products.map((product) => {
                         const isCurrent = product.slug === currentSlug;
                         return (
-                            <li key={product._id || product.slug}>
+                            <SwiperSlide key={product._id || product.slug}>
                                 <Link
                                     to={`/products/${categorySlug}/${product.slug}`}
                                     className={`product-nav-pill ${isCurrent ? 'is-active' : ''}`}
                                     aria-current={isCurrent ? 'page' : undefined}
-                                    ref={isCurrent ? activeRef : null}
                                 >
                                     {product.name}
                                 </Link>
-                            </li>
+                            </SwiperSlide>
                         );
                     })}
-                </ul>
+                </Swiper>
             </div>
         </nav>
     );

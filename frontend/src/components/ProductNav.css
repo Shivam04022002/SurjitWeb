@@ -6,14 +6,20 @@
     padding: var(--space-5) 0;
 }
 
+/* Swiper root. Layout and gaps come from the Swiper config (slidesPerView
+   auto, spaceBetween 12) so the row drags as one strip instead of wrapping.
+   The vertical padding is for the active pill's shadow and focus ring, which
+   would otherwise be clipped by Swiper's overflow; the negative margin keeps
+   the bar's height exactly as it was. */
 .product-nav-track {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
+    padding: 6px 0;
+    margin: -6px 0;
+}
+
+/* Required by slidesPerView:"auto" — each pill takes its own label width. */
+.product-nav-track .swiper-slide {
+    width: auto;
+    flex-shrink: 0;
 }
 
 /* Matches .product-quick-links in the hero — same radius, padding, border and
@@ -56,23 +62,12 @@
     outline-offset: 2px;
 }
 
-/* Below the tablet breakpoint the row stops wrapping and scrolls instead, so a
-   long category never stacks into several rows on a small screen. */
+/* On small screens the strip bleeds to the screen edges, so pills drag past
+   the container padding instead of being clipped mid-pill. */
 @media (max-width: 768px) {
     .product-nav-track {
-        flex-wrap: nowrap;
-        justify-content: flex-start;
-        overflow-x: auto;
-        /* Bleeds the row to the screen edges so pills scroll past the
-           container padding instead of being clipped mid-pill. */
-        margin: 0 calc(-1 * var(--space-6));
-        padding: 4px var(--space-6);
-        scrollbar-width: none;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .product-nav-track::-webkit-scrollbar {
-        display: none;
+        margin: -6px calc(-1 * var(--space-6));
+        padding: 6px var(--space-6);
     }
 
     .product-nav-pill {
