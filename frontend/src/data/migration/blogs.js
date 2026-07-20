@@ -1,16 +1,17 @@
-import unsecuredLoanImg from '../assets/unsecured-loan-blog.jpg';
-import securedVsUnsecuredImg from '../assets/secured-vs-unsecured-blog.jpg';
-import commercialVehicleImg from '../assets/commercial-vehicle-blog.jpg';
-
+// Source data for the blog migration. Pure data with no asset imports so the
+// CommonJS migration scripts can import() it directly; `image` is a filename
+// resolved against frontend/src/assets at migration time.
+//
+// Mirrors what the site served statically before Blogs became CMS-managed.
 export const blogs = [
     {
-        id: 'unsecured-loan',
-        image: unsecuredLoanImg,
+        slug: 'unsecured-loan',
+        image: 'unsecured-loan-blog.jpg',
         title: 'Unsecured Loans: Types and Benefits',
         date: '09 September, 2024',
         author: 'admin',
         category: 'News',
-        excerpt: 'An unsecured loan is a type of loan that is not backed by collateral. Unlike secured loans, where the borrower pledges an asset (like a house or car) as security, unsecured loans rely solely on the borrower\'s creditworthiness.',
+        summary: 'An unsecured loan is a type of loan that is not backed by collateral. Unlike secured loans, where the borrower pledges an asset (like a house or car) as security, unsecured loans rely solely on the borrower\'s creditworthiness.',
         content: `Unsecured loans are financial products that allow borrowers to access funds without providing any collateral. Approval for these loans is based on the borrower’s creditworthiness, income, and financial history, making them ideal for those without significant assets. Common examples include personal loans, credit cards, and some types of business loans. While unsecured loans typically come with higher interest rates compared to secured loans, they offer a faster approval process and greater flexibility. They are often used for various purposes, such as debt consolidation, unexpected expenses, or business needs, providing quick access to funds without the risk of losing assets.
 
 **Unsecured Loan: Types and Benefits**
@@ -59,13 +60,13 @@ An unsecured loan is a type of loan that is not backed by collateral. Unlike sec
 However, due to the lack of collateral, lenders typically require a good credit score and financial history for approval and may offer higher interest rates compared to secured loans.`
     },
     {
-        id: 'secured-vs-unsecured',
-        image: securedVsUnsecuredImg,
+        slug: 'secured-vs-unsecured',
+        image: 'secured-vs-unsecured-blog.jpg',
         title: 'Unsecured Loans VS Secured Loans',
         date: '10 October, 2024',
         author: 'admin',
         category: 'News',
-        excerpt: 'Secured loans and unsecured loans are two types of borrowing options that differ mainly in terms of collateral requirements, interest rates, and risk factors.',
+        summary: 'Secured loans and unsecured loans are two types of borrowing options that differ mainly in terms of collateral requirements, interest rates, and risk factors.',
         content: `Secured loans and unsecured loans are two types of borrowing options that differ mainly in terms of collateral requirements, interest rates, and risk factors.
 
 **Secured Loans:**
@@ -87,13 +88,13 @@ However, due to the lack of collateral, lenders typically require a good credit 
 Choose a secured loan if you have valuable assets and want lower interest rates for larger amounts. Choose an unsecured loan if you need quick funds without risking your assets.`
     },
     {
-        id: 'commercial-vehicle-loan-benefits',
-        image: commercialVehicleImg,
+        slug: 'commercial-vehicle-loan-benefits',
+        image: 'commercial-vehicle-blog.jpg',
         title: 'Commercial Vehicle Loan: Types and Benefits',
         date: '10 October, 2024',
         author: 'admin',
         category: 'News',
-        excerpt: 'E-rickshaw loans are financial products designed to help individuals or businesses purchase electric rickshaws (e-rickshaws). These loans are tailored for the needs of small business owners.',
+        summary: 'E-rickshaw loans are financial products designed to help individuals or businesses purchase electric rickshaws (e-rickshaws). These loans are tailored for the needs of small business owners.',
         content: `E-rickshaw loans are specialized financing options designed to help individuals or small business owners purchase electric rickshaws. These loans enable borrowers to buy new or used e-rickshaws with affordable monthly payments, making it easier to start or expand a transportation business. Since e-rickshaws are eco-friendly and have low running costs, the loans support a shift towards greener mobility solutions. Typically, the e-rickshaw itself serves as collateral, which simplifies the approval process. With flexible repayment options, e-rickshaw loans offer a practical path to income generation and financial independence, especially in urban and semi-urban areas.
 
 E-rickshaw loans are financial products designed to help individuals or businesses purchase electric rickshaws (e-rickshaws). These loans are tailored for the needs of small business owners, self-employed individuals, and those looking to enter the eco-friendly transportation sector. E-rickshaw loans are generally secured by the e-rickshaw itself, making them accessible to borrowers with varying levels of credit history.

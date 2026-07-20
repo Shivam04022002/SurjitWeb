@@ -81,3 +81,13 @@ export const submitContact = (data) => rawApi.post('/contact', data);
 export const submitLoanApplication = (data) => rawApi.post('/loan-application', data);
 
 export default api;
+
+// ── Blogs ──────────────────────────────────────────────────────────────────────
+// The listing is paginated server-side, so the whole envelope is returned here
+// rather than just the rows.
+export const getBlogs = (params = {}) => api.get('/blogs', { params }).then(r => r.data.data);
+export const getBlogCategories = () => api.get('/blogs/categories').then(r => r.data.data.categories);
+export const getBlogBySlug = (slug) => api.get(`/blogs/${slug}`).then(r => r.data.data.blog);
+export const getRelatedBlogs = (slug, limit = 3) =>
+    api.get(`/blogs/${slug}/related`, { params: { limit } }).then(r => r.data.data.blogs);
+export const getAdjacentBlogs = (slug) => api.get(`/blogs/${slug}/adjacent`).then(r => r.data.data);

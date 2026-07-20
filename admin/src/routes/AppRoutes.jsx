@@ -18,6 +18,9 @@ import ApplicationsPage from '../pages/career/ApplicationsPage'
 import AlbumsPage from '../pages/gallery/AlbumsPage'
 import AlbumEditorPage from '../pages/gallery/editor/AlbumEditorPage'
 import SettingsPage from '../pages/settings/SettingsPage'
+import BlogsPage from '../pages/blog/BlogsPage'
+import BlogEditorPage from '../pages/blog/BlogEditorPage'
+import BlogCategoriesPage from '../pages/blog/BlogCategoriesPage'
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth()
@@ -80,6 +83,11 @@ const AppRoutes = () => {
         <Route path="career/applications" element={<ApplicationsPage />} />
         <Route path="gallery/albums" element={<AlbumsPage />} />
         <Route path="gallery/albums/:id/edit" element={<AlbumEditorPage />} />
+        {/* "categories" and "new" are declared before :id so they are not read as ids. */}
+        <Route path="blogs" element={<BlogsPage />} />
+        <Route path="blogs/categories" element={<BlogCategoriesPage />} />
+        <Route path="blogs/new" element={<BlogEditorPage />} />
+        <Route path="blogs/:id/edit" element={<BlogEditorPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

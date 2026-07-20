@@ -8,6 +8,7 @@ const aboutRoutes = require('./about.routes');
 const productsRoutes = require('./products.routes');
 const galleryRoutes = require('./gallery.routes');
 const settingsRoutes = require('./settings.routes');
+const blogRoutes = require('./blog.routes');
 
 const router = express.Router();
 
@@ -20,5 +21,6 @@ router.use('/v1/about', aboutRoutes);
 router.use('/v1/products', productsRoutes);
 router.use('/v1/gallery', galleryRoutes);
 router.use('/v1/settings', settingsRoutes);
+router.use('/v1/blogs', blogRoutes);
 
 module.exports = router;

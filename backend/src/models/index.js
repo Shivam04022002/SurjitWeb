@@ -14,6 +14,8 @@ const Notification = require('./Notification');
 const GalleryAlbum = require('./GalleryAlbum');
 const GalleryImage = require('./GalleryImage');
 const GlobalSettings = require('./GlobalSettings');
+const BlogCategory = require('./BlogCategory');
+const Blog = require('./Blog');
 
 module.exports = {
     Admin,
@@ -31,5 +33,7 @@ module.exports = {
     Notification,
     GalleryAlbum,
     GalleryImage,
-    GlobalSettings
+    GlobalSettings,
+    BlogCategory,
+    Blog
 };

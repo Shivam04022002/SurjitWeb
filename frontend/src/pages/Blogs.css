@@ -154,3 +154,130 @@
         padding: 24px;
     }
 }
+/* Toolbar: search + category filters. Uses the site's existing pill language
+   so it sits with the rest of the pages rather than introducing a new style. */
+.blogs-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+}
+
+.blogs-search {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: white;
+    border: 1px solid rgba(206, 129, 18, 0.15);
+    border-radius: 50px;
+    color: var(--gray-500);
+    min-width: 260px;
+    flex: 1 1 260px;
+    max-width: 380px;
+}
+
+.blogs-search:focus-within {
+    border-color: #CE8112;
+}
+
+.blogs-search input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--gray-700);
+    width: 100%;
+}
+
+.blogs-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.blogs-filter {
+    padding: 8px 18px;
+    background: white;
+    border: 1px solid rgba(206, 129, 18, 0.15);
+    border-radius: 50px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.blogs-filter:hover {
+    background: #FFF9F0;
+    border-color: #CE8112;
+    color: #CE8112;
+}
+
+.blogs-filter.is-active {
+    background: #CE8112;
+    border-color: #CE8112;
+    color: white;
+}
+
+.blogs-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: var(--space-12) 0;
+    color: var(--gray-500);
+}
+
+.blogs-empty .btn {
+    margin-top: var(--space-4);
+}
+
+.blogs-pagination {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: var(--space-10);
+}
+
+.blogs-page-btn {
+    min-width: 40px;
+    padding: 8px 14px;
+    background: white;
+    border: 1px solid rgba(206, 129, 18, 0.15);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.blogs-page-btn:hover:not(:disabled) {
+    border-color: #CE8112;
+    color: #CE8112;
+}
+
+.blogs-page-btn.is-active {
+    background: #CE8112;
+    border-color: #CE8112;
+    color: white;
+}
+
+.blogs-page-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+@media (max-width: 640px) {
+    .blogs-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .blogs-search {
+        max-width: none;
+    }
+}

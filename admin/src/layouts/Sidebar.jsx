@@ -39,6 +39,9 @@ import {
   Tune,
   AssignmentInd,
   Collections,
+  Article,
+  PostAdd,
+  LocalOffer,
   Settings
 } from '@mui/icons-material'
 
@@ -83,6 +86,16 @@ const menuItems = [
       { title: 'Albums', icon: Collections, path: '/gallery/albums' }
     ]
   },
+  {
+    title: 'Content',
+    icon: Article,
+    path: null,
+    children: [
+      { title: 'All Blogs', icon: Article, path: '/blogs' },
+      { title: 'Add Blog', icon: PostAdd, path: '/blogs/new' },
+      { title: 'Blog Categories', icon: LocalOffer, path: '/blogs/categories' }
+    ]
+  },
   { title: 'Media', icon: PermMedia, path: '#' },
   { title: 'Users', icon: People, path: '#' },
   { title: 'Settings', icon: Settings, path: '/settings' },
@@ -94,7 +107,7 @@ const Sidebar = ({ mobileOpen, onDrawerToggle }) => {
   const location = useLocation()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
-  const [openGroups, setOpenGroups] = useState({ 'About Us': true, Products: true, Career: true, Gallery: true })
+  const [openGroups, setOpenGroups] = useState({ 'About Us': true, Products: true, Career: true, Gallery: true, Content: true })
 
   const handleNavigation = (path) => {
     if (path && path !== '#') {

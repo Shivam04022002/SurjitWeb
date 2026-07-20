@@ -146,3 +146,32 @@ export const useAlbumImages = (albumId) =>
         cacheKey: `album-images-${albumId}`,
         enabled: !!albumId,
     });
+
+// ── Blogs ──────────────────────────────────────────────────────────────────────
+// Cache key carries the query, so paging and filtering do not collide and
+// stepping back to a page already seen is instant.
+export const useBlogs = (params = {}) => {
+    const key = JSON.stringify(params);
+    return useApi(() => apiService.getBlogs(params), [key], { cacheKey: `blogs-${key}` });
+};
+
+export const useBlogCategories = () =>
+    useApi(apiService.getBlogCategories, [], { cacheKey: 'blog-categories' });
+
+export const useBlog = (slug) =>
+    useApi(() => apiService.getBlogBySlug(slug), [slug], {
+        cacheKey: `blog-${slug}`,
+        enabled: !!slug,
+    });
+
+export const useRelatedBlogs = (slug, limit = 3) =>
+    useApi(() => apiService.getRelatedBlogs(slug, limit), [slug, limit], {
+        cacheKey: `blog-related-${slug}-${limit}`,
+        enabled: !!slug,
+    });
+
+export const useAdjacentBlogs = (slug) =>
+    useApi(() => apiService.getAdjacentBlogs(slug), [slug], {
+        cacheKey: `blog-adjacent-${slug}`,
+        enabled: !!slug,
+    });

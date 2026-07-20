@@ -10,7 +10,6 @@ import 'swiper/css';
 import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 import './Home.css';
-import { blogs } from '../data/blogs';
 
 // Partner Logos
 import auBank from '../assets/website/AU-BANK-1.png';
@@ -27,13 +26,16 @@ import namdev from '../assets/website/Namdev-Finvest.jpg';
 import southIndian from '../assets/website/South-Indian-Bank.jpg';
 import easebuzz from '../assets/website/Easebuzz.png';
 import payu from '../assets/website/Payu-1.png';
-import { useProducts, useSettings } from '../hooks';
+import { useProducts, useSettings, useBlogs } from '../hooks';
 
 const GRADIENTS = ['primary', 'secondary', 'accent'];
 
 const Home = () => {
     const { data: cmsProducts, loading: productsLoading, error: productsError } = useProducts();
     const { data: settings } = useSettings();
+    // Latest three published articles, straight from the CMS.
+    const { data: blogData } = useBlogs({ page: 1, limit: 3 });
+    const blogs = blogData?.data || [];
 
     const products = (cmsProducts && cmsProducts.length > 0)
         ? cmsProducts.map((p, i) => ({
@@ -214,16 +216,18 @@ const Home = () => {
                     </div>
                     <div className="blogs-row-container">
                         {blogs.map((blog) => (
-                            <article key={blog.id} className="blog-card">
+                            <article key={blog._id} className="blog-card">
                                 <div className="blog-image">
-                                    {blog.image && <img src={blog.image} alt={blog.title} className="blog-image-img" loading="lazy" />}
-                                    <div className="blog-category">{blog.category}</div>
+                                    {blog.featuredImage?.url && <img src={blog.featuredImage.url} alt={blog.title} className="blog-image-img" loading="lazy" />}
+                                    {blog.category?.name && <div className="blog-category">{blog.category.name}</div>}
                                 </div>
                                 <div className="blog-content">
-                                    <span className="blog-date">{blog.date}</span>
+                                    <span className="blog-date">
+                                        {new Date(blog.publishedAt || blog.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                    </span>
                                     <h3>{blog.title}</h3>
-                                    <p>{blog.excerpt}</p>
-                                    <Link to={`/blogs/${blog.id}`} className="read-more">
+                                    <p>{blog.summary}</p>
+                                    <Link to={`/blogs/${blog.slug}`} className="read-more">
                                         Read more <ArrowRight size={14} />
                                     </Link>
                                 </div>

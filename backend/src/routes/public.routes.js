@@ -13,6 +13,8 @@ const careerSettingsService = require('../services/career/settings.service');
 const jobsService = require('../services/career/jobs.service');
 const albumsService = require('../services/gallery/albums.service');
 const imagesService = require('../services/gallery/images.service');
+const blogsService = require('../services/blog/blogs.service');
+const blogCategoriesService = require('../services/blog/categories.service');
 
 const Product = require('../models/Product');
 
@@ -143,6 +145,40 @@ router.get('/gallery/albums/:id', asyncHandler(async (req, res) => {
 router.get('/gallery/albums/:albumId/images', asyncHandler(async (req, res) => {
     const images = await imagesService.getImagesByAlbum(req.params.albumId, { isActive: true });
     return sendSuccess(res, 'Images fetched successfully', { images });
+}));
+
+// ── Blogs ──────────────────────────────────────────────────────────────────────
+// Published posts only, newest first, paginated. Backs the listing page and
+// its search / category filters.
+router.get('/blogs', asyncHandler(async (req, res) => {
+    const result = await blogsService.listBlogs({
+        ...req.query,
+        status: 'published',
+        sortBy: 'publishedAt',
+        sortOrder: 'desc'
+    });
+    return sendSuccess(res, 'Blogs fetched successfully', result);
+}));
+
+router.get('/blogs/categories', asyncHandler(async (req, res) => {
+    const categories = await blogCategoriesService.getAllCategories({ isActive: true });
+    return sendSuccess(res, 'Blog categories fetched successfully', { categories });
+}));
+
+router.get('/blogs/:slug', asyncHandler(async (req, res) => {
+    const blog = await blogsService.getPublishedBlogBySlug(req.params.slug);
+    return sendSuccess(res, 'Blog fetched successfully', { blog });
+}));
+
+router.get('/blogs/:slug/related', asyncHandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 3, 12);
+    const blogs = await blogsService.getRelatedBlogs(req.params.slug, limit);
+    return sendSuccess(res, 'Related blogs fetched successfully', { blogs });
+}));
+
+router.get('/blogs/:slug/adjacent', asyncHandler(async (req, res) => {
+    const adjacent = await blogsService.getAdjacentBlogs(req.params.slug);
+    return sendSuccess(res, 'Adjacent blogs fetched successfully', adjacent);
 }));
 
 module.exports = router;

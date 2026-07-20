@@ -180,3 +180,195 @@
         margin: 0 -24px var(--space-6);
     }
 }
+
+/* Rich-text output from the CMS editor. These cover the block types the
+   editor can produce that the old markdown-lite renderer never emitted. */
+.blog-detail-content h2,
+.blog-detail-content h3,
+.blog-detail-content h4 {
+    color: var(--gray-900);
+    margin: var(--space-8) 0 var(--space-3);
+    line-height: 1.3;
+}
+
+.blog-detail-content h2 { font-size: 1.6rem; }
+.blog-detail-content h3 { font-size: 1.3rem; }
+.blog-detail-content h4 { font-size: 1.1rem; }
+
+.blog-detail-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 12px;
+    margin: var(--space-6) 0;
+}
+
+.blog-detail-content iframe {
+    max-width: 100%;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    height: auto;
+    border: 0;
+    border-radius: 12px;
+    margin: var(--space-6) 0;
+}
+
+.blog-detail-content blockquote {
+    margin: var(--space-6) 0;
+    padding: var(--space-4) var(--space-6);
+    border-left: 4px solid #CE8112;
+    background: var(--gray-50);
+    color: var(--gray-700);
+    font-style: italic;
+}
+
+.blog-detail-content pre {
+    background: var(--gray-900);
+    color: #f3f4f6;
+    padding: var(--space-4);
+    border-radius: 10px;
+    overflow-x: auto;
+    margin: var(--space-6) 0;
+    font-size: 0.875rem;
+}
+
+.blog-detail-content code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+}
+
+.blog-detail-content :not(pre) > code {
+    background: var(--gray-100);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* Tables scroll rather than forcing the article to scroll sideways. */
+.blog-detail-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--space-6) 0;
+    display: block;
+    overflow-x: auto;
+}
+
+.blog-detail-content th,
+.blog-detail-content td {
+    border: 1px solid var(--gray-200);
+    padding: 10px 12px;
+    text-align: left;
+}
+
+.blog-detail-content th {
+    background: var(--gray-50);
+    font-weight: 600;
+}
+
+.blog-detail-content a {
+    color: #CE8112;
+    text-decoration: underline;
+}
+
+.blog-detail-content hr {
+    border: none;
+    border-top: 1px solid var(--gray-200);
+    margin: var(--space-8) 0;
+}
+
+/* Tags */
+.blog-detail-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: var(--space-8) 0 0;
+}
+
+.blog-tag {
+    padding: 6px 14px;
+    border-radius: 50px;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Previous / next */
+.blog-adjacent {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+    margin-top: var(--space-10);
+    padding-top: var(--space-8);
+    border-top: 1px solid var(--gray-200);
+}
+
+.blog-adjacent-link {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.blog-adjacent-link:hover {
+    border-color: #CE8112;
+    background: #FFF9F0;
+}
+
+.blog-adjacent-link.is-next {
+    text-align: right;
+    align-items: flex-end;
+}
+
+.blog-adjacent-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #CE8112;
+}
+
+.blog-adjacent-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--gray-800);
+}
+
+/* Related articles reuse the homepage blog card styles. */
+.blog-related {
+    background: var(--gray-50);
+    margin-top: var(--space-12);
+}
+
+.blog-related-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-6);
+    margin-top: var(--space-8);
+}
+
+@media (max-width: 1024px) {
+    .blog-related-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .blog-adjacent {
+        grid-template-columns: 1fr;
+    }
+
+    .blog-adjacent-link.is-next {
+        text-align: left;
+        align-items: flex-start;
+    }
+
+    .blog-related-grid {
+        grid-template-columns: 1fr;
+    }
+}
