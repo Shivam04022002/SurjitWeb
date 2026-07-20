@@ -16,6 +16,7 @@ const GalleryImage = require('./GalleryImage');
 const GlobalSettings = require('./GlobalSettings');
 const BlogCategory = require('./BlogCategory');
 const Blog = require('./Blog');
+const Review = require('./Review');
 
 module.exports = {
     Admin,
@@ -35,5 +36,6 @@ module.exports = {
     GalleryImage,
     GlobalSettings,
     BlogCategory,
-    Blog
+    Blog,
+    Review
 };

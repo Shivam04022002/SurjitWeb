@@ -21,6 +21,7 @@ import SettingsPage from '../pages/settings/SettingsPage'
 import BlogsPage from '../pages/blog/BlogsPage'
 import BlogEditorPage from '../pages/blog/BlogEditorPage'
 import BlogCategoriesPage from '../pages/blog/BlogCategoriesPage'
+import ReviewsPage from '../pages/reviews/ReviewsPage'
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth()
@@ -88,6 +89,7 @@ const AppRoutes = () => {
         <Route path="blogs/categories" element={<BlogCategoriesPage />} />
         <Route path="blogs/new" element={<BlogEditorPage />} />
         <Route path="blogs/:id/edit" element={<BlogEditorPage />} />
+        <Route path="reviews" element={<ReviewsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

@@ -91,3 +91,7 @@ export const getBlogBySlug = (slug) => api.get(`/blogs/${slug}`).then(r => r.dat
 export const getRelatedBlogs = (slug, limit = 3) =>
     api.get(`/blogs/${slug}/related`, { params: { limit } }).then(r => r.data.data.blogs);
 export const getAdjacentBlogs = (slug) => api.get(`/blogs/${slug}/adjacent`).then(r => r.data.data);
+
+// ── Customer reviews ───────────────────────────────────────────────────────────
+// Passing `limit` returns a plain array; omit it for the paginated envelope.
+export const getReviews = (params = {}) => api.get('/reviews', { params }).then(r => r.data.data.reviews);

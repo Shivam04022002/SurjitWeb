@@ -175,3 +175,9 @@ export const useAdjacentBlogs = (slug) =>
         cacheKey: `blog-adjacent-${slug}`,
         enabled: !!slug,
     });
+
+// ── Customer reviews ───────────────────────────────────────────────────────────
+export const useReviews = (params = {}) => {
+    const key = JSON.stringify(params);
+    return useApi(() => apiService.getReviews(params), [key], { cacheKey: `reviews-${key}` });
+};

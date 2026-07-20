@@ -15,6 +15,7 @@ const albumsService = require('../services/gallery/albums.service');
 const imagesService = require('../services/gallery/images.service');
 const blogsService = require('../services/blog/blogs.service');
 const blogCategoriesService = require('../services/blog/categories.service');
+const reviewService = require('../services/review.service');
 
 const Product = require('../models/Product');
 
@@ -179,6 +180,16 @@ router.get('/blogs/:slug/related', asyncHandler(async (req, res) => {
 router.get('/blogs/:slug/adjacent', asyncHandler(async (req, res) => {
     const adjacent = await blogsService.getAdjacentBlogs(req.params.slug);
     return sendSuccess(res, 'Adjacent blogs fetched successfully', adjacent);
+}));
+
+// ── Customer reviews ───────────────────────────────────────────────────────────
+// Published only, ordered by displayOrder. `limit` returns a plain array for
+// the blog sidebar; without it the paginated envelope is returned so a future
+// reviews page can page through them.
+router.get('/reviews', asyncHandler(async (req, res) => {
+    const result = await reviewService.listReviews({ ...req.query, isPublished: true });
+    const payload = Array.isArray(result) ? { reviews: result } : { ...result, reviews: result.data };
+    return sendSuccess(res, 'Reviews fetched successfully', payload);
 }));
 
 module.exports = router;

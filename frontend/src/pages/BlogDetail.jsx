@@ -1,6 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Calendar, User, Tag, Clock, RefreshCw } from 'lucide-react';
 import SEO from '../components/SEO';
+import ReviewsSidebar from '../components/ReviewsSidebar';
 import { useBlog, useRelatedBlogs, useAdjacentBlogs } from '../hooks';
 import './BlogDetail.css';
 
@@ -66,6 +67,10 @@ const BlogDetail = () => {
                 ogImage={blog.seo?.ogImage?.url || blog.featuredImage?.url}
             />
 
+            {/* Two columns on desktop: the article keeps its own width and the
+                reviews take the space that was empty beside it. Below 1024px
+                this collapses and the sidebar stacks under the article. */}
+            <div className="blog-detail-layout">
             <div className="container">
                 <div className="blog-detail-header">
                     <button onClick={() => navigate('/blogs')} className="btn-back">
@@ -127,6 +132,9 @@ const BlogDetail = () => {
                         <ArrowLeft size={18} /> Back to all articles
                     </button>
                 </div>
+            </div>
+
+                <ReviewsSidebar />
             </div>
 
             {/* Related: same category, this article excluded. */}

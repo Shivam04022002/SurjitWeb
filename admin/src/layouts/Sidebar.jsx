@@ -42,6 +42,7 @@ import {
   Article,
   PostAdd,
   LocalOffer,
+  RateReview,
   Settings
 } from '@mui/icons-material'
 
@@ -93,7 +94,8 @@ const menuItems = [
     children: [
       { title: 'All Blogs', icon: Article, path: '/blogs' },
       { title: 'Add Blog', icon: PostAdd, path: '/blogs/new' },
-      { title: 'Blog Categories', icon: LocalOffer, path: '/blogs/categories' }
+      { title: 'Blog Categories', icon: LocalOffer, path: '/blogs/categories' },
+      { title: 'Customer Reviews', icon: RateReview, path: '/reviews' }
     ]
   },
   { title: 'Media', icon: PermMedia, path: '#' },

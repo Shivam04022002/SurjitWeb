@@ -22,6 +22,46 @@
     margin-bottom: var(--space-6);
 }
 
+
+/* Article + reviews. The article column is capped at the width the card
+   already had (860px), so its measure and readability are unchanged; the
+   sidebar occupies space that was previously empty. 860 + 32 + 340 + padding
+   fits the site's 1280px container exactly. */
+.blog-detail-layout {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 var(--space-6);
+    display: grid;
+    grid-template-columns: minmax(0, 860px) 340px;
+    gap: var(--space-8);
+    /* Deliberately NOT align-items:start — the sidebar column has to stretch to
+       the article's height, otherwise it is only as tall as its own cards and
+       position:sticky has no room to travel as the page scrolls. */
+    align-items: stretch;
+    justify-content: center;
+}
+
+/* The card keeps its own styling; the grid column governs its width now. */
+.blog-detail-page .blog-detail-layout > .container {
+    max-width: none;
+    margin: 0;
+    width: 100%;
+}
+
+/* One column below this: the sidebar drops beneath the article. */
+@media (max-width: 1024px) {
+    .blog-detail-layout {
+        grid-template-columns: minmax(0, 860px);
+        gap: var(--space-6);
+    }
+}
+
+@media (max-width: 640px) {
+    .blog-detail-layout {
+        padding: 0 var(--space-4);
+    }
+}
+
 .blog-detail-page .container {
     max-width: 860px;
     margin: 0 auto;
