@@ -5,6 +5,7 @@ import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ProductNav from '../components/ProductNav';
 import RelatedProducts from '../components/RelatedProducts';
+import ProductHeroCarousel from '../components/ProductHeroCarousel';
 import { ArrowRight, Check, FileText, RefreshCw } from 'lucide-react';
 import './ProductPage.css';
 import {
@@ -116,43 +117,54 @@ const ProductDetail = () => {
                 canonical={seo?.canonicalUrl || `${SITE_URL}/products/${actualCategorySlug}/${product.slug}`}
                 ogImage={seo?.ogImage?.url}
             />
-            {/* Hero */}
-            <section className="product-hero">
-                <div className="container">
-                    <div className="product-hero-content">
-                        <div className="product-hero-text">
-                            <div className="breadcrumbs-on-hero" style={{ marginBottom: '1rem' }}>
-                                <Breadcrumbs
-                                    items={[
-                                        { name: 'Home', path: '/' },
-                                        { name: 'Products', path: '/products' },
-                                        ...(product.category
-                                            ? [{ name: product.category.name, path: `/products/${product.category.slug}` }]
-                                            : []),
-                                        { name: product.name },
-                                    ]}
-                                />
-                            </div>
-                            <span className="product-badge">{product.category?.name || product.subtitle || 'Product'}</span>
-                            <h1>{product.name || product.title}</h1>
-                            <p>{product.heroDescription || product.description}</p>
-                            <div className="product-hero-actions">
-                                <Link to="/loan-application" className="btn btn-accent btn-lg">
-                                    Apply Loan
-                                    <ArrowRight size={20} />
-                                </Link>
-                            </div>
-                            <div className="product-quick-links">
-                                <a href="#features-and-benefits">Features & Benefits</a>
-                                <a href="#eligibility">Eligibility</a>
-                                <a href="#interest-rate-and-charges">Interest Rate & Charges</a>
-                                <a href="#emi-calculator">EMI Calculator</a>
-                                <a href="#faq">FAQ</a>
+            {/* Hero. Swipeable when the category holds more than one product —
+                each sibling is a slide, and landing on one puts it in the URL,
+                which is what refreshes every section below. A lone product has
+                nothing to swipe to, so it renders as the plain hero. */}
+            {siblingProducts.length > 1 ? (
+                <ProductHeroCarousel
+                    products={siblingProducts}
+                    category={categoryData?.category}
+                    currentSlug={productSlug}
+                />
+            ) : (
+                <section className="product-hero">
+                    <div className="container">
+                        <div className="product-hero-content">
+                            <div className="product-hero-text">
+                                <div className="breadcrumbs-on-hero" style={{ marginBottom: '1rem' }}>
+                                    <Breadcrumbs
+                                        items={[
+                                            { name: 'Home', path: '/' },
+                                            { name: 'Products', path: '/products' },
+                                            ...(product.category
+                                                ? [{ name: product.category.name, path: `/products/${product.category.slug}` }]
+                                                : []),
+                                            { name: product.name },
+                                        ]}
+                                    />
+                                </div>
+                                <span className="product-badge">{product.category?.name || product.subtitle || 'Product'}</span>
+                                <h1>{product.name || product.title}</h1>
+                                <p>{product.heroDescription || product.description}</p>
+                                <div className="product-hero-actions">
+                                    <Link to="/loan-application" className="btn btn-accent btn-lg">
+                                        Apply Loan
+                                        <ArrowRight size={20} />
+                                    </Link>
+                                </div>
+                                <div className="product-quick-links">
+                                    <a href="#features-and-benefits">Features & Benefits</a>
+                                    <a href="#eligibility">Eligibility</a>
+                                    <a href="#interest-rate-and-charges">Interest Rate & Charges</a>
+                                    <a href="#emi-calculator">EMI Calculator</a>
+                                    <a href="#faq">FAQ</a>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </section>
+                </section>
+            )}
 
             {/* Switch between the products in this category. Hidden when this is
                 the only one, since the row would then just be the page you are

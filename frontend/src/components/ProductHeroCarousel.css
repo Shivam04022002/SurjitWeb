@@ -1,0 +1,41 @@
+/* The carousel reuses .product-hero for its background, padding and centring,
+   so the section keeps the exact look it had. These rules only cover what
+   wrapping the content in Swiper changes. */
+
+/* Swiper's default cursor is grab via grabCursor, but the links inside a
+   slide must still read as links. */
+.product-hero-carousel .swiper-slide a {
+    cursor: pointer;
+}
+
+/* Slides are laid out in a row by Swiper; the hero content keeps its own
+   centring inside each one. */
+.product-hero-carousel .swiper-slide {
+    display: flex;
+    justify-content: center;
+    /* Stops a half-dragged neighbour from showing through mid-swipe. */
+    backface-visibility: hidden;
+}
+
+.product-hero-carousel .swiper-slide .product-hero-content {
+    width: 100%;
+}
+
+/* autoHeight animates the wrapper's height between slides; matching it to the
+   slide speed keeps the section from snapping while the copy is still moving. */
+.product-hero-carousel .swiper-wrapper {
+    align-items: flex-start;
+    transition-property: transform, height;
+}
+
+/* A dragged slide must not be text-selected instead of moved. */
+.product-hero-carousel .swiper {
+    user-select: none;
+}
+
+/* The links themselves stay selectable and focusable as before. */
+.product-hero-carousel .product-quick-links a,
+.product-hero-carousel .product-hero-actions a,
+.product-hero-carousel .breadcrumbs-on-hero {
+    user-select: auto;
+}
