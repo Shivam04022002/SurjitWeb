@@ -3,14 +3,18 @@ const { AppError } = require('../middleware/errorHandler');
 const { deleteUploadedFile } = require('./upload.service');
 const HTTP_STATUS = require('../constants/httpStatus');
 
+// Fields the public site is allowed to see. Mobile and email are collected for
+// verification only and must never leave the CMS.
+const PUBLIC_FIELDS = 'customerName city productName rating review photo status displayOrder approvedAt createdAt';
+
 const buildQuery = (filters = {}) => {
     const query = {};
 
-    if (filters.isPublished !== undefined) query.isPublished = filters.isPublished;
+    if (filters.status) query.status = filters.status;
 
     if (filters.search) {
         const rx = new RegExp(filters.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-        query.$or = [{ customerName: rx }, { review: rx }, { productName: rx }, { location: rx }];
+        query.$or = [{ customerName: rx }, { review: rx }, { productName: rx }, { city: rx }, { mobile: rx }];
     }
 
     if (filters.rating) query.rating = Number(filters.rating);
@@ -18,27 +22,45 @@ const buildQuery = (filters = {}) => {
     return query;
 };
 
-// displayOrder first, then newest — so an admin who leaves the order alone
-// still gets the most recent reviews at the top.
-const SORT = { displayOrder: 1, createdAt: -1 };
+// displayOrder first, then newest — so a moderator who never touches the order
+// still gets the most recently approved reviews at the top.
+const SORT = { displayOrder: 1, approvedAt: -1, createdAt: -1 };
 
-const listReviews = async (filters = {}) => {
-    const query = buildQuery(filters);
+// Approved only, public fields only. Backs the blog sidebar.
+const listPublicReviews = async (filters = {}) => {
+    const query = { status: 'Approved' };
+    const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 3, 1), 50);
 
-    if (filters.limit && !filters.page) {
-        return Review.find(query).sort(SORT).limit(Math.min(Number(filters.limit), 50));
+    if (!filters.page) {
+        return Review.find(query).select(PUBLIC_FIELDS).sort(SORT).limit(limit);
     }
 
     const page = Math.max(parseInt(filters.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 10, 1), 100);
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
-        Review.find(query).sort(SORT).skip(skip).limit(limit),
+        Review.find(query).select(PUBLIC_FIELDS).sort(SORT).skip(skip).limit(limit),
         Review.countDocuments(query)
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
+};
+
+// Moderation queue. Pending first so new submissions surface without filtering.
+const listReviews = async (filters = {}) => {
+    const page = Math.max(parseInt(filters.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 10, 1), 100);
+    const skip = (page - 1) * limit;
+
+    const query = buildQuery(filters);
+
+    const [data, total, pendingCount] = await Promise.all([
+        Review.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+        Review.countDocuments(query),
+        Review.countDocuments({ status: 'Pending' })
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1, pendingCount };
 };
 
 const getReviewById = async (id) => {
@@ -47,26 +69,33 @@ const getReviewById = async (id) => {
     return review;
 };
 
-const createReview = async (data, imageFile) => {
-    if (data.displayOrder === undefined || data.displayOrder === null || data.displayOrder === '') {
-        data.displayOrder = (await Review.countDocuments()) + 1;
-    }
-    if (imageFile) data.customerImage = imageFile;
-    return Review.create(data);
+// Public submission. Status is forced here rather than taken from the request,
+// so a crafted payload cannot self-approve.
+const submitReview = async (data, photoFile) => {
+    const payload = {
+        customerName: data.customerName,
+        mobile: data.mobile,
+        email: data.email || '',
+        city: data.city || '',
+        productName: data.productName || '',
+        rating: Number(data.rating),
+        review: data.review,
+        status: 'Pending',
+        approvedAt: null,
+        displayOrder: (await Review.countDocuments()) + 1
+    };
+
+    if (photoFile) payload.photo = photoFile;
+
+    const review = await Review.create(payload);
+    // Only the acknowledgement goes back — no ids or personal data.
+    return { submitted: true, customerName: review.customerName };
 };
 
-const updateReview = async (id, data, imageFile) => {
+const setReviewStatus = async (id, status) => {
     const review = await Review.findById(id);
     if (!review) throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
-
-    if (imageFile) {
-        if (review.customerImage && review.customerImage.fileName) {
-            await deleteUploadedFile(review.customerImage.fileName);
-        }
-        data.customerImage = imageFile;
-    }
-
-    Object.assign(review, data);
+    review.status = status;
     await review.save();
     return review;
 };
@@ -75,20 +104,12 @@ const deleteReview = async (id) => {
     const review = await Review.findById(id);
     if (!review) throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
 
-    if (review.customerImage && review.customerImage.fileName) {
-        await deleteUploadedFile(review.customerImage.fileName);
+    if (review.photo && review.photo.fileName) {
+        await deleteUploadedFile(review.photo.fileName);
     }
 
     await Review.findByIdAndDelete(id);
     return { deleted: true };
-};
-
-const toggleReviewStatus = async (id) => {
-    const review = await Review.findById(id);
-    if (!review) throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
-    review.isPublished = !review.isPublished;
-    await review.save();
-    return review;
 };
 
 const reorderReviews = async (orderedIds) => {
@@ -100,11 +121,11 @@ const reorderReviews = async (orderedIds) => {
 };
 
 module.exports = {
+    listPublicReviews,
     listReviews,
     getReviewById,
-    createReview,
-    updateReview,
+    submitReview,
+    setReviewStatus,
     deleteReview,
-    toggleReviewStatus,
     reorderReviews
 };

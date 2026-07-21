@@ -180,3 +180,36 @@
         top: auto;
     }
 }
+
+/* Invitation to submit. Sits below the cards so reading comes first. */
+.reviews-write {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 11px 18px;
+    background: #CE8112;
+    border: 1px solid #CE8112;
+    border-radius: 50px;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.reviews-write:hover {
+    background: #b97210;
+    border-color: #b97210;
+}
+
+.reviews-empty {
+    margin: 0;
+    padding: var(--space-5);
+    border: 1px dashed rgba(206, 129, 18, 0.25);
+    border-radius: 16px;
+    background: #FFFDF9;
+    color: var(--gray-500);
+    font-size: 0.875rem;
+    text-align: center;
+}

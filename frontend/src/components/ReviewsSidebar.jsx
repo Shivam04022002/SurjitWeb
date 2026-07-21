@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Star, Quote, MapPin, ArrowRight } from 'lucide-react';
+import { Star, Quote, MapPin, ArrowRight, PenLine } from 'lucide-react';
+import ReviewFormModal from './ReviewFormModal';
 import { useReviews } from '../hooks';
 import './ReviewsSidebar.css';
 
@@ -34,23 +35,26 @@ const ReviewSkeleton = () => (
     </div>
 );
 
-// Published reviews from the CMS, in the order set there. Fetches a few more
+// Approved reviews, in the order set during moderation. Fetches a few more
 // than it shows so "View more" can reveal them without a second request.
+// The section renders even with no reviews, because it also carries the
+// invitation for customers to write one.
 const ReviewsSidebar = () => {
     const [expanded, setExpanded] = useState(false);
+    const [formOpen, setFormOpen] = useState(false);
     const { data: reviews, loading } = useReviews({ limit: 12 });
 
-    if (!loading && (!reviews || reviews.length === 0)) return null;
-
-    const shown = expanded ? reviews : (reviews || []).slice(0, VISIBLE);
-    const hasMore = (reviews || []).length > VISIBLE;
+    const all = reviews || [];
+    const shown = expanded ? all : all.slice(0, VISIBLE);
+    const hasMore = all.length > VISIBLE;
+    const isEmpty = !loading && all.length === 0;
 
     return (
         <aside className="reviews-sidebar" aria-label="Customer reviews">
             <div className="reviews-sidebar-inner">
                 <div className="reviews-sidebar-header">
                     <h2>Customer Reviews</h2>
-                    <p>What our borrowers say</p>
+                    <p>{isEmpty ? 'Be the first to share your experience' : 'What our borrowers say'}</p>
                 </div>
 
                 {loading
@@ -60,10 +64,10 @@ const ReviewsSidebar = () => {
                             <Quote className="review-quote" size={28} aria-hidden="true" />
 
                             <div className="review-card-head">
-                                {review.customerImage?.url ? (
+                                {review.photo?.url ? (
                                     <img
                                         className="review-avatar"
-                                        src={review.customerImage.url}
+                                        src={review.photo.url}
                                         alt={review.customerName}
                                         loading="lazy"
                                     />
@@ -80,15 +84,15 @@ const ReviewsSidebar = () => {
 
                             <p className="review-text">&ldquo;{review.review}&rdquo;</p>
 
-                            {(review.productName || review.location) && (
+                            {(review.productName || review.city) && (
                                 <div className="review-meta">
                                     {review.productName && (
                                         <span className="review-product">{review.productName}</span>
                                     )}
-                                    {review.location && (
+                                    {review.city && (
                                         <span className="review-location">
                                             <MapPin size={12} aria-hidden="true" />
-                                            {review.location}
+                                            {review.city}
                                         </span>
                                     )}
                                 </div>
@@ -97,13 +101,24 @@ const ReviewsSidebar = () => {
                     ))
                 }
 
+                {isEmpty && (
+                    <p className="reviews-empty">No reviews yet — yours could be the first.</p>
+                )}
+
                 {!loading && hasMore && !expanded && (
                     <button type="button" className="reviews-more" onClick={() => setExpanded(true)}>
                         View More Reviews
                         <ArrowRight size={15} aria-hidden="true" />
                     </button>
                 )}
+
+                <button type="button" className="reviews-write" onClick={() => setFormOpen(true)}>
+                    <PenLine size={15} aria-hidden="true" />
+                    Write a Review
+                </button>
             </div>
+
+            <ReviewFormModal isOpen={formOpen} onClose={() => setFormOpen(false)} />
         </aside>
     );
 };

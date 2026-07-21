@@ -15,7 +15,11 @@ const albumsService = require('../services/gallery/albums.service');
 const imagesService = require('../services/gallery/images.service');
 const blogsService = require('../services/blog/blogs.service');
 const blogCategoriesService = require('../services/blog/categories.service');
-const reviewService = require('../services/review.service');
+const reviewController = require('../controllers/review.controller');
+const { createUpload } = require('../middleware/upload');
+const validate = require('../middleware/validate');
+const { reviewSubmissionLimiter } = require('../middleware/rateLimiters');
+const { submitReviewValidation } = require('../validators/review.validator');
 
 const Product = require('../models/Product');
 
@@ -183,13 +187,25 @@ router.get('/blogs/:slug/adjacent', asyncHandler(async (req, res) => {
 }));
 
 // ── Customer reviews ───────────────────────────────────────────────────────────
-// Published only, ordered by displayOrder. `limit` returns a plain array for
-// the blog sidebar; without it the paginated envelope is returned so a future
-// reviews page can page through them.
-router.get('/reviews', asyncHandler(async (req, res) => {
-    const result = await reviewService.listReviews({ ...req.query, isPublished: true });
-    const payload = Array.isArray(result) ? { reviews: result } : { ...result, reviews: result.data };
-    return sendSuccess(res, 'Reviews fetched successfully', payload);
-}));
+// Approved reviews only, ordered by displayOrder. `limit` returns a plain array
+// for the blog sidebar; passing `page` returns the paginated envelope so a
+// dedicated reviews page can page through them. Mobile and email are never
+// included in the response.
+router.get('/reviews', reviewController.listPublicReviews);
+
+// Customer submission. Photos go through the shared upload middleware, and the
+// dedicated limiter keeps an unauthenticated write that accepts a file from
+// being worth abusing — the general API limiter is far too permissive for this.
+// Every submission is created Pending; the status cannot be set by the client.
+const reviewPhotoUpload = createUpload({ folder: 'reviews', fileTypes: 'images' }).single('photo');
+
+router.post(
+    '/reviews',
+    reviewSubmissionLimiter,
+    reviewPhotoUpload,
+    submitReviewValidation,
+    validate,
+    reviewController.submitReview
+);
 
 module.exports = router;

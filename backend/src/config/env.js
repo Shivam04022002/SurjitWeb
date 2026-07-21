@@ -30,6 +30,11 @@ const env = {
     API_RATE_LIMIT_WINDOW_MS: parseInt(process.env.API_RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 min
     API_RATE_LIMIT_MAX: parseInt(process.env.API_RATE_LIMIT_MAX || '1000', 10),
 
+    // Public review submission. Deliberately far tighter than the general API
+    // limiter: this is an unauthenticated write that also accepts a file.
+    REVIEW_RATE_LIMIT_WINDOW_MS: parseInt(process.env.REVIEW_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
+    REVIEW_RATE_LIMIT_MAX: parseInt(process.env.REVIEW_RATE_LIMIT_MAX || '5', 10),
+
     // Login rate limit (per IP + email, failed attempts only)
     AUTH_RATE_LIMIT_WINDOW_MS: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 min
     AUTH_RATE_LIMIT_MAX: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '10', 10),

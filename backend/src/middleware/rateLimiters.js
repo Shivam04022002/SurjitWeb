@@ -42,6 +42,23 @@ const loginLimiter = rateLimit({
     }
 });
 
+// ── Public review submission (per IP) ────────────────────────────────────────
+// The general API limiter allows 1000 requests per 15 minutes, which is right
+// for browsing but far too loose for an unauthenticated write that also takes
+// a file. A handful per hour is well above what a real customer needs and well
+// below what makes spamming worthwhile.
+const reviewSubmissionLimiter = rateLimit({
+    windowMs: env.REVIEW_RATE_LIMIT_WINDOW_MS,
+    max: env.REVIEW_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        success: false,
+        message: 'You have submitted several reviews recently. Please try again later.',
+        errors: []
+    }
+});
+
 // Clear a user's failed-attempt counter after a successful login.
 const resetLoginLimiter = (req) => {
     try {
@@ -51,4 +68,4 @@ const resetLoginLimiter = (req) => {
     }
 };
 
-module.exports = { apiLimiter, loginLimiter, resetLoginLimiter, loginKey };
+module.exports = { apiLimiter, loginLimiter, reviewSubmissionLimiter, resetLoginLimiter, loginKey };

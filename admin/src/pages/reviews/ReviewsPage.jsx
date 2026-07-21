@@ -1,43 +1,41 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Box, Container, Typography, Button, IconButton, Tooltip, Stack, Chip, Avatar,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-  Rating, CircularProgress, InputAdornment
+  Box, Container, Typography, IconButton, Tooltip, Stack, Chip, Avatar,
+  TextField, MenuItem, Rating, InputAdornment, Badge, Dialog, DialogTitle,
+  DialogContent, DialogActions, Button, Divider
 } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import {
-  Add, Edit, Delete, Search, Public, Unpublished, ArrowUpward, ArrowDownward
+  Search, CheckCircle, Cancel, Delete, Visibility, ArrowUpward, ArrowDownward
 } from '@mui/icons-material'
 import { reviewService } from '../../services/review.service'
-import ImageUpload from '../../components/ImageUpload'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 
-const EMPTY = {
-  customerName: '', rating: 5, review: '', productName: '', location: '', displayOrder: ''
-}
-
 const initialsOf = (name) => String(name || '?').trim().charAt(0).toUpperCase()
 
+const fmt = (d) => (d
+  ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  : '—')
+
+const STATUS_COLOR = { Pending: 'warning', Approved: 'success', Rejected: 'default' }
+
+// Moderation queue. Reviews arrive from the website; admins approve, reject or
+// delete them — they are never authored here.
 const ReviewsPage = () => {
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
+  const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const [search, setSearch] = useState('')
-  const [published, setPublished] = useState('')
+  const [status, setStatus] = useState('')
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
 
-  const [dialog, setDialog] = useState({ open: false, editing: null })
-  const [form, setForm] = useState(EMPTY)
-  const [photoFile, setPhotoFile] = useState(null)
-  const [photoUrl, setPhotoUrl] = useState('')
-  const [errors, setErrors] = useState({})
-  const [saving, setSaving] = useState(false)
-
+  const [viewing, setViewing] = useState(null)
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null, name: '' })
   const [deleting, setDeleting] = useState(false)
-  const [reordering, setReordering] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
 
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity })
@@ -49,16 +47,17 @@ const ReviewsPage = () => {
         page: paginationModel.page + 1,
         limit: paginationModel.pageSize,
         search: search || undefined,
-        isPublished: published === '' ? undefined : published
+        status: status || undefined
       })
       setRows(res.data.data)
       setTotal(res.data.total)
+      setPendingCount(res.data.pendingCount ?? 0)
     } catch {
       showToast('Failed to load reviews', 'error')
     } finally {
       setLoading(false)
     }
-  }, [paginationModel, search, published])
+  }, [paginationModel, search, status])
 
   // Debounced so typing in search does not fire a request per keystroke.
   useEffect(() => {
@@ -66,71 +65,22 @@ const ReviewsPage = () => {
     return () => clearTimeout(t)
   }, [fetchReviews])
 
-  const openCreate = () => {
-    setForm(EMPTY); setPhotoFile(null); setPhotoUrl(''); setErrors({})
-    setDialog({ open: true, editing: null })
-  }
-
-  const openEdit = (row) => {
-    setForm({
-      customerName: row.customerName || '',
-      rating: row.rating || 5,
-      review: row.review || '',
-      productName: row.productName || '',
-      location: row.location || '',
-      displayOrder: row.displayOrder ?? ''
-    })
-    setPhotoFile(null)
-    setPhotoUrl(row.customerImage?.url || '')
-    setErrors({})
-    setDialog({ open: true, editing: row })
-  }
-
-  const validate = () => {
-    const e = {}
-    if (!form.customerName.trim()) e.customerName = 'Customer name is required'
-    if (!form.review.trim()) e.review = 'Review text is required'
-    if (!form.rating || form.rating < 1 || form.rating > 5) e.rating = 'Rating must be 1–5'
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
-  const handleSave = async () => {
-    if (!validate()) return
-    setSaving(true)
+  const moderate = async (row, action) => {
+    setBusy(true)
     try {
-      const fd = new FormData()
-      fd.append('customerName', form.customerName)
-      fd.append('rating', String(form.rating))
-      fd.append('review', form.review)
-      fd.append('productName', form.productName)
-      fd.append('location', form.location)
-      if (form.displayOrder !== '') fd.append('displayOrder', String(form.displayOrder))
-      if (photoFile) fd.append('customerImage', photoFile)
-
-      if (dialog.editing) {
-        await reviewService.updateReview(dialog.editing._id, fd)
-        showToast('Review updated')
+      if (action === 'approve') {
+        await reviewService.approveReview(row._id)
+        showToast(`Review from ${row.customerName} approved — now live on the website`)
       } else {
-        await reviewService.createReview(fd)
-        showToast('Review created')
+        await reviewService.rejectReview(row._id)
+        showToast(`Review from ${row.customerName} rejected — hidden from the website`)
       }
-      setDialog({ open: false, editing: null })
+      setViewing(null)
       fetchReviews()
     } catch (err) {
-      showToast(err?.response?.data?.message || 'Failed to save review', 'error')
+      showToast(err?.response?.data?.message || 'Failed to update review', 'error')
     } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleToggle = async (row) => {
-    try {
-      await reviewService.toggleReviewStatus(row._id)
-      showToast(row.isPublished ? 'Review unpublished' : 'Review published')
-      fetchReviews()
-    } catch {
-      showToast('Failed to update status', 'error')
+      setBusy(false)
     }
   }
 
@@ -140,6 +90,7 @@ const ReviewsPage = () => {
       await reviewService.deleteReview(deleteDialog.id)
       showToast('Review deleted')
       setDeleteDialog({ open: false, id: null, name: '' })
+      setViewing(null)
       fetchReviews()
     } catch (err) {
       showToast(err?.response?.data?.message || 'Failed to delete review', 'error')
@@ -148,8 +99,7 @@ const ReviewsPage = () => {
     }
   }
 
-  // Swaps with the neighbour and sends the whole page order back. The list is
-  // already sorted by displayOrder, so index order is website order.
+  // Ordering only affects approved reviews, which is all the website shows.
   const handleMove = async (index, direction) => {
     const target = index + direction
     if (target < 0 || target >= rows.length) return
@@ -159,7 +109,7 @@ const ReviewsPage = () => {
     next.splice(target, 0, moved)
     setRows(next)
 
-    setReordering(true)
+    setBusy(true)
     try {
       await reviewService.reorderReviews(next.map((r) => r._id))
       showToast('Order updated')
@@ -168,80 +118,102 @@ const ReviewsPage = () => {
       showToast('Failed to reorder', 'error')
       fetchReviews()
     } finally {
-      setReordering(false)
+      setBusy(false)
     }
   }
 
   const columns = [
     {
-      field: 'customerImage', headerName: 'Photo', width: 80, sortable: false,
+      field: 'customerName', headerName: 'Customer', flex: 1.1, minWidth: 200,
       renderCell: (p) => (
-        <Avatar src={p.row.customerImage?.url || undefined} sx={{ bgcolor: 'primary.main' }}>
-          {initialsOf(p.row.customerName)}
-        </Avatar>
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ py: 0.5 }}>
+          <Avatar src={p.row.photo?.url || undefined} sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}>
+            {initialsOf(p.row.customerName)}
+          </Avatar>
+          <Stack spacing={0}>
+            <Typography variant="body2" fontWeight={600} noWrap>{p.row.customerName}</Typography>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {p.row.mobile}{p.row.city ? ` · ${p.row.city}` : ''}
+            </Typography>
+          </Stack>
+        </Stack>
       )
     },
-    { field: 'customerName', headerName: 'Customer', flex: 1, minWidth: 150 },
     {
-      field: 'rating', headerName: 'Rating', width: 150, sortable: false,
+      field: 'rating', headerName: 'Rating', width: 140, sortable: false,
       renderCell: (p) => <Rating value={p.row.rating} readOnly size="small" />
     },
     {
-      field: 'review', headerName: 'Review', flex: 1.6, minWidth: 220,
-      renderCell: (p) => (
-        <Typography variant="body2" noWrap title={p.row.review}>{p.row.review}</Typography>
-      )
-    },
-    {
-      field: 'productName', headerName: 'Product', width: 150,
+      field: 'productName', headerName: 'Product', width: 160,
       renderCell: (p) => (p.row.productName
         ? <Chip label={p.row.productName} size="small" variant="outlined" />
         : <Typography variant="caption" color="text.disabled">—</Typography>)
     },
-    { field: 'location', headerName: 'Location', width: 130 },
-    { field: 'displayOrder', headerName: 'Order', width: 80 },
     {
-      field: 'isPublished', headerName: 'Status', width: 130,
+      field: 'createdAt', headerName: 'Date', width: 120,
+      renderCell: (p) => <Typography variant="body2">{fmt(p.row.createdAt)}</Typography>
+    },
+    {
+      field: 'status', headerName: 'Status', width: 130,
       renderCell: (p) => (
         <Chip
-          label={p.row.isPublished ? 'Published' : 'Unpublished'}
-          color={p.row.isPublished ? 'success' : 'default'}
+          label={p.row.status}
+          color={STATUS_COLOR[p.row.status] || 'default'}
           size="small"
-          variant={p.row.isPublished ? 'filled' : 'outlined'}
+          variant={p.row.status === 'Rejected' ? 'outlined' : 'filled'}
         />
       )
     },
     {
-      field: 'actions', headerName: 'Actions', width: 200, sortable: false,
+      field: 'actions', headerName: 'Actions', width: 230, sortable: false,
       renderCell: (p) => {
         const index = rows.findIndex((r) => r._id === p.row._id)
         return (
           <Stack direction="row">
-            <Tooltip title="Move up">
+            <Tooltip title="Read full review">
+              <IconButton size="small" onClick={() => setViewing(p.row)}>
+                <Visibility fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={p.row.status === 'Approved' ? 'Already approved' : 'Approve — publish on the website'}>
               <span>
-                <IconButton size="small" disabled={index === 0 || reordering} onClick={() => handleMove(index, -1)}>
+                <IconButton
+                  size="small" color="success" disabled={busy || p.row.status === 'Approved'}
+                  onClick={() => moderate(p.row, 'approve')}
+                >
+                  <CheckCircle fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title={p.row.status === 'Rejected' ? 'Already rejected' : 'Reject — hide from the website'}>
+              <span>
+                <IconButton
+                  size="small" color="warning" disabled={busy || p.row.status === 'Rejected'}
+                  onClick={() => moderate(p.row, 'reject')}
+                >
+                  <Cancel fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Move earlier">
+              <span>
+                <IconButton size="small" disabled={index === 0 || busy} onClick={() => handleMove(index, -1)}>
                   <ArrowUpward fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title="Move down">
+            <Tooltip title="Move later">
               <span>
-                <IconButton size="small" disabled={index === rows.length - 1 || reordering} onClick={() => handleMove(index, 1)}>
+                <IconButton size="small" disabled={index === rows.length - 1 || busy} onClick={() => handleMove(index, 1)}>
                   <ArrowDownward fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={p.row.isPublished ? 'Unpublish' : 'Publish'}>
-              <IconButton size="small" color={p.row.isPublished ? 'success' : 'default'} onClick={() => handleToggle(p.row)}>
-                {p.row.isPublished ? <Public fontSize="small" /> : <Unpublished fontSize="small" />}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Edit">
-              <IconButton size="small" onClick={() => openEdit(p.row)}><Edit fontSize="small" /></IconButton>
-            </Tooltip>
             <Tooltip title="Delete">
-              <IconButton size="small" color="error"
-                onClick={() => setDeleteDialog({ open: true, id: p.row._id, name: p.row.customerName })}>
+              <IconButton
+                size="small" color="error"
+                onClick={() => setDeleteDialog({ open: true, id: p.row._id, name: p.row.customerName })}
+              >
                 <Delete fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -257,28 +229,33 @@ const ReviewsPage = () => {
         <Box>
           <Typography variant="h5" fontWeight={700}>Customer Reviews</Typography>
           <Typography variant="body2" color="text.secondary">
-            Shown in the sidebar of every blog article, in this order
+            Submitted from the website — approve to publish, reject to hide
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Review</Button>
+        {pendingCount > 0 && (
+          <Badge badgeContent={pendingCount} color="warning">
+            <Chip label="Awaiting moderation" color="warning" variant="outlined" />
+          </Badge>
+        )}
       </Box>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
         <TextField
-          size="small" placeholder="Search name, review, product or location…"
+          size="small" placeholder="Search name, mobile, review, product or city…"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPaginationModel((p) => ({ ...p, page: 0 })) }}
-          sx={{ minWidth: 300 }}
+          sx={{ minWidth: 320 }}
           InputProps={{ startAdornment: <InputAdornment position="start"><Search fontSize="small" /></InputAdornment> }}
         />
         <TextField
-          size="small" select label="Status" value={published}
-          onChange={(e) => { setPublished(e.target.value); setPaginationModel((p) => ({ ...p, page: 0 })) }}
+          size="small" select label="Status" value={status}
+          onChange={(e) => { setStatus(e.target.value); setPaginationModel((p) => ({ ...p, page: 0 })) }}
           sx={{ minWidth: 170 }}
         >
           <MenuItem value="">All</MenuItem>
-          <MenuItem value="true">Published</MenuItem>
-          <MenuItem value="false">Unpublished</MenuItem>
+          <MenuItem value="Pending">Pending</MenuItem>
+          <MenuItem value="Approved">Approved</MenuItem>
+          <MenuItem value="Rejected">Rejected</MenuItem>
         </TextField>
       </Stack>
 
@@ -287,6 +264,7 @@ const ReviewsPage = () => {
         columns={columns}
         getRowId={(r) => r._id}
         loading={loading}
+        rowHeight={60}
         rowCount={total}
         paginationMode="server"
         paginationModel={paginationModel}
@@ -297,80 +275,62 @@ const ReviewsPage = () => {
         sx={{ bgcolor: 'background.paper', borderRadius: 2 }}
       />
 
-      {/* Add / edit */}
-      <Dialog open={dialog.open} onClose={() => setDialog({ open: false, editing: null })} maxWidth="sm" fullWidth>
-        <DialogTitle>{dialog.editing ? 'Edit Review' : 'Add Review'}</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2.5} sx={{ mt: 1 }}>
-            <ImageUpload
-              label="Customer Photo (optional)"
-              name="customerImage"
-              currentImageUrl={photoUrl}
-              onChange={(file) => setPhotoFile(file)}
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-              Left empty, the website shows an initials circle instead.
-            </Typography>
-
-            <TextField
-              label="Customer Name" required fullWidth value={form.customerName}
-              onChange={(e) => { setForm((f) => ({ ...f, customerName: e.target.value })); setErrors((x) => ({ ...x, customerName: '' })) }}
-              error={!!errors.customerName} helperText={errors.customerName}
-              inputProps={{ maxLength: 120 }}
-            />
-
-            <Box>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>Rating *</Typography>
-              <Rating
-                value={Number(form.rating)}
-                onChange={(_, v) => { setForm((f) => ({ ...f, rating: v || 1 })); setErrors((x) => ({ ...x, rating: '' })) }}
-              />
-              {errors.rating && <Typography variant="caption" color="error" display="block">{errors.rating}</Typography>}
-            </Box>
-
-            <TextField
-              label="Review" required fullWidth multiline rows={4} value={form.review}
-              onChange={(e) => { setForm((f) => ({ ...f, review: e.target.value })); setErrors((x) => ({ ...x, review: '' })) }}
-              error={!!errors.review}
-              helperText={errors.review || `${form.review.length}/1000`}
-              inputProps={{ maxLength: 1000 }}
-            />
-
-            <TextField
-              label="Loan / Product" fullWidth value={form.productName}
-              onChange={(e) => setForm((f) => ({ ...f, productName: e.target.value }))}
-              helperText="e.g. Business Loan"
-              inputProps={{ maxLength: 150 }}
-            />
-            <TextField
-              label="Location" fullWidth value={form.location}
-              onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-              helperText="e.g. Lucknow"
-              inputProps={{ maxLength: 120 }}
-            />
-            <TextField
-              label="Display Order" fullWidth type="number" value={form.displayOrder}
-              onChange={(e) => setForm((f) => ({ ...f, displayOrder: e.target.value }))}
-              helperText="Left empty, it is added at the end"
-              inputProps={{ min: 0 }}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDialog({ open: false, editing: null })}>Cancel</Button>
-          <Button
-            variant="contained" onClick={handleSave} disabled={saving}
-            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
-          >
-            {dialog.editing ? 'Save' : 'Create'}
-          </Button>
-        </DialogActions>
+      {/* Full review — the grid truncates, and a moderator needs the whole text. */}
+      <Dialog open={!!viewing} onClose={() => setViewing(null)} maxWidth="sm" fullWidth>
+        {viewing && (
+          <>
+            <DialogTitle>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Avatar src={viewing.photo?.url || undefined} sx={{ bgcolor: 'primary.main' }}>
+                  {initialsOf(viewing.customerName)}
+                </Avatar>
+                <Box>
+                  <Typography variant="h6">{viewing.customerName}</Typography>
+                  <Rating value={viewing.rating} readOnly size="small" />
+                </Box>
+              </Stack>
+            </DialogTitle>
+            <DialogContent dividers>
+              <Stack spacing={2}>
+                <Typography variant="body1">{viewing.review}</Typography>
+                <Divider />
+                <Stack spacing={0.5}>
+                  <Typography variant="body2"><strong>Mobile:</strong> {viewing.mobile}</Typography>
+                  {viewing.email && <Typography variant="body2"><strong>Email:</strong> {viewing.email}</Typography>}
+                  {viewing.city && <Typography variant="body2"><strong>City:</strong> {viewing.city}</Typography>}
+                  {viewing.productName && <Typography variant="body2"><strong>Product:</strong> {viewing.productName}</Typography>}
+                  <Typography variant="body2"><strong>Submitted:</strong> {fmt(viewing.createdAt)}</Typography>
+                  <Typography variant="body2">
+                    <strong>Status:</strong>{' '}
+                    <Chip label={viewing.status} color={STATUS_COLOR[viewing.status]} size="small" />
+                  </Typography>
+                </Stack>
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => setViewing(null)}>Close</Button>
+              <Button
+                color="warning" startIcon={<Cancel />} disabled={busy || viewing.status === 'Rejected'}
+                onClick={() => moderate(viewing, 'reject')}
+              >
+                Reject
+              </Button>
+              <Button
+                variant="contained" color="success" startIcon={<CheckCircle />}
+                disabled={busy || viewing.status === 'Approved'}
+                onClick={() => moderate(viewing, 'approve')}
+              >
+                Approve
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
       <ConfirmDialog
         open={deleteDialog.open}
         title="Delete review"
-        message={`Delete the review from "${deleteDialog.name}"? This cannot be undone.`}
+        message={`Permanently delete the review from "${deleteDialog.name}"? Rejecting hides it instead and keeps the record.`}
         confirmLabel="Delete"
         loading={deleting}
         onConfirm={handleDelete}

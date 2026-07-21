@@ -95,3 +95,9 @@ export const getAdjacentBlogs = (slug) => api.get(`/blogs/${slug}/adjacent`).the
 // ── Customer reviews ───────────────────────────────────────────────────────────
 // Passing `limit` returns a plain array; omit it for the paginated envelope.
 export const getReviews = (params = {}) => api.get('/reviews', { params }).then(r => r.data.data.reviews);
+
+// Customer submission. Multipart because an optional photo rides along. The
+// server creates every submission as Pending — nothing here can publish.
+export const submitReview = (formData) =>
+    api.post('/reviews', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+        .then(r => r.data);
