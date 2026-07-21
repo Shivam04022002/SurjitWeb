@@ -1,0 +1,156 @@
+/* Annual reports page. Reuses the site's card language and orange accent. */
+.reports-page {
+    background: linear-gradient(180deg, var(--gray-50) 0%, white 100%);
+    min-height: 100vh;
+}
+
+.reports-hero {
+    background: linear-gradient(135deg, var(--primary-100) 0%, var(--primary-50) 100%);
+    padding: 70px 0 60px;
+    text-align: center;
+}
+
+.reports-hero h1 {
+    color: var(--primary-900);
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    margin-bottom: 16px;
+    font-weight: 800;
+}
+
+.reports-hero p {
+    color: var(--gray-600);
+    font-size: 1.125rem;
+    line-height: 1.8;
+    max-width: 650px;
+    margin: 0 auto;
+}
+
+/* 3 across on desktop, 2 on tablet, 1 on mobile. */
+.reports-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-6);
+}
+
+.report-card {
+    display: flex;
+    gap: var(--space-4);
+    background: white;
+    border: 1px solid rgba(206, 129, 18, 0.12);
+    border-radius: 16px;
+    padding: var(--space-5);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+    transition: all 0.3s ease;
+}
+
+.report-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.09);
+    border-color: rgba(206, 129, 18, 0.3);
+}
+
+.report-icon {
+    flex-shrink: 0;
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: #FFF4E5;
+    color: #CE8112;
+    overflow: hidden;
+}
+
+.report-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.report-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.report-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin: 0 0 8px;
+    line-height: 1.35;
+}
+
+.report-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: var(--space-3);
+}
+
+.report-year {
+    padding: 3px 12px;
+    border-radius: 50px;
+    background: #FFF9F0;
+    border: 1px solid rgba(206, 129, 18, 0.25);
+    color: #CE8112;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.report-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: var(--gray-500);
+}
+
+.report-desc {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--gray-600);
+    margin: 0 0 var(--space-4);
+    /* Uneven CMS copy would otherwise leave the buttons on ragged lines. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: auto;
+}
+
+.report-actions .btn {
+    gap: 6px;
+}
+
+.reports-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: var(--space-12) 0;
+    color: var(--gray-500);
+}
+
+.reports-empty .btn {
+    margin-top: var(--space-4);
+}
+
+@media (max-width: 1024px) {
+    .reports-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .reports-grid {
+        grid-template-columns: 1fr;
+    }
+}

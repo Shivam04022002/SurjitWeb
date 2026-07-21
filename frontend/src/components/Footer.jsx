@@ -13,7 +13,6 @@ import {
 import './Footer.css';
 import fallbackLogo from "../assets/logo-4-2048x319.png";
 import pressRelease from "../assets/Press_Release.pdf";
-import annualReturn from "../assets/annual_report_2022-23.pdf";
 import { useSettings, useActiveProductCategories } from '../hooks';
 
 const Footer = () => {
@@ -133,10 +132,10 @@ const Footer = () => {
                                     </a>
                                 </li>
                                 <li>
-                                    <a href={annualReturn} target="_blank" rel="noopener noreferrer">
+                                    <Link to="/reports">
                                         Annual Returns
                                         <ArrowUpRight size={14} />
-                                    </a>
+                                    </Link>
                                 </li>
                             </ul>
                         </div>

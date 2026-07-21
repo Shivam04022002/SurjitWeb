@@ -101,3 +101,10 @@ export const getReviews = (params = {}) => api.get('/reviews', { params }).then(
 export const submitReview = (formData) =>
     api.post('/reviews', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
         .then(r => r.data);
+
+// ── Annual reports ─────────────────────────────────────────────────────────────
+export const getReports = () => api.get('/reports').then(r => r.data.data.reports);
+
+// The PDF lives on S3 in production, so a browser ignores <a download> across
+// origins. This endpoint streams it back with an attachment disposition.
+export const reportDownloadUrl = (id) => `${BASE_URL}/reports/${id}/download`;

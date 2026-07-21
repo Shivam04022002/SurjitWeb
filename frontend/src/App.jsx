@@ -23,6 +23,7 @@ const NodalOfficer = lazy(() => import('./pages/NodalOfficer'));
 const JobApply = lazy(() => import('./pages/JobApply'));
 const EventGallery = lazy(() => import('./pages/EventGallery'));
 const Gallery = lazy(() => import('./pages/Gallery'));
+const Reports = lazy(() => import('./pages/Reports'));
 
 function App() {
   return (
@@ -53,6 +54,7 @@ function App() {
               <Route path="/nodal-officer" element={<NodalOfficer />} />
               <Route path="/apply-job/:jobTitle" element={<JobApply />} />
               <Route path="/gallery" element={<Gallery />} />
+              <Route path="/reports" element={<Reports />} />
               <Route path="/gallery/:albumId" element={<EventGallery />} />
               {/* Kept so links and bookmarks made before the gallery moved off
                   the Career page still resolve. */}

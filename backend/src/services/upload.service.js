@@ -18,9 +18,17 @@ const buildFileResult = (file) => {
         };
     }
 
+    // Local disk. The path is taken relative to the uploads root rather than
+    // from file.filename alone, because uploads are written into per-module
+    // folders (reports/, gallery/images/, …) and dropping the folder leaves a
+    // url that 404s and a fileName that deletion cannot resolve. On S3 the key
+    // above already carries the folder, which is why this only shows locally.
+    const uploadsRoot = path.join(__dirname, '..', 'uploads');
+    const relative = path.relative(uploadsRoot, file.path).split(path.sep).join('/');
+
     return {
-        url: `/uploads/${file.filename}`,
-        fileName: file.filename,
+        url: `/uploads/${relative}`,
+        fileName: relative,
         size: file.size
     };
 };

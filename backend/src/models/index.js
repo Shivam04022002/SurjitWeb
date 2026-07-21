@@ -17,6 +17,7 @@ const GlobalSettings = require('./GlobalSettings');
 const BlogCategory = require('./BlogCategory');
 const Blog = require('./Blog');
 const Review = require('./Review');
+const Report = require('./Report');
 
 module.exports = {
     Admin,
@@ -37,5 +38,6 @@ module.exports = {
     GlobalSettings,
     BlogCategory,
     Blog,
-    Review
+    Review,
+    Report
 };

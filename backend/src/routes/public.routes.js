@@ -16,6 +16,7 @@ const imagesService = require('../services/gallery/images.service');
 const blogsService = require('../services/blog/blogs.service');
 const blogCategoriesService = require('../services/blog/categories.service');
 const reviewController = require('../controllers/review.controller');
+const reportController = require('../controllers/report.controller');
 const { createUpload } = require('../middleware/upload');
 const validate = require('../middleware/validate');
 const { reviewSubmissionLimiter } = require('../middleware/rateLimiters');
@@ -207,5 +208,13 @@ router.post(
     validate,
     reviewController.submitReview
 );
+
+// ── Annual reports ─────────────────────────────────────────────────────────────
+// Published reports only, ordered by displayOrder then newest.
+router.get('/reports', reportController.listPublicReports);
+
+// Streams the PDF back as an attachment. Needed because the file lives on S3 in
+// production, and a browser ignores <a download> across origins.
+router.get('/reports/:id/download', reportController.downloadReport);
 
 module.exports = router;

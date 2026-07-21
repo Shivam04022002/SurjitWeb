@@ -181,3 +181,7 @@ export const useReviews = (params = {}) => {
     const key = JSON.stringify(params);
     return useApi(() => apiService.getReviews(params), [key], { cacheKey: `reviews-${key}` });
 };
+
+// ── Annual reports ─────────────────────────────────────────────────────────────
+export const useReports = () =>
+    useApi(apiService.getReports, [], { cacheKey: 'reports' });
