@@ -101,7 +101,7 @@ const menuItems = [
     ]
   },
   { title: 'Media', icon: PermMedia, path: '#' },
-  { title: 'Users', icon: People, path: '#' },
+  { title: 'Users', icon: People, path: '/users' },
   { title: 'Settings', icon: Settings, path: '/settings' },
   { title: 'Profile', icon: AccountCircle, path: '/profile' }
 ]

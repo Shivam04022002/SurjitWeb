@@ -26,6 +26,6 @@ export const DASHBOARD_CARDS = [
   { title: 'Career', icon: 'WorkOutline', path: '/career/jobs' },
   { title: 'Gallery', icon: 'PhotoLibrary', path: '/gallery/albums' },
   { title: 'Media', icon: 'PermMedia', path: '#' },
-  { title: 'Users', icon: 'People', path: '#' },
+  { title: 'Users', icon: 'People', path: '/users' },
   { title: 'Settings', icon: 'Settings', path: '/settings' }
 ]
