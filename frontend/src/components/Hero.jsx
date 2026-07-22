@@ -2,7 +2,27 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Play, Shield, Clock, Users, MapPin, TrendingUp } from 'lucide-react';
 import './Hero.css';
-import { useSettings, useCompanyInfo, useProducts } from '../hooks';
+import { useSettings, useCompanyInfo, useProducts, useHomepageStats } from '../hooks';
+
+// The CMS stores a statistic as the single string an editor reads and types
+// ("35+", "10K+", "₹50Cr+"). The counter animates a number, so the string is
+// split back into the prefix / number / suffix the animation has always used.
+// A value with no digits cannot count up — it is rendered literally instead.
+const parseStatValue = (value) => {
+    const match = String(value ?? '').match(/^([^\d]*)(\d+(?:\.\d+)?)(.*)$/);
+    if (!match) return { target: null, prefix: String(value ?? ''), suffix: '' };
+    return { prefix: match[1], target: Number(match[2]), suffix: match[3] };
+};
+
+// Shown until the CMS responds, and if it cannot be reached — the counter strip
+// is above the fold, so it should never render empty. Same approach as the
+// hero product cards below.
+const DEFAULT_STATS = [
+    { target: 35, prefix: '', suffix: '+', label: 'Branches' },
+    { target: 3, prefix: '', suffix: '', label: 'States' },
+    { target: 10, prefix: '', suffix: 'K+', label: 'Happy Customers' },
+    { target: 50, prefix: '₹', suffix: 'Cr+', label: 'Loans Disbursed' },
+];
 
 // Count-up animation hook
 const useCountUp = (target, duration = 2000, startCounting = false) => {
@@ -48,7 +68,7 @@ const AnimatedStat = ({ target, prefix, suffix, label, isVisible }) => {
     return (
         <div className="stat-item">
             <span className="stat-number">
-                {prefix}{count}{suffix}
+                {target === null ? prefix : <>{prefix}{count}{suffix}</>}
             </span>
             <span className="stat-label">{label}</span>
         </div>
@@ -61,6 +81,7 @@ const Hero = () => {
     const { data: settings } = useSettings();
     const { data: company } = useCompanyInfo();
     const { data: cmsProducts } = useProducts();
+    const { data: cmsStats } = useHomepageStats();
 
     useEffect(() => {
         const observer = new IntersectionObserver(
@@ -84,12 +105,9 @@ const Hero = () => {
     const applyUrl = settings?.headerPrimaryButtonUrl || '/loan-application';
     const applyText = settings?.headerPrimaryButtonText || 'Apply for Loan';
 
-    const statsData = [
-        { target: 35, prefix: '', suffix: '+', label: 'Branches' },
-        { target: 3, prefix: '', suffix: '', label: 'States' },
-        { target: 10, prefix: '', suffix: 'K+', label: 'Happy Customers' },
-        { target: 50, prefix: '₹', suffix: 'Cr+', label: 'Loans Disbursed' },
-    ];
+    const statsData = (cmsStats && cmsStats.length > 0)
+        ? cmsStats.map((s) => ({ ...parseStatValue(s.value), label: s.title }))
+        : DEFAULT_STATS;
 
     const heroProducts = (cmsProducts && cmsProducts.length > 0)
         ? cmsProducts.slice(0, 3).map((p, i) => ({

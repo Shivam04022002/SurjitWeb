@@ -13,6 +13,7 @@ const reviewRoutes = require('./review.routes');
 const reportRoutes = require('./report.routes');
 const userRoutes = require('./user.routes');
 const branchRoutes = require('./branch.routes');
+const homepageStatRoutes = require('./homepageStat.routes');
 
 const router = express.Router();
 
@@ -30,5 +31,6 @@ router.use('/v1/reviews', reviewRoutes);
 router.use('/v1/reports', reportRoutes);
 router.use('/v1/users', userRoutes);
 router.use('/v1/branches', branchRoutes);
+router.use('/v1/homepage-stats', homepageStatRoutes);
 
 module.exports = router;

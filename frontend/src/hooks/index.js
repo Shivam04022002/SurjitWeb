@@ -189,3 +189,7 @@ export const useReports = () =>
 // ── Branches ───────────────────────────────────────────────────────────────────
 export const useBranches = () =>
     useApi(apiService.getBranches, [], { cacheKey: 'branches' });
+
+// ── Homepage statistics ────────────────────────────────────────────────────────
+export const useHomepageStats = () =>
+    useApi(apiService.getHomepageStats, [], { cacheKey: 'homepage-stats' });

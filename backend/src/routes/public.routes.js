@@ -18,6 +18,7 @@ const blogCategoriesService = require('../services/blog/categories.service');
 const reviewController = require('../controllers/review.controller');
 const reportController = require('../controllers/report.controller');
 const branchController = require('../controllers/branch.controller');
+const homepageStatController = require('../controllers/homepageStat.controller');
 const { createUpload } = require('../middleware/upload');
 const validate = require('../middleware/validate');
 const { reviewSubmissionLimiter } = require('../middleware/rateLimiters');
@@ -221,5 +222,9 @@ router.get('/reports/:id/download', reportController.downloadReport);
 // ── Branches ───────────────────────────────────────────────────────────────────
 // Published branches only, in display order. Backs "Our Branches" on Contact.
 router.get('/branches', branchController.listPublicBranches);
+
+// ── Homepage statistics ────────────────────────────────────────────────────────
+// Published stats only, in display order. Backs the counter strip in the Hero.
+router.get('/homepage-stats', homepageStatController.listPublicStats);
 
 module.exports = router;

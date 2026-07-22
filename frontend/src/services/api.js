@@ -112,3 +112,7 @@ export const reportDownloadUrl = (id) => `${BASE_URL}/reports/${id}/download`;
 // ── Branches ───────────────────────────────────────────────────────────────────
 // Published branches only, in display order. Backs "Our Branches" on Contact.
 export const getBranches = () => api.get('/branches').then(r => r.data.data.branches);
+
+// ── Homepage statistics ────────────────────────────────────────────────────────
+// Published stats only, in display order. Backs the counter strip in the Hero.
+export const getHomepageStats = () => api.get('/homepage-stats').then(r => r.data.data.stats);
