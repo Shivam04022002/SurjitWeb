@@ -17,6 +17,7 @@ const blogsService = require('../services/blog/blogs.service');
 const blogCategoriesService = require('../services/blog/categories.service');
 const reviewController = require('../controllers/review.controller');
 const reportController = require('../controllers/report.controller');
+const branchController = require('../controllers/branch.controller');
 const { createUpload } = require('../middleware/upload');
 const validate = require('../middleware/validate');
 const { reviewSubmissionLimiter } = require('../middleware/rateLimiters');
@@ -216,5 +217,9 @@ router.get('/reports', reportController.listPublicReports);
 // Streams the PDF back as an attachment. Needed because the file lives on S3 in
 // production, and a browser ignores <a download> across origins.
 router.get('/reports/:id/download', reportController.downloadReport);
+
+// ── Branches ───────────────────────────────────────────────────────────────────
+// Published branches only, in display order. Backs "Our Branches" on Contact.
+router.get('/branches', branchController.listPublicBranches);
 
 module.exports = router;

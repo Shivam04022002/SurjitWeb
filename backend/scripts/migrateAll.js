@@ -12,7 +12,8 @@ const migrations = [
     { name: 'Products', fn: require('./migrateProducts') },
     { name: 'Career', fn: require('./migrateCareer') },
     { name: 'Gallery', fn: require('./migrateGallery') },
-    { name: 'Settings', fn: require('./migrateSettings') }
+    { name: 'Settings', fn: require('./migrateSettings') },
+    { name: 'Branches', fn: require('./migrateBranches') }
 ];
 
 (async () => {

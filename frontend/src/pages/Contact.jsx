@@ -1,8 +1,18 @@
 import { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send } from 'lucide-react';
+import { useBranches } from '../hooks';
 import './Contact.css';
 
+// The CMS stores the street line, city, state and pincode separately. The card
+// has always shown one line, so they are joined back into the same shape the
+// hardcoded list used: "address, city, state pincode".
+const formatAddress = (branch) =>
+    [branch.address, branch.city, `${branch.state || ''} ${branch.pincode || ''}`.trim()]
+        .filter(Boolean)
+        .join(', ');
+
 const Contact = () => {
+    const { data: branches } = useBranches();
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -44,33 +54,6 @@ const Contact = () => {
             alert('Failed to connect to the server. Please try again later.');
         }
     };
-
-    const branches = [
-        {
-            name: 'Registered Office',
-            address: '248-C, Vijay Nagar, Krishna Nagar, Alambagh, Lucknow, Uttar Pradesh 226012'
-        },
-        {
-            name: 'Kanpur Branch',
-            address: '34-Chanakyapuri, Shyam Nagar, Near Jagriti Palace, Kanpur, Uttar Pradesh 208015'
-        },
-        {
-            name: 'Agra Branch',
-            address: '6/1, Ist floor, Nai Ki Mandi Police Chowki, Subhash Park Crossing, Mahatma Gandhi Rd, Agra, Uttar Pradesh 282010'
-        },
-        {
-            name: 'Varanasi Branch',
-            address: 'FF-04, Ist floor Urvashi Complex, Gandhi Nagar, opposite Sigra Petrol Pump, Varanasi, Uttar Pradesh 221001'
-        },
-        {
-            name: 'Indore Branch',
-            address: 'IInd floor, Building No. 4, Chandra Lok Colony, Khajrana Main Road, Indore, Madhya Pradesh 452016'
-        },
-        {
-            name: 'Jaipur Branch',
-            address: '7 Gopalpura Bypass Road, Vasundhara Colony, Gopal Pura Mode, Jaipur, Rajasthan 302018'
-        }
-    ];
 
     return (
         <div className="contact-page">
@@ -232,13 +215,13 @@ const Contact = () => {
                         <p>Visit us at any of our branch locations across India</p>
                     </div>
                     <div className="branches-grid">
-                        {branches.map((branch, index) => (
-                            <div key={index} className="branch-card">
+                        {(branches || []).map((branch) => (
+                            <div key={branch._id} className="branch-card">
                                 <div className="branch-icon">
                                     <MapPin size={24} />
                                 </div>
-                                <h4>{branch.name}</h4>
-                                <address>{branch.address}</address>
+                                <h4>{branch.branchName}</h4>
+                                <address>{formatAddress(branch)}</address>
                             </div>
                         ))}
                     </div>

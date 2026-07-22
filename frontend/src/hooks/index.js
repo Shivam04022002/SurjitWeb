@@ -185,3 +185,7 @@ export const useReviews = (params = {}) => {
 // ── Annual reports ─────────────────────────────────────────────────────────────
 export const useReports = () =>
     useApi(apiService.getReports, [], { cacheKey: 'reports' });
+
+// ── Branches ───────────────────────────────────────────────────────────────────
+export const useBranches = () =>
+    useApi(apiService.getBranches, [], { cacheKey: 'branches' });

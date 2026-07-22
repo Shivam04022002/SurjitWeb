@@ -44,6 +44,7 @@ import {
   LocalOffer,
   RateReview,
   Description,
+  Place,
   Settings
 } from '@mui/icons-material'
 
@@ -97,7 +98,8 @@ const menuItems = [
       { title: 'Add Blog', icon: PostAdd, path: '/blogs/new' },
       { title: 'Blog Categories', icon: LocalOffer, path: '/blogs/categories' },
       { title: 'Customer Reviews', icon: RateReview, path: '/reviews' },
-      { title: 'Annual Reports', icon: Description, path: '/reports' }
+      { title: 'Annual Reports', icon: Description, path: '/reports' },
+      { title: 'Branches', icon: Place, path: '/branches' }
     ]
   },
   { title: 'Media', icon: PermMedia, path: '#' },

@@ -108,3 +108,7 @@ export const getReports = () => api.get('/reports').then(r => r.data.data.report
 // The PDF lives on S3 in production, so a browser ignores <a download> across
 // origins. This endpoint streams it back with an attachment disposition.
 export const reportDownloadUrl = (id) => `${BASE_URL}/reports/${id}/download`;
+
+// ── Branches ───────────────────────────────────────────────────────────────────
+// Published branches only, in display order. Backs "Our Branches" on Contact.
+export const getBranches = () => api.get('/branches').then(r => r.data.data.branches);
