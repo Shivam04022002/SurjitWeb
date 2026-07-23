@@ -120,3 +120,7 @@ export const getHomepageStats = () => api.get('/homepage-stats').then(r => r.dat
 // ── Legal pages ────────────────────────────────────────────────────────────────
 // A single published legal page by slug. Backs the footer's legal links.
 export const getLegalPage = (slug) => api.get(`/legal-pages/${slug}`).then(r => r.data.data.page);
+
+// ── Nodal officers ─────────────────────────────────────────────────────────────
+// Published officers only, in display order. Backs the /nodal-officer page.
+export const getNodalOfficers = () => api.get('/nodal-officers').then(r => r.data.data.officers);

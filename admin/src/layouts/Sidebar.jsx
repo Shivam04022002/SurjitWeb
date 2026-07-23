@@ -47,6 +47,7 @@ import {
   Place,
   Insights,
   Gavel,
+  SupportAgent,
   Settings
 } from '@mui/icons-material'
 
@@ -103,7 +104,8 @@ const menuItems = [
       { title: 'Annual Reports', icon: Description, path: '/reports' },
       { title: 'Branches', icon: Place, path: '/branches' },
       { title: 'Homepage Statistics', icon: Insights, path: '/homepage-stats' },
-      { title: 'Legal Pages', icon: Gavel, path: '/legal-pages' }
+      { title: 'Legal Pages', icon: Gavel, path: '/legal-pages' },
+      { title: 'Nodal Officers', icon: SupportAgent, path: '/nodal-officers' }
     ]
   },
   { title: 'Media', icon: PermMedia, path: '#' },

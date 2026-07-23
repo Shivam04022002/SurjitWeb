@@ -27,6 +27,7 @@ import UsersPage from '../pages/users/UsersPage'
 import BranchesPage from '../pages/branches/BranchesPage'
 import HomepageStatsPage from '../pages/homepageStats/HomepageStatsPage'
 import LegalPagesPage from '../pages/legal/LegalPagesPage'
+import NodalOfficersPage from '../pages/nodalOfficers/NodalOfficersPage'
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth()
@@ -99,6 +100,7 @@ const AppRoutes = () => {
         <Route path="branches" element={<BranchesPage />} />
         <Route path="homepage-stats" element={<HomepageStatsPage />} />
         <Route path="legal-pages" element={<LegalPagesPage />} />
+        <Route path="nodal-officers" element={<NodalOfficersPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

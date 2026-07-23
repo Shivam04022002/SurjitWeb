@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
 
 const LEGAL_STATUS = ['Published', 'Draft'];
-// The four legal pages the website links to from its footer. The type pins a
-// page to a purpose; the slug is what the public routes resolve on.
-const LEGAL_TYPES = ['nodal', 'privacy', 'refund', 'terms'];
+// The legal pages the website links to from its footer. The type pins a page to
+// a purpose; the slug is what the public routes resolve on. (Nodal Officer is a
+// separate CMS module and is no longer a legal-page type.)
+const LEGAL_TYPES = ['privacy', 'refund', 'terms'];
 
 const legalPageSchema = new mongoose.Schema({
     title: {

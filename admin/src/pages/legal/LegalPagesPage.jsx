@@ -17,7 +17,6 @@ import Toast from '../../components/Toast'
 const MAX_PDF = 25 * 1024 * 1024
 
 const TYPES = [
-  { value: 'nodal', label: 'Nodal Officer' },
   { value: 'privacy', label: 'Privacy Policy' },
   { value: 'refund', label: 'Refund Policy' },
   { value: 'terms', label: 'Terms & Conditions' }

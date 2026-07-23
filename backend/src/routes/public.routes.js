@@ -20,6 +20,7 @@ const reportController = require('../controllers/report.controller');
 const branchController = require('../controllers/branch.controller');
 const homepageStatController = require('../controllers/homepageStat.controller');
 const legalPageController = require('../controllers/legalPage.controller');
+const nodalOfficerController = require('../controllers/nodalOfficer.controller');
 const { createUpload } = require('../middleware/upload');
 const validate = require('../middleware/validate');
 const { reviewSubmissionLimiter } = require('../middleware/rateLimiters');
@@ -234,5 +235,9 @@ router.get('/homepage-stats', homepageStatController.listPublicStats);
 router.get('/legal-pages', legalPageController.listPublicPages);
 router.get('/legal-pages/:slug', legalPageController.getPublicPageBySlug);
 router.get('/legal-pages/:slug/download', legalPageController.downloadPage);
+
+// ── Nodal officers ─────────────────────────────────────────────────────────────
+// Published officers only, in display order. Backs the /nodal-officer page.
+router.get('/nodal-officers', nodalOfficerController.listPublicOfficers);
 
 module.exports = router;

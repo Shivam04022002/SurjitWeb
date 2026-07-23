@@ -1,10 +1,11 @@
-// Moves the four legal pages that were hardcoded under frontend/src/pages
-// (PrivacyPolicy, TermsAndConditions, RefundPolicy, NodalOfficer) into the
-// LegalPage collection, so their text becomes editable without a redeploy.
+// Moves the legal pages that were hardcoded under frontend/src/pages
+// (PrivacyPolicy, TermsAndConditions, RefundPolicy) into the LegalPage
+// collection, so their text becomes editable without a redeploy. Nodal Officer
+// is a separate CMS module (see migrateNodalOfficers.js).
 //
 // The slugs match the existing footer routes exactly, so the frontend keeps
-// resolving /privacy-policy, /refund-policy, /terms-and-conditions and
-// /nodal-officer by slug with no route change.
+// resolving /privacy-policy, /refund-policy and /terms-and-conditions by slug
+// with no route change.
 //
 // Idempotent: matched on slug, so re-running updates rather than duplicates.
 // Existing rows keep their status and — importantly — their edited content:
@@ -14,12 +15,9 @@ const LegalPage = require('../src/models/LegalPage');
 const { upsertOne } = require('./helpers/upsert');
 const logger = require('./helpers/logger');
 
-// Icons are copied from what lucide-react renders on these pages, inlined so the
-// migrated markup is visually identical to the original components.
+// The download icon is copied from what lucide-react renders, inlined so the
+// migrated refund button is visually identical to the original component.
 const icon = {
-    mapPin: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
-    mail: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
-    phone: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
     download: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>'
 };
 
@@ -94,35 +92,6 @@ const REFUND = `
 </div>
 `.trim();
 
-const NODAL = `
-<div class="nodal-grid">
-<div class="nodal-card">
-<h2>Surjit Finance's Nodal Officer Details</h2>
-<div class="officer-info">
-<h3>Mr. Jeetendra Pandey</h3>
-<p class="officer-title">The Nodal Officer, Surjit Hire Purchase Pvt. Ltd.</p>
-<div class="contact-details">
-<div class="contact-row">${icon.mapPin}<address>248-C, Vijay Nagar,<br/>Krishna Nagar,<br/>Lucknow-226012</address></div>
-<div class="contact-row">${icon.mail}<a href="mailto:cs.ho@surjitfinance.com">cs.ho@surjitfinance.com</a></div>
-<div class="contact-row">${icon.phone}<a href="tel:+917042476577">+91-7042476577</a></div>
-</div>
-</div>
-</div>
-<div class="nodal-card">
-<h2>Arthmate's Nodal Officer Details</h2>
-<div class="officer-info">
-<h3>Mr. Hitesh Bhansali</h3>
-<p class="officer-title">The Nodal Officer, Mamta Projects Pvt. Ltd</p>
-<div class="contact-details">
-<div class="contact-row">${icon.mapPin}<address>Room No. 1528, 15th Floor,<br/>Bengal Intelligent Eco EM-3,<br/>Sector-V, Salt Lake City<br/>Kolkata-700091</address></div>
-<div class="contact-row">${icon.mail}<a href="mailto:statutory.compliance@arthmate.com">statutory.compliance@arthmate.com</a></div>
-<div class="contact-row">${icon.phone}<a href="tel:+918336901719">+91-8336901719</a></div>
-</div>
-</div>
-</div>
-</div>
-`.trim();
-
 const PAGES = [
     {
         type: 'privacy', slug: 'privacy-policy', title: 'Privacy Policy',
@@ -139,11 +108,6 @@ const PAGES = [
         type: 'terms', slug: 'terms-and-conditions', title: 'Terms & Conditions',
         description: '', content: TERMS,
         seoTitle: 'Terms & Conditions', seoDescription: 'The terms and conditions governing use of the Surjit Finance website and services.'
-    },
-    {
-        type: 'nodal', slug: 'nodal-officer', title: 'Nodal Officer',
-        description: 'Contact our nodal officers for grievance redressal', content: NODAL,
-        seoTitle: 'Nodal Officer', seoDescription: 'Contact details of the nodal officers for grievance redressal at Surjit Finance.'
     }
 ];
 

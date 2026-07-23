@@ -197,3 +197,7 @@ export const useHomepageStats = () =>
 // ── Legal pages ────────────────────────────────────────────────────────────────
 export const useLegalPage = (slug) =>
     useApi(() => apiService.getLegalPage(slug), [slug], { cacheKey: `legal-${slug}`, enabled: !!slug });
+
+// ── Nodal officers ─────────────────────────────────────────────────────────────
+export const useNodalOfficers = () =>
+    useApi(apiService.getNodalOfficers, [], { cacheKey: 'nodal-officers' });
