@@ -14,6 +14,7 @@ const reportRoutes = require('./report.routes');
 const userRoutes = require('./user.routes');
 const branchRoutes = require('./branch.routes');
 const homepageStatRoutes = require('./homepageStat.routes');
+const legalPageRoutes = require('./legalPage.routes');
 
 const router = express.Router();
 
@@ -32,5 +33,6 @@ router.use('/v1/reports', reportRoutes);
 router.use('/v1/users', userRoutes);
 router.use('/v1/branches', branchRoutes);
 router.use('/v1/homepage-stats', homepageStatRoutes);
+router.use('/v1/legal-pages', legalPageRoutes);
 
 module.exports = router;

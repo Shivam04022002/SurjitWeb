@@ -193,3 +193,7 @@ export const useBranches = () =>
 // ── Homepage statistics ────────────────────────────────────────────────────────
 export const useHomepageStats = () =>
     useApi(apiService.getHomepageStats, [], { cacheKey: 'homepage-stats' });
+
+// ── Legal pages ────────────────────────────────────────────────────────────────
+export const useLegalPage = (slug) =>
+    useApi(() => apiService.getLegalPage(slug), [slug], { cacheKey: `legal-${slug}`, enabled: !!slug });

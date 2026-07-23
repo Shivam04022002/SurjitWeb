@@ -14,7 +14,8 @@ const migrations = [
     { name: 'Gallery', fn: require('./migrateGallery') },
     { name: 'Settings', fn: require('./migrateSettings') },
     { name: 'Branches', fn: require('./migrateBranches') },
-    { name: 'Homepage Statistics', fn: require('./migrateHomepageStats') }
+    { name: 'Homepage Statistics', fn: require('./migrateHomepageStats') },
+    { name: 'Legal Pages', fn: require('./migrateLegalPages') }
 ];
 
 (async () => {

@@ -46,6 +46,7 @@ import {
   Description,
   Place,
   Insights,
+  Gavel,
   Settings
 } from '@mui/icons-material'
 
@@ -101,7 +102,8 @@ const menuItems = [
       { title: 'Customer Reviews', icon: RateReview, path: '/reviews' },
       { title: 'Annual Reports', icon: Description, path: '/reports' },
       { title: 'Branches', icon: Place, path: '/branches' },
-      { title: 'Homepage Statistics', icon: Insights, path: '/homepage-stats' }
+      { title: 'Homepage Statistics', icon: Insights, path: '/homepage-stats' },
+      { title: 'Legal Pages', icon: Gavel, path: '/legal-pages' }
     ]
   },
   { title: 'Media', icon: PermMedia, path: '#' },

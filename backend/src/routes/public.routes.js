@@ -19,6 +19,7 @@ const reviewController = require('../controllers/review.controller');
 const reportController = require('../controllers/report.controller');
 const branchController = require('../controllers/branch.controller');
 const homepageStatController = require('../controllers/homepageStat.controller');
+const legalPageController = require('../controllers/legalPage.controller');
 const { createUpload } = require('../middleware/upload');
 const validate = require('../middleware/validate');
 const { reviewSubmissionLimiter } = require('../middleware/rateLimiters');
@@ -226,5 +227,12 @@ router.get('/branches', branchController.listPublicBranches);
 // ── Homepage statistics ────────────────────────────────────────────────────────
 // Published stats only, in display order. Backs the counter strip in the Hero.
 router.get('/homepage-stats', homepageStatController.listPublicStats);
+
+// ── Legal pages ────────────────────────────────────────────────────────────────
+// Published legal pages. The list carries only metadata; a single page is
+// fetched by slug, and its optional document served via /download.
+router.get('/legal-pages', legalPageController.listPublicPages);
+router.get('/legal-pages/:slug', legalPageController.getPublicPageBySlug);
+router.get('/legal-pages/:slug/download', legalPageController.downloadPage);
 
 module.exports = router;

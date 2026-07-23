@@ -116,3 +116,7 @@ export const getBranches = () => api.get('/branches').then(r => r.data.data.bran
 // ── Homepage statistics ────────────────────────────────────────────────────────
 // Published stats only, in display order. Backs the counter strip in the Hero.
 export const getHomepageStats = () => api.get('/homepage-stats').then(r => r.data.data.stats);
+
+// ── Legal pages ────────────────────────────────────────────────────────────────
+// A single published legal page by slug. Backs the footer's legal links.
+export const getLegalPage = (slug) => api.get(`/legal-pages/${slug}`).then(r => r.data.data.page);
