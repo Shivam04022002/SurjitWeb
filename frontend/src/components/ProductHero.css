@@ -74,6 +74,13 @@
     text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
 }
 
+/* Without a hero image the band is the light brand gradient, where the base
+   .breadcrumbs-on-hero white measures 1.08:1 against #fff5e6 — the trail was
+   effectively invisible. Body grey on the same background measures 7:1. */
+.product-hero:not(.has-hero-image) .breadcrumbs-on-hero .breadcrumbs-list {
+    color: var(--gray-600);
+}
+
 /* Focus rings have to stay visible against a dark, busy backdrop. */
 .product-hero.has-hero-image a:focus-visible {
     outline: 2px solid #fff;
