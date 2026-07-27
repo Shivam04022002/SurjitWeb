@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const JobOpening = require('../../models/JobOpening');
 const { AppError } = require('../../middleware/errorHandler');
 const HTTP_STATUS = require('../../constants/httpStatus');
@@ -14,6 +15,23 @@ const getAllJobs = async (filters = {}) => {
 
 const getJobById = async (id) => {
     const job = await JobOpening.findById(id);
+    if (!job) {
+        throw new AppError('Job opening not found', HTTP_STATUS.NOT_FOUND);
+    }
+    return job;
+};
+
+// Public counterpart of getJobById. The public listing already hides drafts and
+// deactivated roles; this applies the same gate to a direct link so a job detail
+// URL cannot surface a job the listing does not show. Admin reads keep using
+// getJobById, which still returns any job regardless of state.
+const getPublishedJobById = async (id) => {
+    // The id arrives straight off a public URL, so a malformed one must read as
+    // "no such job" rather than surfacing a Mongoose CastError as a 500.
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new AppError('Job opening not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const job = await JobOpening.findOne({ _id: id, isPublished: true, isActive: true });
     if (!job) {
         throw new AppError('Job opening not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -105,6 +123,7 @@ const duplicateJob = async (id) => {
 module.exports = {
     getAllJobs,
     getJobById,
+    getPublishedJobById,
     createJob,
     updateJob,
     deleteJob,

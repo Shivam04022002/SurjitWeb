@@ -132,6 +132,12 @@ export const useCareerSettings = () =>
 export const useJobs = () =>
     useApi(apiService.getJobs, [], { cacheKey: 'jobs' });
 
+export const useJob = (id) =>
+    useApi(() => apiService.getJobById(id), [id], {
+        cacheKey: `job-${id}`,
+        enabled: !!id,
+    });
+
 export const useGalleryAlbums = () =>
     useApi(apiService.getGalleryAlbums, [], { cacheKey: 'gallery-albums' });
 

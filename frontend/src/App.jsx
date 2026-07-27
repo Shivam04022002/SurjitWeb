@@ -21,6 +21,7 @@ const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
 const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'));
 const NodalOfficer = lazy(() => import('./pages/NodalOfficer'));
 const JobApply = lazy(() => import('./pages/JobApply'));
+const JobDetail = lazy(() => import('./pages/JobDetail'));
 const EventGallery = lazy(() => import('./pages/EventGallery'));
 const Gallery = lazy(() => import('./pages/Gallery'));
 const Reports = lazy(() => import('./pages/Reports'));
@@ -44,6 +45,7 @@ function App() {
               <Route path="/products/:categorySlug/:productSlug" element={<ProductDetail />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/career" element={<Career />} />
+              <Route path="/career/jobs/:id" element={<JobDetail />} />
               <Route path="/faqs" element={<FAQs />} />
               <Route path="/loan-application" element={<LoanApplication />} />
               <Route path="/blogs" element={<Blogs />} />

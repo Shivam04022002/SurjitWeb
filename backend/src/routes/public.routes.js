@@ -137,7 +137,7 @@ router.get('/careers/jobs', asyncHandler(async (req, res) => {
 }));
 
 router.get('/careers/jobs/:id', asyncHandler(async (req, res) => {
-    const job = await jobsService.getJobById(req.params.id);
+    const job = await jobsService.getPublishedJobById(req.params.id);
     return sendSuccess(res, 'Job fetched successfully', { job });
 }));
 
