@@ -5,6 +5,8 @@ import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ProductNav from '../components/ProductNav';
 import ProductHeroCarousel from '../components/ProductHeroCarousel';
+import ProductHeroImage from '../components/ProductHeroImage';
+import ProductBanner from '../components/ProductBanner';
 import { ArrowRight, Check, FileText, RefreshCw } from 'lucide-react';
 import './ProductPage.css';
 import {
@@ -160,10 +162,13 @@ const ProductDetail = () => {
                                     <a href="#faq">FAQ</a>
                                 </div>
                             </div>
+                            <ProductHeroImage product={product} />
                         </div>
                     </div>
                 </section>
             )}
+
+            <ProductBanner product={product} />
 
             {/* Switch between the products in this category. Hidden when this is
                 the only one, since the row would then just be the page you are

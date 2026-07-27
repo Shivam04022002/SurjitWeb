@@ -4,6 +4,7 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import { Keyboard, Mousewheel } from 'swiper/modules';
 import { ArrowRight } from 'lucide-react';
 import Breadcrumbs from './Breadcrumbs';
+import ProductHeroImage from './ProductHeroImage';
 import 'swiper/css';
 import './ProductHeroCarousel.css';
 
@@ -39,6 +40,7 @@ const HeroSlideBody = ({ product, category }) => (
                 <a href="#faq">FAQ</a>
             </div>
         </div>
+        <ProductHeroImage product={product} />
     </div>
 );
 

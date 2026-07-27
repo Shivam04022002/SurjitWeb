@@ -5,6 +5,29 @@ import { FreeMode, Mousewheel } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/free-mode';
 import './ProductNav.css';
+import { imageUrl } from '../utils/image';
+
+// The pill's thumbnail. Dropped from the DOM when the product has no thumbnail
+// in the CMS, or when the URL fails to load, so a pill without one keeps its
+// original text-only shape instead of reserving an empty square.
+const PillThumb = ({ product }) => {
+    const [failed, setFailed] = useState(false);
+    const src = imageUrl(product?.thumbnailImage);
+
+    if (!src || failed) return null;
+
+    return (
+        <img
+            className="product-nav-thumb"
+            src={src}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            decoding="async"
+            onError={() => setFailed(true)}
+        />
+    );
+};
 
 // Every active product in the category, straight from the CMS — a product added
 // there becomes a pill here with no further configuration.
@@ -60,6 +83,7 @@ const ProductNav = ({ categorySlug, products, currentSlug }) => {
                                     className={`product-nav-pill ${isCurrent ? 'is-active' : ''}`}
                                     aria-current={isCurrent ? 'page' : undefined}
                                 >
+                                    <PillThumb product={product} />
                                     {product.name}
                                 </Link>
                             </SwiperSlide>

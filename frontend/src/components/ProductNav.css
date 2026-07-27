@@ -24,8 +24,13 @@
 
 /* Matches .product-quick-links in the hero — same radius, padding, border and
    hover, so the two pill rows read as one family. */
+/* inline-flex rather than inline-block so an optional thumbnail sits centred
+   beside the label. With a single text node it renders identically to before,
+   so pills without a thumbnail are unchanged. */
 .product-nav-pill {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
     padding: 9px 20px;
     background: white;
     border: 1px solid rgba(206, 129, 18, 0.15);
@@ -74,4 +79,20 @@
         font-size: 0.85rem;
         padding: 8px 18px;
     }
+}
+
+/* Optional CMS thumbnail inside a pill. Only present when the product actually
+   has one — see PillThumb — so no empty square is ever reserved. */
+.product-nav-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    margin-left: -6px;
+    background: var(--gray-100);
+}
+
+.product-nav-pill.is-active .product-nav-thumb {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.65);
 }
