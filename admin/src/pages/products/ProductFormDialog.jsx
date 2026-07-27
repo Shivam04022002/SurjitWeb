@@ -24,7 +24,6 @@ const toSlug = (str) =>
 const ProductFormDialog = ({ open, product, categories, onSave, onClose, saving }) => {
   const [form, setForm] = useState(defaultForm)
   const [heroFile, setHeroFile] = useState(null)
-  const [bannerFile, setBannerFile] = useState(null)
   const [thumbFile, setThumbFile] = useState(null)
   const [errors, setErrors] = useState({})
 
@@ -46,7 +45,6 @@ const ProductFormDialog = ({ open, product, categories, onSave, onClose, saving 
         setForm(defaultForm)
       }
       setHeroFile(null)
-      setBannerFile(null)
       setThumbFile(null)
       setErrors({})
     }
@@ -90,7 +88,6 @@ const ProductFormDialog = ({ open, product, categories, onSave, onClose, saving 
     if (form.displayOrder !== '') fd.append('displayOrder', form.displayOrder)
     fd.append('isActive', form.isActive)
     if (heroFile) fd.append('heroImage', heroFile)
-    if (bannerFile) fd.append('bannerImage', bannerFile)
     if (thumbFile) fd.append('thumbnailImage', thumbFile)
 
     onSave(fd)
@@ -191,12 +188,6 @@ const ProductFormDialog = ({ open, product, categories, onSave, onClose, saving 
                 name="heroImage"
                 currentImageUrl={product?.heroImage?.url || ''}
                 onChange={setHeroFile}
-              />
-              <ImageUpload
-                label="Banner Image"
-                name="bannerImage"
-                currentImageUrl={product?.bannerImage?.url || ''}
-                onChange={setBannerFile}
               />
               <ImageUpload
                 label="Thumbnail Image"

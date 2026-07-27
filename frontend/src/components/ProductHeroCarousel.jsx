@@ -1,52 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Keyboard, Mousewheel } from 'swiper/modules';
-import { ArrowRight } from 'lucide-react';
-import Breadcrumbs from './Breadcrumbs';
-import ProductHeroImage from './ProductHeroImage';
+import ProductHeroBody from './ProductHeroBody';
 import 'swiper/css';
 import './ProductHeroCarousel.css';
-
-// The hero body for one product. Markup is a copy of the single-product hero
-// so a slide is indistinguishable from the page as it was.
-const HeroSlideBody = ({ product, category }) => (
-    <div className="product-hero-content">
-        <div className="product-hero-text">
-            <div className="breadcrumbs-on-hero" style={{ marginBottom: '1rem' }}>
-                <Breadcrumbs
-                    items={[
-                        { name: 'Home', path: '/' },
-                        { name: 'Products', path: '/products' },
-                        ...(category ? [{ name: category.name, path: `/products/${category.slug}` }] : []),
-                        { name: product.name },
-                    ]}
-                />
-            </div>
-            <span className="product-badge">{category?.name || product.subtitle || 'Product'}</span>
-            <h1>{product.name || product.title}</h1>
-            <p>{product.heroDescription || product.description}</p>
-            <div className="product-hero-actions">
-                <Link to="/loan-application" className="btn btn-accent btn-lg">
-                    Apply Loan
-                    <ArrowRight size={20} />
-                </Link>
-            </div>
-            <div className="product-quick-links">
-                <a href="#features-and-benefits">Features &amp; Benefits</a>
-                <a href="#eligibility">Eligibility</a>
-                <a href="#interest-rate-and-charges">Interest Rate &amp; Charges</a>
-                <a href="#emi-calculator">EMI Calculator</a>
-                <a href="#faq">FAQ</a>
-            </div>
-        </div>
-        <ProductHeroImage product={product} />
-    </div>
-);
 
 // One slide per active product in the category, straight from the CMS.
 // Swiping publishes the new product to the URL, which is what drives every
 // section below — so a swipe and a card click end in exactly the same state.
+//
+// The surrounding <section> belongs to ProductHero, which owns the background
+// image and the scrim; this renders only the swipeable copy inside it.
 const ProductHeroCarousel = ({ products, category, currentSlug }) => {
     const navigate = useNavigate();
     const [swiper, setSwiper] = useState(null);
@@ -71,7 +36,7 @@ const ProductHeroCarousel = ({ products, category, currentSlug }) => {
     };
 
     return (
-        <section className="product-hero product-hero-carousel">
+        <div className="product-hero-carousel">
             <div className="container">
                 <Swiper
                     modules={[Keyboard, Mousewheel]}
@@ -97,12 +62,12 @@ const ProductHeroCarousel = ({ products, category, currentSlug }) => {
                 >
                     {products.map((product) => (
                         <SwiperSlide key={product._id || product.slug}>
-                            <HeroSlideBody product={product} category={category} />
+                            <ProductHeroBody product={product} category={category} />
                         </SwiperSlide>
                     ))}
                 </Swiper>
             </div>
-        </section>
+        </div>
     );
 };
 

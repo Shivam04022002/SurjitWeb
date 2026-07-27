@@ -13,7 +13,6 @@ const toSlug = (str) =>
 const GeneralTab = ({ product, categories, onSaved, showToast }) => {
   const [form, setForm] = useState({})
   const [heroFile, setHeroFile] = useState(null)
-  const [bannerFile, setBannerFile] = useState(null)
   const [thumbFile, setThumbFile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
@@ -72,7 +71,6 @@ const GeneralTab = ({ product, categories, onSaved, showToast }) => {
       if (form.displayOrder !== '') fd.append('displayOrder', form.displayOrder)
       fd.append('isActive', form.isActive)
       if (heroFile) fd.append('heroImage', heroFile)
-      if (bannerFile) fd.append('bannerImage', bannerFile)
       if (thumbFile) fd.append('thumbnailImage', thumbFile)
 
       await productsService.updateProduct(product._id, fd)
@@ -177,12 +175,6 @@ const GeneralTab = ({ product, categories, onSaved, showToast }) => {
               name="heroImage"
               currentImageUrl={product?.heroImage?.url || ''}
               onChange={setHeroFile}
-            />
-            <ImageUpload
-              label="Banner Image"
-              name="bannerImage"
-              currentImageUrl={product?.bannerImage?.url || ''}
-              onChange={setBannerFile}
             />
             <ImageUpload
               label="Thumbnail Image"

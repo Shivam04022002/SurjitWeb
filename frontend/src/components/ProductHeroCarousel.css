@@ -1,5 +1,5 @@
-/* The carousel reuses .product-hero for its background, padding and centring,
-   so the section keeps the exact look it had. These rules only cover what
+/* The carousel sits inside ProductHero's <section>, which owns the background,
+   padding and centring for both hero variants. These rules only cover what
    wrapping the content in Swiper changes. */
 
 /* Swiper's default cursor is grab via grabCursor, but the links inside a

@@ -5,8 +5,8 @@ import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ProductNav from '../components/ProductNav';
 import ProductHeroCarousel from '../components/ProductHeroCarousel';
-import ProductHeroImage from '../components/ProductHeroImage';
-import ProductBanner from '../components/ProductBanner';
+import ProductHero from '../components/ProductHero';
+import ProductHeroBody from '../components/ProductHeroBody';
 import { ArrowRight, Check, FileText, RefreshCw } from 'lucide-react';
 import './ProductPage.css';
 import {
@@ -118,71 +118,40 @@ const ProductDetail = () => {
                 canonical={seo?.canonicalUrl || `${SITE_URL}/products/${actualCategorySlug}/${product.slug}`}
                 ogImage={seo?.ogImage?.url}
             />
-            {/* Hero. Swipeable when the category holds more than one product —
-                each sibling is a slide, and landing on one puts it in the URL,
-                which is what refreshes every section below. A lone product has
-                nothing to swipe to, so it renders as the plain hero. */}
-            {siblingProducts.length > 1 ? (
-                <ProductHeroCarousel
-                    products={siblingProducts}
-                    category={categoryData?.category}
-                    currentSlug={productSlug}
-                />
-            ) : (
-                <section className="product-hero">
+            {/* Hero. The CMS hero image is this section's background — there is
+                no separate image block anywhere on the page. Swipeable when the
+                category holds more than one product: each sibling is a slide,
+                and landing on one puts it in the URL, which is what refreshes
+                every section below. A lone product has nothing to swipe to, so
+                its copy renders directly. The switcher sits inside the hero, so
+                the whole band reads as one unit. */}
+            <ProductHero product={product}>
+                {siblingProducts.length > 1 ? (
+                    <ProductHeroCarousel
+                        products={siblingProducts}
+                        category={categoryData?.category}
+                        currentSlug={productSlug}
+                    />
+                ) : (
                     <div className="container">
-                        <div className="product-hero-content">
-                            <div className="product-hero-text">
-                                <div className="breadcrumbs-on-hero" style={{ marginBottom: '1rem' }}>
-                                    <Breadcrumbs
-                                        items={[
-                                            { name: 'Home', path: '/' },
-                                            { name: 'Products', path: '/products' },
-                                            ...(product.category
-                                                ? [{ name: product.category.name, path: `/products/${product.category.slug}` }]
-                                                : []),
-                                            { name: product.name },
-                                        ]}
-                                    />
-                                </div>
-                                <span className="product-badge">{product.category?.name || product.subtitle || 'Product'}</span>
-                                <h1>{product.name || product.title}</h1>
-                                <p>{product.heroDescription || product.description}</p>
-                                <div className="product-hero-actions">
-                                    <Link to="/loan-application" className="btn btn-accent btn-lg">
-                                        Apply Loan
-                                        <ArrowRight size={20} />
-                                    </Link>
-                                </div>
-                                <div className="product-quick-links">
-                                    <a href="#features-and-benefits">Features & Benefits</a>
-                                    <a href="#eligibility">Eligibility</a>
-                                    <a href="#interest-rate-and-charges">Interest Rate & Charges</a>
-                                    <a href="#emi-calculator">EMI Calculator</a>
-                                    <a href="#faq">FAQ</a>
-                                </div>
-                            </div>
-                            <ProductHeroImage product={product} />
-                        </div>
+                        <ProductHeroBody product={product} category={product.category} />
                     </div>
-                </section>
-            )}
+                )}
 
-            <ProductBanner product={product} />
-
-            {/* Switch between the products in this category. Hidden when this is
-                the only one, since the row would then just be the page you are
-                already on. */}
-            {siblingProducts.length > 1 && (
-                <ProductNav
-                    categorySlug={categoryData.category.slug}
-                    products={siblingProducts}
-                    // Keyed off the URL rather than the loaded product so the
-                    // pill highlights the moment it is clicked, instead of
-                    // waiting for the fetch to come back.
-                    currentSlug={productSlug}
-                />
-            )}
+                {/* Switch between the products in this category. Hidden when
+                    this is the only one, since the row would then just be the
+                    page you are already on. */}
+                {siblingProducts.length > 1 && (
+                    <ProductNav
+                        categorySlug={categoryData.category.slug}
+                        products={siblingProducts}
+                        // Keyed off the URL rather than the loaded product so the
+                        // pill highlights the moment it is clicked, instead of
+                        // waiting for the fetch to come back.
+                        currentSlug={productSlug}
+                    />
+                )}
+            </ProductHero>
 
             {/* Features */}
             <section id="features-and-benefits" className="product-features section">

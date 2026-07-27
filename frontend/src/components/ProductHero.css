@@ -1,0 +1,167 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Product hero with the CMS hero image as its background.
+
+   The base .product-hero rules (padding, centring, the brand gradient) stay in
+   ProductPage.css and are the no-image fallback. Everything here only applies
+   once .has-hero-image is set, so a product without an upload renders exactly
+   as it did before.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.product-hero.has-hero-image {
+    /* Scrim first, photograph second — one layered background, so the image is
+       fetched once and no extra element is needed to darken it. */
+    background-image:
+        linear-gradient(rgba(0, 0, 0, 0.58), rgba(0, 0, 0, 0.46)),
+        var(--product-hero-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: #fff;
+    padding: 96px 0 72px;
+}
+
+/* A tall photograph should not make the band shorter than it reads as a hero,
+   and a wide one should not stretch it past a screenful. */
+.product-hero.has-hero-image {
+    min-height: 520px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* ── Contrast over the scrim ─────────────────────────────────────────────── */
+/* The light-background colours would be unreadable on the darkened image, so
+   the whole block flips to white. text-shadow covers the case where the photo
+   is bright behind a particular line. */
+
+.product-hero.has-hero-image .product-hero-text h1 {
+    color: #fff;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
+}
+
+.product-hero.has-hero-image .product-hero-text h1 .text-highlight {
+    color: var(--primary-400);
+}
+
+.product-hero.has-hero-image .product-hero-text p {
+    color: rgba(255, 255, 255, 0.94);
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45);
+}
+
+.product-hero.has-hero-image .product-badge {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.42);
+    color: #fff;
+}
+
+/* Section anchors: glass pills rather than the solid white ones, which would
+   punch holes in the photograph. */
+.product-hero.has-hero-image .product-quick-links a {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #fff;
+    backdrop-filter: blur(6px);
+}
+
+.product-hero.has-hero-image .product-quick-links a:hover {
+    background: rgba(255, 255, 255, 0.24);
+    border-color: #fff;
+    color: #fff;
+}
+
+.product-hero.has-hero-image .breadcrumbs-on-hero .breadcrumbs-list {
+    color: #fff;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Focus rings have to stay visible against a dark, busy backdrop. */
+.product-hero.has-hero-image a:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+}
+
+/* ── Product switcher, now inside the hero ───────────────────────────────── */
+/* The nav keeps its own markup; inside the hero it drops the band background
+   and border it uses when it sits on the page as its own strip. */
+
+.product-hero .product-nav {
+    background: none;
+    border-bottom: 0;
+    padding: 28px 0 0;
+}
+
+.product-hero.has-hero-image .product-nav-pill {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #fff;
+    backdrop-filter: blur(6px);
+}
+
+.product-hero.has-hero-image .product-nav-pill:hover {
+    background: rgba(255, 255, 255, 0.26);
+    border-color: #fff;
+    color: #fff;
+}
+
+/* The current product stays brand-coloured so it still reads as selected. */
+.product-hero.has-hero-image .product-nav-pill.is-active {
+    background: #fff;
+    border-color: #fff;
+    color: #8a5a0c;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+.product-hero.has-hero-image .product-nav-pill.is-active:hover {
+    background: #fff;
+    border-color: #fff;
+    color: #8a5a0c;
+}
+
+.product-hero.has-hero-image .product-nav-pill:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+    .product-hero.has-hero-image {
+        min-height: 440px;
+        padding: 72px 0 56px;
+    }
+}
+
+@media (max-width: 768px) {
+    .product-hero.has-hero-image {
+        min-height: 380px;
+        padding: 56px 0 44px;
+        /* A cover-scaled photo crops hard at narrow widths; holding the focal
+           point just above centre keeps subjects in frame. */
+        background-position: center 40%;
+    }
+
+    .product-hero .product-nav {
+        padding-top: 22px;
+    }
+}
+
+@media (max-width: 640px) {
+    .product-hero.has-hero-image {
+        min-height: 320px;
+        padding: 44px 0 36px;
+    }
+
+    .product-hero.has-hero-image .product-hero-text p {
+        font-size: 1rem;
+    }
+}
+
+/* backdrop-filter is a progressive nicety; without it the pills still have a
+   solid enough tint to read. Opting out for reduced-transparency users. */
+@media (prefers-reduced-transparency: reduce) {
+    .product-hero.has-hero-image .product-quick-links a,
+    .product-hero.has-hero-image .product-nav-pill {
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: none;
+    }
+}

@@ -22,9 +22,6 @@ const createProduct = asyncHandler(async (req, res) => {
         if (req.files.heroImage && req.files.heroImage[0]) {
             data.heroImage = buildFileResult(req.files.heroImage[0]);
         }
-        if (req.files.bannerImage && req.files.bannerImage[0]) {
-            data.bannerImage = buildFileResult(req.files.bannerImage[0]);
-        }
         if (req.files.thumbnailImage && req.files.thumbnailImage[0]) {
             data.thumbnailImage = buildFileResult(req.files.thumbnailImage[0]);
         }
@@ -39,7 +36,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     const data = { ...req.body };
 
     if (req.files) {
-        const imageFields = ['heroImage', 'bannerImage', 'thumbnailImage'];
+        const imageFields = ['heroImage', 'thumbnailImage'];
         for (const field of imageFields) {
             if (req.files[field] && req.files[field][0]) {
                 const existing = await productService.getProductById(id);
@@ -58,6 +55,9 @@ const updateProduct = asyncHandler(async (req, res) => {
 const deleteProduct = asyncHandler(async (req, res) => {
     const product = await productService.deleteProduct(req.params.id);
 
+    // bannerImage stays in this list even though it can no longer be uploaded:
+    // products created before it was retired still carry one, and deleting the
+    // product must still take its stored file with it rather than orphan it.
     const imageFields = ['heroImage', 'bannerImage', 'thumbnailImage'];
     for (const field of imageFields) {
         if (product[field] && product[field].fileName) {

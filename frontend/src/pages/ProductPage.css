@@ -8,10 +8,13 @@
     padding-top: 0;
 }
 
+/* The gradient is the hero's fallback. It carries no !important so the CMS
+   hero image can layer a scrim over it — see ProductHero.css, which only
+   applies once .has-hero-image is set. */
 .product-hero {
     position: relative;
     padding: 70px 0 60px;
-    background: linear-gradient(135deg, var(--primary-100) 0%, var(--primary-50) 100%) !important;
+    background: linear-gradient(135deg, var(--primary-100) 0%, var(--primary-50) 100%);
     color: var(--gray-900);
     overflow: hidden;
     text-align: center;

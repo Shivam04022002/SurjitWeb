@@ -82,9 +82,11 @@ router.get('/:id', auth, canRead, productController.getProductById);
 router.post(
     '/',
     auth, canManage,
+    // bannerImage is no longer accepted: the public site has no banner slot
+    // since the hero image became the hero background. The field stays on the
+    // Product schema so existing uploads keep resolving and stay recoverable.
     productUpload.fields([
         { name: 'heroImage', maxCount: 1 },
-        { name: 'bannerImage', maxCount: 1 },
         { name: 'thumbnailImage', maxCount: 1 }
     ]),
     createProductValidation, validate,
@@ -94,9 +96,11 @@ router.post(
 router.put(
     '/:id',
     auth, canManage,
+    // bannerImage is no longer accepted: the public site has no banner slot
+    // since the hero image became the hero background. The field stays on the
+    // Product schema so existing uploads keep resolving and stay recoverable.
     productUpload.fields([
         { name: 'heroImage', maxCount: 1 },
-        { name: 'bannerImage', maxCount: 1 },
         { name: 'thumbnailImage', maxCount: 1 }
     ]),
     updateProductValidation, validate,
