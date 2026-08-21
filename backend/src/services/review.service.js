@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const Review = require('../models/Review');
+const Blog = require('../models/Blog');
 const { AppError } = require('../middleware/errorHandler');
 const { deleteUploadedFile } = require('./upload.service');
 const HTTP_STATUS = require('../constants/httpStatus');
@@ -26,10 +28,24 @@ const buildQuery = (filters = {}) => {
 // still gets the most recently approved reviews at the top.
 const SORT = { displayOrder: 1, approvedAt: -1, createdAt: -1 };
 
-// Approved only, public fields only. Backs the blog sidebar.
+// Approved only, public fields only, and always scoped to a single blog —
+// the sidebar belongs to the article it sits beside.
+//
+// Fails closed: a request without a usable blog id returns nothing rather than
+// every approved review. An unscoped fallback here is precisely what made one
+// customer's review surface under every article, so a dropped parameter must
+// produce an empty sidebar, never a global one.
 const listPublicReviews = async (filters = {}) => {
-    const query = { status: 'Approved' };
     const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 3, 1), 50);
+
+    if (!mongoose.Types.ObjectId.isValid(filters.blogId)) {
+        const emptyPage = Math.max(parseInt(filters.page, 10) || 1, 1);
+        return filters.page
+            ? { data: [], total: 0, page: emptyPage, limit, totalPages: 1 }
+            : [];
+    }
+
+    const query = { blog: filters.blogId, status: 'Approved' };
 
     if (!filters.page) {
         return Review.find(query).select(PUBLIC_FIELDS).sort(SORT).limit(limit);
@@ -54,8 +70,10 @@ const listReviews = async (filters = {}) => {
 
     const query = buildQuery(filters);
 
+    // Populated so a moderator can see which article a review was written from
+    // before approving it — the only human checkpoint on that association.
     const [data, total, pendingCount] = await Promise.all([
-        Review.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+        Review.find(query).populate('blog', 'title slug').sort({ createdAt: -1 }).skip(skip).limit(limit),
         Review.countDocuments(query),
         Review.countDocuments({ status: 'Pending' })
     ]);
@@ -64,15 +82,28 @@ const listReviews = async (filters = {}) => {
 };
 
 const getReviewById = async (id) => {
-    const review = await Review.findById(id);
+    const review = await Review.findById(id).populate('blog', 'title slug');
     if (!review) throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
     return review;
 };
 
+// Mirrors assertCategoryExists in blogs.service: the id is already known to be
+// well-formed by the validator, so what is left is proving it points at a real,
+// published article. Rejecting here keeps orphan reviews out of the collection.
+const assertBlogExists = async (blogId) => {
+    const blog = await Blog.findOne({ _id: blogId, status: 'published' }).select('_id');
+    if (!blog) throw new AppError('Selected blog does not exist', HTTP_STATUS.BAD_REQUEST);
+    return blog._id;
+};
+
 // Public submission. Status is forced here rather than taken from the request,
-// so a crafted payload cannot self-approve.
+// so a crafted payload cannot self-approve. The same applies to the blog: it is
+// read from the validated blogId only, so nothing else in the body can steer it.
 const submitReview = async (data, photoFile) => {
+    const blogId = await assertBlogExists(data.blogId);
+
     const payload = {
+        blog: blogId,
         customerName: data.customerName,
         mobile: data.mobile,
         email: data.email || '',

@@ -3,6 +3,11 @@ const { body } = require('express-validator');
 // Public submission. Everything a visitor can send is validated here; status
 // is never accepted from the request — the service sets it.
 const submitReviewValidation = [
+    // The blog the review was written from. Supplied by the page, never by the
+    // visitor — the service still confirms it resolves to a published blog.
+    body('blogId')
+        .trim().notEmpty().withMessage('Blog reference is required')
+        .isMongoId().withMessage('Invalid blog reference'),
     body('customerName')
         .trim().notEmpty().withMessage('Name is required')
         .isLength({ max: 120 }).withMessage('Name must not exceed 120 characters'),

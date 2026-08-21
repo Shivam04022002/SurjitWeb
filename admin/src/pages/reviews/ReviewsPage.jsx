@@ -150,6 +150,19 @@ const ReviewsPage = () => {
         : <Typography variant="caption" color="text.disabled">—</Typography>)
     },
     {
+      // Which article the review was written from. Reviews submitted before the
+      // sidebar became blog-specific have no blog and show a dash.
+      field: 'blog', headerName: 'Blog', flex: 1, minWidth: 180, sortable: false,
+      renderCell: (p) => (p.row.blog?.title
+        ? (
+          <Stack spacing={0} sx={{ overflow: 'hidden' }}>
+            <Typography variant="body2" noWrap>{p.row.blog.title}</Typography>
+            <Typography variant="caption" color="text.secondary" noWrap>/{p.row.blog.slug}</Typography>
+          </Stack>
+        )
+        : <Typography variant="caption" color="text.disabled">—</Typography>)
+    },
+    {
       field: 'createdAt', headerName: 'Date', width: 120,
       renderCell: (p) => <Typography variant="body2">{fmt(p.row.createdAt)}</Typography>
     },
@@ -299,6 +312,9 @@ const ReviewsPage = () => {
                   {viewing.email && <Typography variant="body2"><strong>Email:</strong> {viewing.email}</Typography>}
                   {viewing.city && <Typography variant="body2"><strong>City:</strong> {viewing.city}</Typography>}
                   {viewing.productName && <Typography variant="body2"><strong>Product:</strong> {viewing.productName}</Typography>}
+                  {viewing.blog?.title && (
+                    <Typography variant="body2"><strong>Blog:</strong> {viewing.blog.title} (/{viewing.blog.slug})</Typography>
+                  )}
                   <Typography variant="body2"><strong>Submitted:</strong> {fmt(viewing.createdAt)}</Typography>
                   <Typography variant="body2">
                     <strong>Status:</strong>{' '}

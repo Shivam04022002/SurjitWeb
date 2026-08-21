@@ -183,9 +183,18 @@ export const useAdjacentBlogs = (slug) =>
     });
 
 // ── Customer reviews ───────────────────────────────────────────────────────────
+// Reviews belong to one blog, so the params object always carries a blogId —
+// which makes both the effect deps and the cache key blog-specific
+// (reviews-{"blogId":"…","limit":12}). That is what stops one article's list
+// being reused for the next, since React Router keeps BlogDetail mounted while
+// the slug changes. Without a blogId there is nothing to fetch: the request is
+// skipped rather than sent unscoped.
 export const useReviews = (params = {}) => {
     const key = JSON.stringify(params);
-    return useApi(() => apiService.getReviews(params), [key], { cacheKey: `reviews-${key}` });
+    return useApi(() => apiService.getReviews(params), [key], {
+        cacheKey: `reviews-${key}`,
+        enabled: Boolean(params.blogId),
+    });
 };
 
 // ── Annual reports ─────────────────────────────────────────────────────────────

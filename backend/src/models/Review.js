@@ -3,6 +3,15 @@ const mongoose = require('mongoose');
 const REVIEW_STATUS = ['Pending', 'Approved', 'Rejected'];
 
 const reviewSchema = new mongoose.Schema({
+    // The blog this review was written from. Optional because reviews created
+    // before the sidebar became blog-specific have no association to record —
+    // they stay null and are simply never matched by a blog-scoped query.
+    blog: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Blog',
+        default: null,
+        index: true
+    },
     customerName: {
         type: String,
         required: [true, 'Customer name is required'],
@@ -84,6 +93,9 @@ reviewSchema.pre('save', function (next) {
 // Backs the public sidebar: approved, ordered, newest first as a tie-break.
 reviewSchema.index({ status: 1, displayOrder: 1 });
 reviewSchema.index({ createdAt: -1 });
+// Backs the blog-scoped sidebar query, which always filters on blog + status
+// and sorts by displayOrder.
+reviewSchema.index({ blog: 1, status: 1, displayOrder: 1 });
 
 module.exports = mongoose.model('Review', reviewSchema);
 module.exports.REVIEW_STATUS = REVIEW_STATUS;

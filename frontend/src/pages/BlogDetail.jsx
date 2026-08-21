@@ -134,7 +134,7 @@ const BlogDetail = () => {
                 </div>
             </div>
 
-                <ReviewsSidebar />
+                <ReviewsSidebar blogId={blog._id} />
             </div>
 
             {/* Related: same category, this article excluded. */}

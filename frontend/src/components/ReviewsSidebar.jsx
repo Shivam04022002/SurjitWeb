@@ -35,14 +35,18 @@ const ReviewSkeleton = () => (
     </div>
 );
 
-// Approved reviews, in the order set during moderation. Fetches a few more
-// than it shows so "View more" can reveal them without a second request.
-// The section renders even with no reviews, because it also carries the
-// invitation for customers to write one.
-const ReviewsSidebar = () => {
+// Approved reviews for one article, in the order set during moderation. Fetches
+// a few more than it shows so "View more" can reveal them without a second
+// request. The section renders even with no reviews, because it also carries
+// the invitation for customers to write one.
+//
+// blogId scopes both the request and the hook's cache key, which is what keeps
+// the list correct when React Router swaps articles underneath this component
+// without ever unmounting it.
+const ReviewsSidebar = ({ blogId }) => {
     const [expanded, setExpanded] = useState(false);
     const [formOpen, setFormOpen] = useState(false);
-    const { data: reviews, loading } = useReviews({ limit: 12 });
+    const { data: reviews, loading } = useReviews({ blogId, limit: 12 });
 
     const all = reviews || [];
     const shown = expanded ? all : all.slice(0, VISIBLE);
@@ -118,7 +122,7 @@ const ReviewsSidebar = () => {
                 </button>
             </div>
 
-            <ReviewFormModal isOpen={formOpen} onClose={() => setFormOpen(false)} />
+            <ReviewFormModal isOpen={formOpen} onClose={() => setFormOpen(false)} blogId={blogId} />
         </aside>
     );
 };

@@ -11,7 +11,11 @@ const MAX_PHOTO = 10 * 1024 * 1024;
 
 // Submissions are held for moderation, so the form promises verification
 // rather than immediate publication.
-const ReviewFormModal = ({ isOpen, onClose }) => {
+//
+// blogId is context, not input: it comes from the article the form was opened
+// on and is deliberately kept out of `form`/EMPTY so it is never rendered,
+// never editable, and never cleared by the reset effect.
+const ReviewFormModal = ({ isOpen, onClose, blogId }) => {
     const [form, setForm] = useState(EMPTY);
     const [photo, setPhoto] = useState(null);
     const [photoName, setPhotoName] = useState('');
@@ -89,6 +93,7 @@ const ReviewFormModal = ({ isOpen, onClose }) => {
         try {
             const fd = new FormData();
             Object.entries(form).forEach(([k, v]) => fd.append(k, String(v)));
+            fd.append('blogId', blogId);
             if (photo) fd.append('photo', photo);
             await submitReview(fd);
             setDone(true);
