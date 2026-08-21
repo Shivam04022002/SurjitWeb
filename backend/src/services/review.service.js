@@ -62,7 +62,11 @@ const listPublicReviews = async (filters = {}) => {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
 };
 
-// Moderation queue. Pending first so new submissions surface without filtering.
+// Moderation queue. Pending first so new submissions surface without filtering,
+// then displayOrder — the same order the public sidebar uses, so the sequence a
+// moderator arranges here is the sequence a visitor actually sees. Sorting this
+// list by createdAt instead is what made the two disagree: the reorder controls
+// wrote displayOrder, and this list then re-sorted it away.
 const listReviews = async (filters = {}) => {
     const page = Math.max(parseInt(filters.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 10, 1), 100);
@@ -70,10 +74,33 @@ const listReviews = async (filters = {}) => {
 
     const query = buildQuery(filters);
 
-    // Populated so a moderator can see which article a review was written from
-    // before approving it — the only human checkpoint on that association.
+    // An aggregation rather than find().sort(): the Pending-first rule is a
+    // computed rank, not a stored field. Blog is populated afterwards because
+    // aggregate() bypasses Mongoose's ref handling.
+    const listPipeline = [
+        { $match: query },
+        {
+            $addFields: {
+                statusRank: {
+                    $switch: {
+                        branches: [
+                            { case: { $eq: ['$status', 'Pending'] }, then: 0 },
+                            { case: { $eq: ['$status', 'Approved'] }, then: 1 }
+                        ],
+                        default: 2
+                    }
+                }
+            }
+        },
+        { $sort: { statusRank: 1, displayOrder: 1, createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        { $project: { statusRank: 0 } }
+    ];
+
     const [data, total, pendingCount] = await Promise.all([
-        Review.find(query).populate('blog', 'title slug').sort({ createdAt: -1 }).skip(skip).limit(limit),
+        Review.aggregate(listPipeline)
+            .then((docs) => Review.populate(docs, { path: 'blog', select: 'title slug' })),
         Review.countDocuments(query),
         Review.countDocuments({ status: 'Pending' })
     ]);
@@ -143,9 +170,21 @@ const deleteReview = async (id) => {
     return { deleted: true };
 };
 
+// Reorders within the positions these reviews already occupy, rather than
+// renumbering from 1. The CMS sends a single page at a time, so numbering from
+// 1 would hand page 2 the same displayOrder values page 1 already holds and
+// scramble the public order. Permuting a set among its own slots cannot
+// collide with anything outside it.
 const reorderReviews = async (orderedIds) => {
+    const existing = await Review.find({ _id: { $in: orderedIds } }).select('displayOrder');
+    if (existing.length !== orderedIds.length) {
+        throw new AppError('One or more reviews no longer exist', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const slots = existing.map((r) => r.displayOrder).sort((a, b) => a - b);
+
     const bulkOps = orderedIds.map((id, index) => ({
-        updateOne: { filter: { _id: id }, update: { $set: { displayOrder: index + 1 } } }
+        updateOne: { filter: { _id: id }, update: { $set: { displayOrder: slots[index] } } }
     }));
     await Review.bulkWrite(bulkOps);
     return Review.find({ _id: { $in: orderedIds } }).sort(SORT);
