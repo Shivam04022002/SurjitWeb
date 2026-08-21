@@ -28,6 +28,30 @@
     margin: 0;
 }
 
+/* Approved-review count beside the heading. Lighter than the title so it reads
+   as a quantity rather than part of the label. */
+.reviews-sidebar-header h2 .reviews-count {
+    font-weight: 500;
+    color: #CE8112;
+}
+
+.reviews-loading-more {
+    font-size: 0.85rem;
+    color: var(--gray-500);
+    text-align: center;
+    margin: 0;
+}
+
+.reviews-load-error {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--gray-600, #4b5563);
+    text-align: center;
+}
+
 .review-card {
     position: relative;
     background: white;

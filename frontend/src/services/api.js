@@ -93,8 +93,11 @@ export const getRelatedBlogs = (slug, limit = 3) =>
 export const getAdjacentBlogs = (slug) => api.get(`/blogs/${slug}/adjacent`).then(r => r.data.data);
 
 // ── Customer reviews ───────────────────────────────────────────────────────────
-// Passing `limit` returns a plain array; omit it for the paginated envelope.
-export const getReviews = (params = {}) => api.get('/reviews', { params }).then(r => r.data.data.reviews);
+// Returns the response envelope rather than just the array, because the sidebar
+// needs `total` to show a true count and to know when it has walked every page.
+// With `page` the server sends { reviews, total, page, limit, totalPages };
+// without it, only { reviews } — so callers read `.reviews` either way.
+export const getReviews = (params = {}) => api.get('/reviews', { params }).then(r => r.data.data);
 
 // Customer submission. Multipart because an optional photo rides along. The
 // server creates every submission as Pending — nothing here can publish.
