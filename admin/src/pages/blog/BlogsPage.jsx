@@ -10,6 +10,7 @@ import {
   ContentCopy, OpenInNew
 } from '@mui/icons-material'
 import { blogService } from '../../services/blog.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 
@@ -27,6 +28,7 @@ const StatusPill = ({ status }) => (
 const fmt = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—')
 
 const BlogsPage = () => {
+  const perms = usePermissions()
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
@@ -174,7 +176,7 @@ const BlogsPage = () => {
               <Edit fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={params.row.status === 'published' ? 'Unpublish' : 'Publish'}>
+          {perms.canPublish && (<Tooltip title={params.row.status === 'published' ? 'Unpublish' : 'Publish'}>
             <IconButton
               size="small"
               color={params.row.status === 'published' ? 'success' : 'default'}
@@ -182,7 +184,7 @@ const BlogsPage = () => {
             >
               {params.row.status === 'published' ? <Public fontSize="small" /> : <Unpublished fontSize="small" />}
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
           <Tooltip title={params.row.status === 'published' ? 'Preview on site' : 'Publish to preview'}>
             <span>
               <IconButton
@@ -199,14 +201,14 @@ const BlogsPage = () => {
               <ContentCopy fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          {perms.canDelete && (<Tooltip title="Delete">
             <IconButton
               size="small" color="error"
               onClick={() => setDeleteDialog({ open: true, id: params.row._id, title: params.row.title })}
             >
               <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
         </Stack>
       )
     }
@@ -221,9 +223,9 @@ const BlogsPage = () => {
             Create, publish and manage the articles shown on the website
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/blogs/new')}>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={() => navigate('/blogs/new')}>
           Add Blog
-        </Button>
+        </Button>)}
       </Box>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>

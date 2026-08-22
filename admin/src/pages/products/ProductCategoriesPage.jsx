@@ -7,12 +7,14 @@ import {
 import { DataGrid } from '@mui/x-data-grid'
 import { Add, Edit, Delete, Search, CheckCircle, Cancel } from '@mui/icons-material'
 import { productsService } from '../../services/products.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import CategoryFormDialog from './CategoryFormDialog'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import StatusChip from '../../components/StatusChip'
 import Toast from '../../components/Toast'
 
 const ProductCategoriesPage = () => {
+  const perms = usePermissions()
   const [categories, setCategories] = useState([])
   const [filtered, setFiltered] = useState([])
   const [loading, setLoading] = useState(true)
@@ -136,7 +138,7 @@ const ProductCategoriesPage = () => {
       sortable: false,
       renderCell: ({ row }) => (
         <Stack direction="row" spacing={0.5}>
-          <Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
+          {perms.canModerate && (<Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
             <IconButton
               size="small"
               color={row.isActive ? 'success' : 'default'}
@@ -144,13 +146,13 @@ const ProductCategoriesPage = () => {
             >
               {row.isActive ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
           <Tooltip title="Edit">
             <IconButton size="small" color="primary" onClick={() => { setSelectedCategory(row); setFormOpen(true) }}>
               <Edit fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          {perms.canDelete && (<Tooltip title="Delete">
             <IconButton
               size="small"
               color="error"
@@ -158,7 +160,7 @@ const ProductCategoriesPage = () => {
             >
               <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
         </Stack>
       )
     }
@@ -168,9 +170,9 @@ const ProductCategoriesPage = () => {
     <Container maxWidth="xl" disableGutters>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" fontWeight={700}>Product Categories</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => { setSelectedCategory(null); setFormOpen(true) }}>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={() => { setSelectedCategory(null); setFormOpen(true) }}>
           Add Category
-        </Button>
+        </Button>)}
       </Box>
 
       <Box sx={{ mb: 2 }}>

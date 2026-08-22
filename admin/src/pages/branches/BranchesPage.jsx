@@ -10,6 +10,7 @@ import {
   OpenInNew, ArrowUpward, ArrowDownward
 } from '@mui/icons-material'
 import { branchService } from '../../services/branch.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 
@@ -26,6 +27,7 @@ const fullAddress = (b) =>
     .join(', ')
 
 const BranchesPage = () => {
+  const perms = usePermissions()
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -252,7 +254,7 @@ const BranchesPage = () => {
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={p.row.status === 'Published' ? 'Unpublish' : 'Publish'}>
+            {perms.canPublish && (<Tooltip title={p.row.status === 'Published' ? 'Unpublish' : 'Publish'}>
               <span>
                 <IconButton
                   size="small" disabled={busy}
@@ -262,32 +264,32 @@ const BranchesPage = () => {
                   {p.row.status === 'Published' ? <Public fontSize="small" /> : <Unpublished fontSize="small" />}
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Move earlier">
+            </Tooltip>)}
+            {perms.canReorder && (<Tooltip title="Move earlier">
               <span>
                 <IconButton size="small" disabled={index === 0 || busy} onClick={() => handleMove(index, -1)}>
                   <ArrowUpward fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Move later">
+            </Tooltip>)}
+            {perms.canReorder && (<Tooltip title="Move later">
               <span>
                 <IconButton size="small" disabled={index === rows.length - 1 || busy} onClick={() => handleMove(index, 1)}>
                   <ArrowDownward fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
+            </Tooltip>)}
             <Tooltip title="Edit">
               <IconButton size="small" onClick={() => openEdit(p.row)}><Edit fontSize="small" /></IconButton>
             </Tooltip>
-            <Tooltip title="Delete">
+            {perms.canDelete && (<Tooltip title="Delete">
               <IconButton
                 size="small" color="error"
                 onClick={() => setDeleteDialog({ open: true, id: p.row._id, name: p.row.branchName })}
               >
                 <Delete fontSize="small" />
               </IconButton>
-            </Tooltip>
+            </Tooltip>)}
           </Stack>
         )
       }
@@ -314,7 +316,7 @@ const BranchesPage = () => {
             Published branches appear on the website under Contact → Our Branches
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Branch</Button>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Branch</Button>)}
       </Box>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>

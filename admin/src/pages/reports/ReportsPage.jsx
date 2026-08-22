@@ -10,6 +10,7 @@ import {
   OpenInNew, UploadFile, ArrowUpward, ArrowDownward
 } from '@mui/icons-material'
 import { reportService } from '../../services/report.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import ImageUpload from '../../components/ImageUpload'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
@@ -28,6 +29,7 @@ const fmt = (d) => (d
 const sizeOf = (bytes) => (bytes ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '')
 
 const ReportsPage = () => {
+  const perms = usePermissions()
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -269,7 +271,7 @@ const ReportsPage = () => {
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={p.row.status === 'Published' ? 'Unpublish' : 'Publish'}>
+            {perms.canPublish && (<Tooltip title={p.row.status === 'Published' ? 'Unpublish' : 'Publish'}>
               <span>
                 <IconButton
                   size="small" disabled={busy}
@@ -279,32 +281,32 @@ const ReportsPage = () => {
                   {p.row.status === 'Published' ? <Public fontSize="small" /> : <Unpublished fontSize="small" />}
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Move earlier">
+            </Tooltip>)}
+            {perms.canReorder && (<Tooltip title="Move earlier">
               <span>
                 <IconButton size="small" disabled={index === 0 || busy} onClick={() => handleMove(index, -1)}>
                   <ArrowUpward fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Move later">
+            </Tooltip>)}
+            {perms.canReorder && (<Tooltip title="Move later">
               <span>
                 <IconButton size="small" disabled={index === rows.length - 1 || busy} onClick={() => handleMove(index, 1)}>
                   <ArrowDownward fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
+            </Tooltip>)}
             <Tooltip title="Edit">
               <IconButton size="small" onClick={() => openEdit(p.row)}><Edit fontSize="small" /></IconButton>
             </Tooltip>
-            <Tooltip title="Delete">
+            {perms.canDelete && (<Tooltip title="Delete">
               <IconButton
                 size="small" color="error"
                 onClick={() => setDeleteDialog({ open: true, id: p.row._id, title: p.row.title })}
               >
                 <Delete fontSize="small" />
               </IconButton>
-            </Tooltip>
+            </Tooltip>)}
           </Stack>
         )
       }
@@ -320,7 +322,7 @@ const ReportsPage = () => {
             Published reports appear on the website under Reports → Annual Returns
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreate}>Upload Report</Button>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={openCreate}>Upload Report</Button>)}
       </Box>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>

@@ -22,6 +22,9 @@ const loanUploads = createUpload({ folder: 'loan-documents', fileTypes: 'all' })
 // manages, so unlike every other module here the read grant stops at Editor
 // and does not extend to Content Manager.
 const canViewApplications = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
+// Moving an application between statuses is limited to the same two roles that
+// may see it at all — Content Manager reaches neither.
+const canDecideApplications = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
 
 // ── Public ───────────────────────────────────────────────────────────────────
 
@@ -42,5 +45,15 @@ router.get('/status/:applicationNumber', loanStatusLimiter, loanApplicationContr
 
 router.get('/', canViewApplications, loanApplicationController.getAllApplications);
 router.get('/:id', canViewApplications, loanApplicationController.getApplicationById);
+
+// Status decision. Only `status` is read from the body; every other applicant
+// field is untouchable through this route.
+router.patch(
+    '/:id/status',
+    canDecideApplications,
+    loanApplicationValidator.updateStatusValidation,
+    validate,
+    loanApplicationController.updateApplicationStatus
+);
 
 module.exports = router;

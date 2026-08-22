@@ -6,6 +6,7 @@ import {
 import { DataGrid } from '@mui/x-data-grid'
 import { Add, Edit, Delete, CheckCircle, Cancel } from '@mui/icons-material'
 import { blogService } from '../../services/blog.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 
@@ -16,6 +17,7 @@ const slugify = (s) => String(s).toLowerCase().trim()
 const EMPTY = { name: '', slug: '', description: '', displayOrder: '' }
 
 const BlogCategoriesPage = () => {
+  const perms = usePermissions()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [dialog, setDialog] = useState({ open: false, editing: null })
@@ -144,22 +146,22 @@ const BlogCategoriesPage = () => {
       field: 'actions', headerName: 'Actions', width: 150, sortable: false,
       renderCell: (p) => (
         <Stack direction="row">
-          <Tooltip title={p.row.isActive ? 'Disable' : 'Enable'}>
+          {perms.canModerate && (<Tooltip title={p.row.isActive ? 'Disable' : 'Enable'}>
             <IconButton size="small" color={p.row.isActive ? 'success' : 'default'} onClick={() => handleToggle(p.row)}>
               {p.row.isActive ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
           <Tooltip title="Edit">
             <IconButton size="small" onClick={() => openEdit(p.row)}><Edit fontSize="small" /></IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          {perms.canDelete && (<Tooltip title="Delete">
             <IconButton
               size="small" color="error"
               onClick={() => setDeleteDialog({ open: true, id: p.row._id, name: p.row.name, count: p.row.blogsCount ?? 0 })}
             >
               <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
         </Stack>
       )
     }
@@ -174,7 +176,7 @@ const BlogCategoriesPage = () => {
             Group articles and drive Related Blogs on the website
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Category</Button>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Category</Button>)}
       </Box>
 
       <DataGrid

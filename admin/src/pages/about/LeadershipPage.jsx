@@ -21,12 +21,14 @@ import {
   Cancel
 } from '@mui/icons-material'
 import { aboutService } from '../../services/about.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import LeadershipFormDialog from './LeadershipFormDialog'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import StatusChip from '../../components/StatusChip'
 import Toast from '../../components/Toast'
 
 const LeadershipPage = () => {
+  const perms = usePermissions()
   const [members, setMembers] = useState([])
   const [filtered, setFiltered] = useState([])
   const [loading, setLoading] = useState(true)
@@ -175,7 +177,7 @@ const LeadershipPage = () => {
       sortable: false,
       renderCell: ({ row }) => (
         <Stack direction="row" spacing={0.5}>
-          <Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
+          {perms.canModerate && (<Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
             <IconButton
               size="small"
               color={row.isActive ? 'success' : 'default'}
@@ -187,13 +189,13 @@ const LeadershipPage = () => {
                 <Cancel fontSize="small" />
               )}
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
           <Tooltip title="Edit">
             <IconButton size="small" color="primary" onClick={() => handleEdit(row)}>
               <Edit fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          {perms.canDelete && (<Tooltip title="Delete">
             <IconButton
               size="small"
               color="error"
@@ -201,7 +203,7 @@ const LeadershipPage = () => {
             >
               <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
         </Stack>
       )
     }
@@ -213,9 +215,9 @@ const LeadershipPage = () => {
         <Typography variant="h5" fontWeight={700}>
           Leadership Team
         </Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={handleAdd}>
           Add Member
-        </Button>
+        </Button>)}
       </Box>
 
       <Box sx={{ mb: 2 }}>

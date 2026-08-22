@@ -10,6 +10,7 @@ import {
   OpenInNew, Visibility, VisibilityOff, ContentCopy
 } from '@mui/icons-material'
 import { careerService } from '../../services/career.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import JobFormDialog from './JobFormDialog'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import StatusChip from '../../components/StatusChip'
@@ -23,6 +24,7 @@ const EMPLOYMENT_TYPE_LABELS = {
 }
 
 const JobOpeningsPage = () => {
+  const perms = usePermissions()
   const navigate = useNavigate()
   const [jobs, setJobs] = useState([])
   const [filtered, setFiltered] = useState([])
@@ -167,11 +169,11 @@ const JobOpeningsPage = () => {
       sortable: false,
       renderCell: ({ row }) => (
         <Stack direction="row" spacing={0.5}>
-          <Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
+          {perms.canModerate && (<Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
             <IconButton size="small" color={row.isActive ? 'success' : 'default'} onClick={() => handleToggleStatus(row._id)}>
               {row.isActive ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
           <Tooltip title={row.isPublished ? 'Unpublish' : 'Publish'}>
             <IconButton size="small" color={row.isPublished ? 'primary' : 'default'} onClick={() => handleTogglePublish(row._id)}>
               {row.isPublished ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />}
@@ -192,11 +194,11 @@ const JobOpeningsPage = () => {
               <ContentCopy fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          {perms.canDelete && (<Tooltip title="Delete">
             <IconButton size="small" color="error" onClick={() => setDeleteDialog({ open: true, id: row._id, name: row.jobTitle })}>
               <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
         </Stack>
       )
     }
@@ -206,9 +208,9 @@ const JobOpeningsPage = () => {
     <Container maxWidth="xl" disableGutters>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" fontWeight={700}>Job Openings</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => { setSelectedJob(null); setFormOpen(true) }}>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={() => { setSelectedJob(null); setFormOpen(true) }}>
           Add Job
-        </Button>
+        </Button>)}
       </Box>
 
       <Box sx={{ mb: 2 }}>

@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { ROLES } = require('../constants/roles');
@@ -25,6 +26,10 @@ const router = express.Router();
 
 const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
 const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+// Editing an existing record is open to Content Manager; creating,
+// deleting, publishing, changing status and reordering are not. The
+// blockProtectedFields guard stops an edit body reaching those anyway.
+const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
 const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
 
 // Cover image upload (single)
@@ -46,7 +51,7 @@ router.get('/albums', canRead, albumsController.getAllAlbums);
 router.patch('/albums/reorder', canManage, reorderAlbumsValidation, validate, albumsController.reorderAlbums);
 router.get('/albums/:id', canRead, albumsController.getAlbumById);
 router.post('/albums', canManage, coverUpload, createAlbumValidation, validate, albumsController.createAlbum);
-router.put('/albums/:id', canManage, coverUpload, updateAlbumValidation, validate, albumsController.updateAlbum);
+router.put('/albums/:id', canEdit, blockProtectedFields, coverUpload, updateAlbumValidation, validate, albumsController.updateAlbum);
 router.delete('/albums/:id', superAdminOnly, albumsController.deleteAlbum);
 router.patch('/albums/:id/status', canManage, albumsController.toggleAlbumStatus);
 
@@ -55,7 +60,7 @@ router.patch('/albums/:id/status', canManage, albumsController.toggleAlbumStatus
 router.get('/albums/:albumId/images', canRead, imagesController.getImagesByAlbum);
 router.post('/albums/:albumId/images', canManage, imagesUpload, imagesController.createImages);
 router.patch('/images/reorder', canManage, reorderImagesValidation, validate, imagesController.reorderImages);
-router.put('/images/:id', canManage, updateImageValidation, validate, imagesController.updateImage);
+router.put('/images/:id', canEdit, blockProtectedFields, updateImageValidation, validate, imagesController.updateImage);
 router.delete('/images/:id', canManage, imagesController.deleteImage);
 router.patch('/images/:id/status', canManage, imagesController.toggleImageStatus);
 

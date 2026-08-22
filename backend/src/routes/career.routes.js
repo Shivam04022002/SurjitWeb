@@ -3,6 +3,7 @@ const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { blockProtectedFields } = require('../middleware/restrictFields');
 const { ROLES } = require('../constants/roles');
 
 const settingsController = require('../controllers/career/settings.controller');
@@ -25,17 +26,21 @@ const resumeUpload = createUpload({ folder: 'resumes', fileTypes: 'documents', m
 
 const adminOnly = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
 const readAccess = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+// Editing an existing record is open to Content Manager; creating,
+// deleting, publishing, changing status and reordering are not. The
+// blockProtectedFields guard stops an edit body reaching those anyway.
+const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
 
 // ── Career Settings ────────────────────────────────────────────────────────────
 router.get('/settings', readAccess, settingsController.getSettings);
-router.put('/settings', adminOnly, settingsImageUpload, updateSettingsValidation, validate, settingsController.updateSettings);
+router.put('/settings', canEdit, blockProtectedFields, settingsImageUpload, updateSettingsValidation, validate, settingsController.updateSettings);
 
 // ── Jobs ───────────────────────────────────────────────────────────────────────
 router.get('/jobs', readAccess, jobsController.getAllJobs);
 router.patch('/jobs/reorder', adminOnly, reorderJobsValidation, validate, jobsController.reorderJobs);
 router.get('/jobs/:id', readAccess, jobsController.getJobById);
 router.post('/jobs', adminOnly, createJobValidation, validate, jobsController.createJob);
-router.put('/jobs/:id', adminOnly, updateJobValidation, validate, jobsController.updateJob);
+router.put('/jobs/:id', canEdit, blockProtectedFields, updateJobValidation, validate, jobsController.updateJob);
 router.delete('/jobs/:id', [auth, authorize(ROLES.SUPER_ADMIN)], jobsController.deleteJob);
 router.patch('/jobs/:id/status', adminOnly, jobsController.toggleJobStatus);
 router.patch('/jobs/:id/publish', adminOnly, jobsController.toggleJobPublish);

@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { ROLES } = require('../constants/roles');
@@ -15,6 +16,10 @@ const router = express.Router();
 
 const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
 const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+// Editing an existing record is open to Content Manager; creating,
+// deleting, publishing, changing status and reordering are not. The
+// blockProtectedFields guard stops an edit body reaching those anyway.
+const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
 const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
 
 // Reuses the shared upload middleware, so blog images land in S3 (or local
@@ -33,7 +38,7 @@ const inlineUpload = createUpload({ folder: 'blog/inline', fileTypes: 'images' }
 router.get('/categories', canRead, categoriesController.getAllCategories);
 router.get('/categories/:id', canRead, categoriesController.getCategoryById);
 router.post('/categories', canManage, createCategoryValidation, validate, categoriesController.createCategory);
-router.put('/categories/:id', canManage, updateCategoryValidation, validate, categoriesController.updateCategory);
+router.put('/categories/:id', canEdit, blockProtectedFields, updateCategoryValidation, validate, categoriesController.updateCategory);
 router.delete('/categories/:id', superAdminOnly, categoriesController.deleteCategory);
 router.patch('/categories/:id/status', canManage, categoriesController.toggleCategoryStatus);
 
@@ -53,7 +58,7 @@ router.post('/uploads/inline', canManage, inlineUpload, (req, res) => {
 router.get('/', canRead, blogsController.listBlogs);
 router.get('/:id', canRead, blogsController.getBlogById);
 router.post('/', canManage, blogUpload, createBlogValidation, validate, blogsController.createBlog);
-router.put('/:id', canManage, blogUpload, updateBlogValidation, validate, blogsController.updateBlog);
+router.put('/:id', canEdit, blockProtectedFields, blogUpload, updateBlogValidation, validate, blogsController.updateBlog);
 router.delete('/:id', superAdminOnly, blogsController.deleteBlog);
 router.patch('/:id/publish', canManage, blogsController.publishBlog);
 router.patch('/:id/unpublish', canManage, blogsController.unpublishBlog);

@@ -10,12 +10,14 @@ import {
   Add, Edit, Delete, Search, CheckCircle, Cancel, OpenInNew
 } from '@mui/icons-material'
 import { productsService } from '../../services/products.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import ProductFormDialog from './ProductFormDialog'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import StatusChip from '../../components/StatusChip'
 import Toast from '../../components/Toast'
 
 const ProductsPage = () => {
+  const perms = usePermissions()
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
@@ -141,7 +143,7 @@ const ProductsPage = () => {
       sortable: false,
       renderCell: ({ row }) => (
         <Stack direction="row" spacing={0.5}>
-          <Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
+          {perms.canModerate && (<Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
             <IconButton
               size="small"
               color={row.isActive ? 'success' : 'default'}
@@ -149,7 +151,7 @@ const ProductsPage = () => {
             >
               {row.isActive ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
           <Tooltip title="Edit General Info">
             <IconButton size="small" color="primary" onClick={() => { setSelectedProduct(row); setFormOpen(true) }}>
               <Edit fontSize="small" />
@@ -160,7 +162,7 @@ const ProductsPage = () => {
               <OpenInNew fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          {perms.canDelete && (<Tooltip title="Delete">
             <IconButton
               size="small"
               color="error"
@@ -168,7 +170,7 @@ const ProductsPage = () => {
             >
               <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
         </Stack>
       )
     }
@@ -178,13 +180,15 @@ const ProductsPage = () => {
     <Container maxWidth="xl" disableGutters>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" fontWeight={700}>Products</Typography>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={() => { setSelectedProduct(null); setFormOpen(true) }}
-        >
-          Add Product
-        </Button>
+        {perms.canCreate && (
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={() => { setSelectedProduct(null); setFormOpen(true) }}
+          >
+            Add Product
+          </Button>
+        )}
       </Box>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>

@@ -10,6 +10,7 @@ import {
   ArrowUpward, ArrowDownward
 } from '@mui/icons-material'
 import { homepageStatService } from '../../services/homepageStat.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 
@@ -24,6 +25,7 @@ const splitValue = (value) => {
 }
 
 const HomepageStatsPage = () => {
+  const perms = usePermissions()
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -219,7 +221,7 @@ const HomepageStatsPage = () => {
         const index = rows.findIndex((r) => r._id === p.row._id)
         return (
           <Stack direction="row">
-            <Tooltip title={p.row.status === 'Published' ? 'Unpublish' : 'Publish'}>
+            {perms.canPublish && (<Tooltip title={p.row.status === 'Published' ? 'Unpublish' : 'Publish'}>
               <span>
                 <IconButton
                   size="small" disabled={busy}
@@ -229,32 +231,32 @@ const HomepageStatsPage = () => {
                   {p.row.status === 'Published' ? <Public fontSize="small" /> : <Unpublished fontSize="small" />}
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Move earlier">
+            </Tooltip>)}
+            {perms.canReorder && (<Tooltip title="Move earlier">
               <span>
                 <IconButton size="small" disabled={index === 0 || busy} onClick={() => handleMove(index, -1)}>
                   <ArrowUpward fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Move later">
+            </Tooltip>)}
+            {perms.canReorder && (<Tooltip title="Move later">
               <span>
                 <IconButton size="small" disabled={index === rows.length - 1 || busy} onClick={() => handleMove(index, 1)}>
                   <ArrowDownward fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
+            </Tooltip>)}
             <Tooltip title="Edit">
               <IconButton size="small" onClick={() => openEdit(p.row)}><Edit fontSize="small" /></IconButton>
             </Tooltip>
-            <Tooltip title="Delete">
+            {perms.canDelete && (<Tooltip title="Delete">
               <IconButton
                 size="small" color="error"
                 onClick={() => setDeleteDialog({ open: true, id: p.row._id, name: p.row.title })}
               >
                 <Delete fontSize="small" />
               </IconButton>
-            </Tooltip>
+            </Tooltip>)}
           </Stack>
         )
       }
@@ -272,7 +274,7 @@ const HomepageStatsPage = () => {
             Published statistics appear in the counter strip at the top of the homepage
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Statistic</Button>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Statistic</Button>)}
       </Box>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>

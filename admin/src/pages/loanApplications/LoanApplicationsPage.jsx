@@ -7,6 +7,8 @@ import {
 import { DataGrid } from '@mui/x-data-grid'
 import { Search, Visibility, OpenInNew } from '@mui/icons-material'
 import { loanApplicationService } from '../../services/loanApplication.service'
+import { usePermissions } from '../../hooks/usePermissions'
+import ConfirmDialog from '../../components/ConfirmDialog'
 import { productsService } from '../../services/products.service'
 import Toast from '../../components/Toast'
 
@@ -16,6 +18,14 @@ const STATUS_COLOR = {
   approved: 'success',
   rejected: 'default'
 }
+
+// The four values the model has always allowed.
+const STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'under-review', label: 'Under Review' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' }
+]
 
 const LOAN_TYPES = [
   { value: 'business', label: 'Business' },
@@ -59,6 +69,9 @@ const LoanApplicationsPage = () => {
   const [products, setProducts] = useState([])
   const [viewing, setViewing] = useState(null)
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
+  const perms = usePermissions()
+  const [statusDialog, setStatusDialog] = useState({ open: false, next: '', application: null })
+  const [savingStatus, setSavingStatus] = useState(false)
 
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity })
 
@@ -107,6 +120,34 @@ const LoanApplicationsPage = () => {
       setViewing(res?.data?.application || null)
     } catch (err) {
       showToast(err?.response?.data?.message || 'Failed to load application', 'error')
+    }
+  }
+
+  // Confirmed status change. The row is updated in place so pagination,
+  // filters and the open dialog all stay exactly where they were.
+  const applyStatusChange = async () => {
+    const { application, next } = statusDialog
+    if (!application || !next || savingStatus) return
+    setSavingStatus(true)
+    try {
+      const res = await loanApplicationService.updateLoanApplicationStatus(application._id, next)
+      const updated = res?.data?.application
+      const newStatus = updated?.status || next
+      setRows((prev) => {
+        // If a status filter is active and the row no longer matches it, drop
+        // the row rather than showing a contradiction.
+        if (status && newStatus !== status) return prev.filter((r) => r._id !== application._id)
+        return prev.map((r) => (r._id === application._id ? { ...r, status: newStatus } : r))
+      })
+      if (status && newStatus !== status) setTotal((t) => Math.max(t - 1, 0))
+      setViewing((v) => (v && v._id === application._id ? { ...v, status: newStatus } : v))
+      showToast(`Status updated to ${newStatus}`)
+      setStatusDialog({ open: false, next: '', application: null })
+    } catch (err) {
+      // Previous status is left untouched on failure.
+      showToast(err?.response?.data?.message || 'Failed to update status', 'error')
+    } finally {
+      setSavingStatus(false)
     }
   }
 
@@ -240,6 +281,37 @@ const LoanApplicationsPage = () => {
               <Row label="Loan Type" value={viewing.loanType} />
               <Row label="Created" value={fmt(viewing.createdAt)} />
               <Row label="Updated" value={fmt(viewing.updatedAt)} />
+
+              {perms.canChangeStatus && (
+                <TextField
+                  size="small"
+                  select
+                  label="Change Status"
+                  value={viewing.status || ''}
+                  disabled={savingStatus}
+                  sx={{ mt: 1, minWidth: 220 }}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    if (next === viewing.status) return
+                    setStatusDialog({ open: true, next, application: viewing })
+                  }}
+                >
+                  {STATUS_OPTIONS.map((o) => (
+                    <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                  ))}
+                </TextField>
+              )}
+
+              {viewing.statusHistory?.length > 0 && (
+                <Box sx={{ mt: 1.5 }}>
+                  <Typography variant="caption" color="text.secondary">Status history</Typography>
+                  {viewing.statusHistory.map((h, i) => (
+                    <Typography key={i} variant="caption" display="block" color="text.secondary">
+                      {(h.from || '—')} &rarr; {h.to} · {fmt(h.changedAt)}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
               <Divider sx={{ my: 2 }} />
 
               <Typography variant="subtitle2" sx={{ mb: 1 }}>Personal Information</Typography>
@@ -299,6 +371,19 @@ const LoanApplicationsPage = () => {
           </>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={statusDialog.open}
+        title="Change application status"
+        message={statusDialog.application
+          ? `Change ${statusDialog.application.applicationNumber} from "${statusDialog.application.status}" to "${statusDialog.next}"?`
+          : ''}
+        confirmLabel={savingStatus ? 'Updating…' : 'Confirm'}
+        confirmColor={statusDialog.next === 'rejected' ? 'error' : 'primary'}
+        loading={savingStatus}
+        onConfirm={applyStatusChange}
+        onCancel={() => { if (!savingStatus) setStatusDialog({ open: false, next: '', application: null }) }}
+      />
 
       <Toast
         open={toast.open}

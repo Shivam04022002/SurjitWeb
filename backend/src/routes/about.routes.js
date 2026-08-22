@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { ROLES } = require('../constants/roles');
@@ -29,6 +30,10 @@ const router = express.Router();
 
 const canManage = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR);
 const canRead = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER);
+// Editing an existing record is open to Content Manager; creating,
+// deleting, publishing, changing status and reordering are not. The
+// blockProtectedFields guard stops an edit body reaching those anyway.
+const canEdit = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER);
 
 const imageUpload = createUpload({ folder: 'about', fileTypes: 'images' });
 
@@ -44,7 +49,7 @@ router.get(
 router.put(
     '/company',
     auth,
-    canManage,
+    canEdit, blockProtectedFields,
     imageUpload.fields([
         { name: 'heroImage', maxCount: 1 },
         { name: 'aboutImage', maxCount: 1 }
@@ -76,7 +81,7 @@ router.post(
 router.put(
     '/directors/:id',
     auth,
-    canManage,
+    canEdit, blockProtectedFields,
     imageUpload.single('photo'),
     updateDirectorValidation,
     validate,
@@ -137,7 +142,7 @@ router.post(
 router.put(
     '/leadership/:id',
     auth,
-    canManage,
+    canEdit, blockProtectedFields,
     imageUpload.single('photo'),
     updateLeadershipValidation,
     validate,

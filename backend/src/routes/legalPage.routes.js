@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { ROLES } = require('../constants/roles');
@@ -16,6 +17,10 @@ const router = express.Router();
 
 const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
 const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+// Editing an existing record is open to Content Manager; creating,
+// deleting, publishing, changing status and reordering are not. The
+// blockProtectedFields guard stops an edit body reaching those anyway.
+const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
 const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
 
 // One upload pass: the optional document must be a PDF. The filter requires the
@@ -33,7 +38,7 @@ router.patch('/reorder', canManage, reorderPagesValidation, validate, legalContr
 router.get('/:id', canRead, legalController.getPageById);
 
 router.post('/', canManage, pdfUpload, createPageValidation, validate, legalController.createPage);
-router.put('/:id', canManage, pdfUpload, updatePageValidation, validate, legalController.updatePage);
+router.put('/:id', canEdit, blockProtectedFields, pdfUpload, updatePageValidation, validate, legalController.updatePage);
 
 router.delete('/:id', superAdminOnly, legalController.deletePage);
 router.patch('/:id/publish', canManage, legalController.publishPage);

@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { ROLES } = require('../constants/roles');
@@ -16,6 +17,10 @@ const router = express.Router();
 
 const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
 const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+// Editing an existing record is open to Content Manager; creating,
+// deleting, publishing, changing status and reordering are not. The
+// blockProtectedFields guard stops an edit body reaching those anyway.
+const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
 const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
 
 // One upload pass, validated per field: the report itself must be a PDF, the
@@ -37,7 +42,7 @@ router.patch('/reorder', canManage, reorderReportsValidation, validate, reportCo
 router.get('/:id', canRead, reportController.getReportById);
 
 router.post('/', canManage, reportUpload, createReportValidation, validate, reportController.createReport);
-router.put('/:id', canManage, reportUpload, updateReportValidation, validate, reportController.updateReport);
+router.put('/:id', canEdit, blockProtectedFields, reportUpload, updateReportValidation, validate, reportController.updateReport);
 
 router.delete('/:id', superAdminOnly, reportController.deleteReport);
 router.patch('/:id/publish', canManage, reportController.publishReport);

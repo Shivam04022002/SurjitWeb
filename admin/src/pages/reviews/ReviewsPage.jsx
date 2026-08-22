@@ -9,6 +9,7 @@ import {
   Search, CheckCircle, Cancel, Delete, Visibility, ArrowUpward, ArrowDownward
 } from '@mui/icons-material'
 import { reviewService } from '../../services/review.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 
@@ -23,6 +24,7 @@ const STATUS_COLOR = { Pending: 'warning', Approved: 'success', Rejected: 'defau
 // Moderation queue. Reviews arrive from the website; admins approve, reject or
 // delete them — they are never authored here.
 const ReviewsPage = () => {
+  const perms = usePermissions()
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
@@ -188,7 +190,7 @@ const ReviewsPage = () => {
                 <Visibility fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title={p.row.status === 'Approved' ? 'Already approved' : 'Approve — publish on the website'}>
+            {perms.canModerate && (<Tooltip title={p.row.status === 'Approved' ? 'Already approved' : 'Approve — publish on the website'}>
               <span>
                 <IconButton
                   size="small" color="success" disabled={busy || p.row.status === 'Approved'}
@@ -197,8 +199,8 @@ const ReviewsPage = () => {
                   <CheckCircle fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title={p.row.status === 'Rejected' ? 'Already rejected' : 'Reject — hide from the website'}>
+            </Tooltip>)}
+            {perms.canModerate && (<Tooltip title={p.row.status === 'Rejected' ? 'Already rejected' : 'Reject — hide from the website'}>
               <span>
                 <IconButton
                   size="small" color="warning" disabled={busy || p.row.status === 'Rejected'}
@@ -207,29 +209,29 @@ const ReviewsPage = () => {
                   <Cancel fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Move earlier">
+            </Tooltip>)}
+            {perms.canReorder && (<Tooltip title="Move earlier">
               <span>
                 <IconButton size="small" disabled={index === 0 || busy} onClick={() => handleMove(index, -1)}>
                   <ArrowUpward fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Move later">
+            </Tooltip>)}
+            {perms.canReorder && (<Tooltip title="Move later">
               <span>
                 <IconButton size="small" disabled={index === rows.length - 1 || busy} onClick={() => handleMove(index, 1)}>
                   <ArrowDownward fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Delete">
+            </Tooltip>)}
+            {perms.canDelete && (<Tooltip title="Delete">
               <IconButton
                 size="small" color="error"
                 onClick={() => setDeleteDialog({ open: true, id: p.row._id, name: p.row.customerName })}
               >
                 <Delete fontSize="small" />
               </IconButton>
-            </Tooltip>
+            </Tooltip>)}
           </Stack>
         )
       }

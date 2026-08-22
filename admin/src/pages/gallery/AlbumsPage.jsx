@@ -9,12 +9,14 @@ import {
   Add, Edit, Delete, Search, CheckCircle, Cancel, OpenInNew, PhotoLibrary
 } from '@mui/icons-material'
 import { galleryService } from '../../services/gallery.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import AlbumFormDialog from './AlbumFormDialog'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import StatusChip from '../../components/StatusChip'
 import Toast from '../../components/Toast'
 
 const AlbumsPage = () => {
+  const perms = usePermissions()
   const navigate = useNavigate()
   const [albums, setAlbums] = useState([])
   const [filtered, setFiltered] = useState([])
@@ -131,11 +133,11 @@ const AlbumsPage = () => {
       sortable: false,
       renderCell: ({ row }) => (
         <Stack direction="row" spacing={0.5}>
-          <Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
+          {perms.canModerate && (<Tooltip title={row.isActive ? 'Deactivate' : 'Activate'}>
             <IconButton size="small" color={row.isActive ? 'success' : 'default'} onClick={() => handleToggleStatus(row._id)}>
               {row.isActive ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
           <Tooltip title="Edit Album">
             <IconButton size="small" color="primary" onClick={() => { setSelectedAlbum(row); setFormOpen(true) }}>
               <Edit fontSize="small" />
@@ -146,11 +148,11 @@ const AlbumsPage = () => {
               <OpenInNew fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          {perms.canDelete && (<Tooltip title="Delete">
             <IconButton size="small" color="error" onClick={() => setDeleteDialog({ open: true, id: row._id, name: row.title })}>
               <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
         </Stack>
       )
     }
@@ -160,9 +162,9 @@ const AlbumsPage = () => {
     <Container maxWidth="xl" disableGutters>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" fontWeight={700}>Gallery Albums</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => { setSelectedAlbum(null); setFormOpen(true) }}>
+        {perms.canCreate && (<Button variant="contained" startIcon={<Add />} onClick={() => { setSelectedAlbum(null); setFormOpen(true) }}>
           New Album
-        </Button>
+        </Button>)}
       </Box>
 
       <Box sx={{ mb: 2 }}>

@@ -176,9 +176,53 @@ const getApplicationById = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Loan application fetched successfully', { application }, HTTP_STATUS.OK);
 });
 
+// Status change. Mirrors the job-application status endpoint: the status value
+// is read explicitly from the body and nothing else is taken from the request,
+// so applicant fields, applicationNumber, product, documents and timestamps
+// cannot be altered through this route.
+const updateApplicationStatus = asyncHandler(async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        throw new AppError('Invalid application id', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const { status } = req.body;
+
+    const application = await LoanApplication.findById(req.params.id);
+    if (!application) {
+        throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const previous = application.status;
+
+    // A no-op change still returns success, but is not recorded as history.
+    if (previous !== status) {
+        application.status = status;
+        application.statusHistory.push({
+            from: previous,
+            to: status,
+            changedBy: req.user ? req.user._id || req.user.id : null,
+            changedAt: new Date()
+        });
+        await application.save();
+    }
+
+    // Enough for the admin table to update its row in place, without echoing
+    // the applicant's personal details back on every status click.
+    return sendSuccess(res, 'Application status updated successfully', {
+        application: {
+            _id: application._id,
+            applicationNumber: application.applicationNumber,
+            status: application.status,
+            previousStatus: previous,
+            updatedAt: application.updatedAt
+        }
+    }, HTTP_STATUS.OK);
+});
+
 module.exports = {
     submitLoanApplication,
     getApplicationStatus,
     getAllApplications,
-    getApplicationById
+    getApplicationById,
+    updateApplicationStatus
 };

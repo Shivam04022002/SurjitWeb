@@ -1,5 +1,18 @@
 const mongoose = require('mongoose');
 
+// The four values the collection has always used. `under-review` predates this
+// workflow and is kept so existing records and any UI relying on it stay valid.
+const LOAN_APPLICATION_STATUS = ['pending', 'under-review', 'approved', 'rejected'];
+
+// One entry per status change. Deliberately holds no applicant data — just the
+// transition, who made it and when.
+const statusHistorySchema = new mongoose.Schema({
+    from: { type: String, enum: LOAN_APPLICATION_STATUS, default: null },
+    to: { type: String, enum: LOAN_APPLICATION_STATUS, required: true },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+    changedAt: { type: Date, default: Date.now }
+}, { _id: false });
+
 const loanApplicationSchema = new mongoose.Schema({
     // The CMS product this application was started from. Optional because
     // applications submitted before the association existed have none to
@@ -51,7 +64,9 @@ const loanApplicationSchema = new mongoose.Schema({
 
     // Application Status
     applicationNumber: { type: String, unique: true },
-    status: { type: String, enum: ['pending', 'under-review', 'approved', 'rejected'], default: 'pending' },
+    status: { type: String, enum: LOAN_APPLICATION_STATUS, default: 'pending' },
+    // Append-only audit of who moved the application between statuses.
+    statusHistory: { type: [statusHistorySchema], default: [] },
     notes: { type: String, trim: true },
 
     deletedAt: { type: Date, default: null }
@@ -83,3 +98,4 @@ loanApplicationSchema.index({ createdAt: -1 });
 loanApplicationSchema.index({ deletedAt: 1 });
 
 module.exports = mongoose.model('LoanApplication', loanApplicationSchema);
+module.exports.LOAN_APPLICATION_STATUS = LOAN_APPLICATION_STATUS;

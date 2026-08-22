@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { ROLES } = require('../constants/roles');
@@ -35,6 +36,10 @@ const router = express.Router();
 
 const canManage = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR);
 const canRead = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER);
+// Editing an existing record is open to Content Manager; creating,
+// deleting, publishing, changing status and reordering are not. The
+// blockProtectedFields guard stops an edit body reaching those anyway.
+const canEdit = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER);
 
 const categoryUpload = createUpload({ folder: 'products/categories', fileTypes: 'images' });
 const productUpload = createUpload({ folder: 'products', fileTypes: 'images' });
@@ -56,7 +61,7 @@ router.post(
 
 router.put(
     '/categories/:id',
-    auth, canManage,
+    auth, canEdit, blockProtectedFields,
     categoryUpload.fields([{ name: 'bannerImage', maxCount: 1 }, { name: 'icon', maxCount: 1 }]),
     updateCategoryValidation, validate,
     categoryController.updateCategory
@@ -95,7 +100,7 @@ router.post(
 
 router.put(
     '/:id',
-    auth, canManage,
+    auth, canEdit, blockProtectedFields,
     // bannerImage is no longer accepted: the public site has no banner slot
     // since the hero image became the hero background. The field stays on the
     // Product schema so existing uploads keep resolving and stay recoverable.
@@ -130,7 +135,7 @@ router.patch('/features/reorder', auth, canManage, sectionReorderValidation, val
 
 router.put(
     '/features/:id',
-    auth, canManage,
+    auth, canEdit, blockProtectedFields,
     featureUpload.single('icon'),
     updateFeatureValidation, validate,
     sectionsController.updateFeature
@@ -143,7 +148,7 @@ router.delete('/features/:id', auth, canManage, sectionsController.deleteFeature
 router.get('/:productId/eligibility', auth, canRead, sectionsController.getEligibility);
 router.post('/:productId/eligibility', auth, canManage, createEligibilityValidation, validate, sectionsController.createEligibility);
 router.patch('/eligibility/reorder', auth, canManage, sectionReorderValidation, validate, sectionsController.reorderEligibility);
-router.put('/eligibility/:id', auth, canManage, updateEligibilityValidation, validate, sectionsController.updateEligibility);
+router.put('/eligibility/:id', auth, canEdit, blockProtectedFields, updateEligibilityValidation, validate, sectionsController.updateEligibility);
 router.delete('/eligibility/:id', auth, canManage, sectionsController.deleteEligibility);
 
 // ── Documents ─────────────────────────────────────────────────────────────────
@@ -151,7 +156,7 @@ router.delete('/eligibility/:id', auth, canManage, sectionsController.deleteElig
 router.get('/:productId/documents', auth, canRead, sectionsController.getDocuments);
 router.post('/:productId/documents', auth, canManage, createDocumentValidation, validate, sectionsController.createDocument);
 router.patch('/documents/reorder', auth, canManage, sectionReorderValidation, validate, sectionsController.reorderDocuments);
-router.put('/documents/:id', auth, canManage, updateDocumentValidation, validate, sectionsController.updateDocument);
+router.put('/documents/:id', auth, canEdit, blockProtectedFields, updateDocumentValidation, validate, sectionsController.updateDocument);
 router.delete('/documents/:id', auth, canManage, sectionsController.deleteDocument);
 
 // ── Interest Rates ────────────────────────────────────────────────────────────
@@ -159,7 +164,7 @@ router.delete('/documents/:id', auth, canManage, sectionsController.deleteDocume
 router.get('/:productId/interest-rates', auth, canRead, sectionsController.getInterestRates);
 router.post('/:productId/interest-rates', auth, canManage, createInterestRateValidation, validate, sectionsController.createInterestRate);
 router.patch('/interest-rates/reorder', auth, canManage, sectionReorderValidation, validate, sectionsController.reorderInterestRates);
-router.put('/interest-rates/:id', auth, canManage, updateInterestRateValidation, validate, sectionsController.updateInterestRate);
+router.put('/interest-rates/:id', auth, canEdit, blockProtectedFields, updateInterestRateValidation, validate, sectionsController.updateInterestRate);
 router.delete('/interest-rates/:id', auth, canManage, sectionsController.deleteInterestRate);
 
 // ── FAQs ──────────────────────────────────────────────────────────────────────
@@ -167,20 +172,20 @@ router.delete('/interest-rates/:id', auth, canManage, sectionsController.deleteI
 router.get('/:productId/faqs', auth, canRead, sectionsController.getFaqs);
 router.post('/:productId/faqs', auth, canManage, createFaqValidation, validate, sectionsController.createFaq);
 router.patch('/faqs/reorder', auth, canManage, sectionReorderValidation, validate, sectionsController.reorderFaqs);
-router.put('/faqs/:id', auth, canManage, updateFaqValidation, validate, sectionsController.updateFaq);
+router.put('/faqs/:id', auth, canEdit, blockProtectedFields, updateFaqValidation, validate, sectionsController.updateFaq);
 router.delete('/faqs/:id', auth, canManage, sectionsController.deleteFaq);
 
 // ── EMI Config ────────────────────────────────────────────────────────────────
 
 router.get('/:productId/emi', auth, canRead, sectionsController.getEmiConfig);
-router.put('/:productId/emi', auth, canManage, updateEmiConfigValidation, validate, sectionsController.updateEmiConfig);
+router.put('/:productId/emi', auth, canEdit, blockProtectedFields, updateEmiConfigValidation, validate, sectionsController.updateEmiConfig);
 
 // ── SEO ───────────────────────────────────────────────────────────────────────
 
 router.get('/:productId/seo', auth, canRead, sectionsController.getSeo);
 router.put(
     '/:productId/seo',
-    auth, canManage,
+    auth, canEdit, blockProtectedFields,
     seoUpload.single('ogImage'),
     updateSeoValidation, validate,
     sectionsController.updateSeo

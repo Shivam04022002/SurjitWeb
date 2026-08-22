@@ -10,6 +10,7 @@ import {
   Search, Delete, Download, Visibility, FileDownload
 } from '@mui/icons-material'
 import { careerService } from '../../services/career.service'
+import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 
@@ -42,6 +43,7 @@ const STATUS_LABELS = {
 }
 
 const ApplicationsPage = () => {
+  const perms = usePermissions()
   const [applications, setApplications] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -166,11 +168,11 @@ const ApplicationsPage = () => {
               </IconButton>
             </Tooltip>
           )}
-          <Tooltip title="Delete">
+          {perms.canDelete && (<Tooltip title="Delete">
             <IconButton size="small" color="error" onClick={() => setDeleteDialog({ open: true, id: row._id, name: row.applicantName })}>
               <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip>)}
         </Stack>
       )
     }

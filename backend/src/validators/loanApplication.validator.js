@@ -1,5 +1,6 @@
 const { body } = require('express-validator');
 const { LOAN_TYPES } = require('../constants/loanTypes');
+const { LOAN_APPLICATION_STATUS } = require('../models/LoanApplication');
 
 // Every field the model marks required is validated here, so a missing value
 // comes back as a 400 with field errors rather than surfacing as a Mongoose
@@ -63,4 +64,14 @@ const loanValidation = [
         .withMessage('You must accept the terms to submit an application')
 ];
 
-module.exports = { loanValidation };
+// Admin status change. Only the status value is accepted; the controller reads
+// nothing else from the body.
+const updateStatusValidation = [
+    body('status')
+        .trim()
+        .notEmpty().withMessage('Status is required')
+        .isIn(LOAN_APPLICATION_STATUS)
+        .withMessage(`Status must be one of: ${LOAN_APPLICATION_STATUS.join(', ')}`)
+];
+
+module.exports = { loanValidation, updateStatusValidation };

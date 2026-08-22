@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { ROLES } = require('../constants/roles');
@@ -11,6 +12,10 @@ const router = express.Router();
 
 const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
 const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+// Editing an existing record is open to Content Manager; creating,
+// deleting, publishing, changing status and reordering are not. The
+// blockProtectedFields guard stops an edit body reaching those anyway.
+const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
 
 const brandingUpload = createUpload({ folder: 'settings/branding', fileTypes: 'images' }).fields([
     { name: 'primaryLogo', maxCount: 1 },
@@ -20,6 +25,6 @@ const brandingUpload = createUpload({ folder: 'settings/branding', fileTypes: 'i
 ]);
 
 router.get('/', canRead, settingsController.getSettings);
-router.put('/', canManage, brandingUpload, updateSettingsValidation, validate, settingsController.updateSettings);
+router.put('/', canEdit, blockProtectedFields, brandingUpload, updateSettingsValidation, validate, settingsController.updateSettings);
 
 module.exports = router;
