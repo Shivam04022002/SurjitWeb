@@ -3,6 +3,7 @@ const loanApplicationController = require('../controllers/loanApplication.contro
 const validate = require('../middleware/validate');
 const { loanApplicationValidator } = require('../validators');
 const { createUpload } = require('../middleware/upload');
+const { loanApplicationLimiter, loanStatusLimiter } = require('../middleware/rateLimiters');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 const { ROLES } = require('../constants/roles');
@@ -16,8 +17,30 @@ const loanUploads = createUpload({ folder: 'loan-documents', fileTypes: 'all' })
     { name: 'businessProofDoc', maxCount: 1 }
 ]);
 
-router.post('/', loanUploads, loanApplicationValidator.loanValidation, validate, loanApplicationController.submitLoanApplication);
-router.get('/status/:applicationNumber', loanApplicationController.getApplicationStatus);
-router.get('/', auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER), loanApplicationController.getAllApplications);
+// Loan applications hold PAN, Aadhaar, date of birth and full address. That is
+// materially more sensitive than the marketing content the CMS otherwise
+// manages, so unlike every other module here the read grant stops at Editor
+// and does not extend to Content Manager.
+const canViewApplications = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
+
+// ── Public ───────────────────────────────────────────────────────────────────
+
+router.post(
+    '/',
+    loanApplicationLimiter,
+    loanUploads,
+    loanApplicationValidator.loanValidation,
+    validate,
+    loanApplicationController.submitLoanApplication
+);
+
+router.get('/status/:applicationNumber', loanStatusLimiter, loanApplicationController.getApplicationStatus);
+
+// ── Admin ────────────────────────────────────────────────────────────────────
+// Paginated and filtered; the list withholds PAN, Aadhaar, DOB and address,
+// which are returned only by the detail route below.
+
+router.get('/', canViewApplications, loanApplicationController.getAllApplications);
+router.get('/:id', canViewApplications, loanApplicationController.getApplicationById);
 
 module.exports = router;

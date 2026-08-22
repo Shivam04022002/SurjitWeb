@@ -24,6 +24,7 @@ import {
   Work,
   PhotoLibrary,
   PermMedia,
+  RequestQuote,
   People,
   Menu as MenuIcon,
   ChevronLeft,
@@ -108,6 +109,7 @@ const menuItems = [
       { title: 'Nodal Officers', icon: SupportAgent, path: '/nodal-officers' }
     ]
   },
+  { title: 'Loan Applications', icon: RequestQuote, path: '/loan-applications' },
   { title: 'Media', icon: PermMedia, path: '#' },
   { title: 'Users', icon: People, path: '/users' },
   { title: 'Settings', icon: Settings, path: '/settings' },

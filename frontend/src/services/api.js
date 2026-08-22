@@ -46,6 +46,9 @@ export const getCategoryWithProducts = (categorySlug) =>
 export const getProductCategories = () => api.get('/products/categories').then(r => r.data.data.categories);
 export const getProducts = () => api.get('/products').then(r => r.data.data.products);
 export const getProductBySlug = (slug) => api.get(`/products/by-slug/${slug}`).then(r => r.data.data.product);
+// Used by the loan application form, which arrives with only the product id.
+export const getProductById = (id) => api.get(`/products/by-id/${id}`).then(r => r.data.data.product);
+
 export const getProductFeatures = (productId) => api.get(`/products/${productId}/features`).then(r => r.data.data.features);
 export const getProductEligibility = (productId) => api.get(`/products/${productId}/eligibility`).then(r => r.data.data.eligibility);
 export const getProductDocuments = (productId) => api.get(`/products/${productId}/documents`).then(r => r.data.data.documents);
@@ -78,7 +81,9 @@ export const submitJobApplication = (formData) =>
 
 export const submitContact = (data) => rawApi.post('/contact', data);
 
-export const submitLoanApplication = (data) => rawApi.post('/loan-application', data);
+// Multipart: up to four documents ride along with the form fields. The server
+// returns only the application number, never the stored record.
+export const submitLoanApplication = (data) => rawApi.post('/loan-application', data).then(r => r.data);
 
 export default api;
 

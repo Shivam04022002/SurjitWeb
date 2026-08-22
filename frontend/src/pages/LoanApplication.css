@@ -300,3 +300,23 @@
         justify-content: center;
     }
 }
+/* Product carried in from the Apply button on a product page. */
+.loan-selected-product {
+    margin-top: 8px;
+    font-size: 0.95rem;
+}
+
+.loan-selected-product strong {
+    color: #CE8112;
+}
+
+/* Submission failure from the server, shown above the submit button. */
+.form-server-error {
+    margin: 12px 0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+    font-size: 0.9rem;
+}

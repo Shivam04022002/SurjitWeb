@@ -1,8 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, Check, Upload, User, Briefcase, FileText, CreditCard } from 'lucide-react';
+import { getProductById, submitLoanApplication } from '../services/api';
 import './LoanApplication.css';
 
+// A product's category decides the coarse loanType the application is filed
+// under. Mirrors the same mapping on the server, which is authoritative — this
+// copy only pre-selects the radio so the applicant does not repeat a choice
+// they already made by clicking Apply on a product page.
+const CATEGORY_LOAN_TYPE = {
+    'business-loan': 'business',
+    'commercial-vehicle-loan': 'vehicle',
+    'loan-against-property': 'lap'
+};
+
 const LoanApplication = () => {
+    const [searchParams] = useSearchParams();
+    const productId = searchParams.get('productId') || '';
+    const [product, setProduct] = useState(null);
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         // Personal Info
@@ -36,6 +51,27 @@ const LoanApplication = () => {
         businessProofDoc: null
     });
     const [submitted, setSubmitted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [consentAccepted, setConsentAccepted] = useState(false);
+    const [serverError, setServerError] = useState('');
+
+    // Arrived from a product page: resolve the product for display and
+    // pre-select its loan type. A bad or inactive id simply falls back to the
+    // generic application rather than blocking the applicant — the server
+    // revalidates the id on submit regardless.
+    useEffect(() => {
+        if (!productId) return;
+        let cancelled = false;
+        getProductById(productId)
+            .then((p) => {
+                if (cancelled || !p) return;
+                setProduct(p);
+                const derived = CATEGORY_LOAN_TYPE[p.category?.slug];
+                if (derived) setFormData((f) => ({ ...f, loanType: derived }));
+            })
+            .catch(() => { if (!cancelled) setProduct(null); });
+        return () => { cancelled = true; };
+    }, [productId]);
 
     const handleChange = (e) => {
         setFormData({
@@ -63,6 +99,9 @@ const LoanApplication = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (submitting) return;
+        setServerError('');
+        setSubmitting(true);
         try {
             const dataToSubmit = new FormData();
 
@@ -71,6 +110,14 @@ const LoanApplication = () => {
                 dataToSubmit.append(key, formData[key]);
             });
 
+            // The product this application belongs to, when the applicant came
+            // from a product page. The server resolves it and ignores anything
+            // else we might send about the product.
+            if (productId) dataToSubmit.append('productId', productId);
+
+            // Consent is a real field now, not just a UI gate.
+            dataToSubmit.append('consentAccepted', String(consentAccepted));
+
             // Append file fields
             Object.keys(loanFiles).forEach(key => {
                 if (loanFiles[key]) {
@@ -78,22 +125,20 @@ const LoanApplication = () => {
                 }
             });
 
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/loan-application`, {
-                method: 'POST',
-                // Content-Type is automatically set with standard boundary for FormData
-                body: dataToSubmit,
-            });
-            const data = await response.json();
-
+            const data = await submitLoanApplication(dataToSubmit);
             if (data.success) {
                 setSubmitted(true);
             } else {
-                console.error('Validation errors:', data.errors);
-                alert('Failed to submit: ' + (data.message || 'Please check your inputs'));
+                setServerError(data.message || 'Please check your inputs and try again.');
             }
         } catch (error) {
-            console.error('Error submitting form:', error);
-            alert('Failed to connect to the server. Please try again later.');
+            const res = error?.response?.data;
+            // express-validator returns per-field errors; show the first so the
+            // applicant knows what to correct rather than a generic failure.
+            const first = res?.errors?.length ? res.errors[0].message : null;
+            setServerError(first || res?.message || 'Could not submit your application. Please try again.');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -126,6 +171,11 @@ const LoanApplication = () => {
                 <div className="container">
                     <h1>Loan Application</h1>
                     <p>Apply for a loan in just a few simple steps</p>
+                    {product && (
+                        <p className="loan-selected-product">
+                            Applying for: <strong>{product.name}</strong>
+                        </p>
+                    )}
                 </div>
             </section>
 
@@ -367,18 +417,26 @@ const LoanApplication = () => {
 
                                 <div className="form-consent">
                                     <label className="consent-check">
-                                        <input type="checkbox" required />
-                                        <span>I agree to the Terms & Conditions and authorize Surjit Finance to verify my information</span>
+                                        <input
+                                            type="checkbox"
+                                            name="consentAccepted"
+                                            checked={consentAccepted}
+                                            onChange={(e) => setConsentAccepted(e.target.checked)}
+                                            required
+                                        />
+                                        <span>I agree to the Terms &amp; Conditions and authorize Surjit Finance to verify my information</span>
                                     </label>
                                 </div>
+
+                                {serverError && <div className="form-server-error">{serverError}</div>}
 
                                 <div className="form-actions">
                                     <button type="button" onClick={prevStep} className="btn btn-secondary btn-lg">
                                         <ArrowLeft size={18} />
                                         Previous
                                     </button>
-                                    <button type="submit" className="btn btn-accent btn-lg">
-                                        Submit Application
+                                    <button type="submit" className="btn btn-accent btn-lg" disabled={submitting}>
+                                        {submitting ? 'Submitting…' : 'Submit Application'}
                                         <ArrowRight size={18} />
                                     </button>
                                 </div>

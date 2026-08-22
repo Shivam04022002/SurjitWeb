@@ -28,7 +28,10 @@ const ProductHeroBody = ({ product, category }) => {
                 <h1>{product.name || product.title}</h1>
                 <p>{product.heroDescription || product.description}</p>
                 <div className="product-hero-actions">
-                    <Link to="/loan-application" className="btn btn-accent btn-lg">
+                    <Link
+                        to={product._id ? `/loan-application?productId=${product._id}` : '/loan-application'}
+                        className="btn btn-accent btn-lg"
+                    >
                         Apply Loan
                         <ArrowRight size={20} />
                     </Link>

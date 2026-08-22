@@ -32,6 +32,10 @@ const env = {
 
     // Public review submission. Deliberately far tighter than the general API
     // limiter: this is an unauthenticated write that also accepts a file.
+    LOAN_RATE_LIMIT_WINDOW_MS: parseInt(process.env.LOAN_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
+    LOAN_RATE_LIMIT_MAX: parseInt(process.env.LOAN_RATE_LIMIT_MAX || '10', 10),
+    LOAN_STATUS_RATE_LIMIT_WINDOW_MS: parseInt(process.env.LOAN_STATUS_RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 min
+    LOAN_STATUS_RATE_LIMIT_MAX: parseInt(process.env.LOAN_STATUS_RATE_LIMIT_MAX || '30', 10),
     REVIEW_RATE_LIMIT_WINDOW_MS: parseInt(process.env.REVIEW_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
     REVIEW_RATE_LIMIT_MAX: parseInt(process.env.REVIEW_RATE_LIMIT_MAX || '5', 10),
 

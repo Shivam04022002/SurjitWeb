@@ -26,6 +26,7 @@ const validate = require('../middleware/validate');
 const { reviewSubmissionLimiter } = require('../middleware/rateLimiters');
 const { submitReviewValidation } = require('../validators/review.validator');
 
+const mongoose = require('mongoose');
 const Product = require('../models/Product');
 
 const router = express.Router();
@@ -85,6 +86,22 @@ router.get('/products/by-slug/:slug', asyncHandler(async (req, res) => {
     const product = await Product.findOne({ slug: req.params.slug, isActive: true }).populate('category', 'name slug');
     if (!product) {
         const { AppError } = require('../middleware/errorHandler');
+        throw new AppError('Product not found', 404);
+    }
+    return sendSuccess(res, 'Product fetched successfully', { product });
+}));
+
+// Get an active product by id. Backs the loan application form, which arrives
+// holding only the id from the Apply button and needs the name to display.
+router.get('/products/by-id/:id', asyncHandler(async (req, res) => {
+    const { AppError } = require('../middleware/errorHandler');
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        throw new AppError('Product not found', 404);
+    }
+    const product = await Product.findOne({ _id: req.params.id, isActive: true })
+        .populate('category', 'name slug')
+        .select('name slug category');
+    if (!product) {
         throw new AppError('Product not found', 404);
     }
     return sendSuccess(res, 'Product fetched successfully', { product });

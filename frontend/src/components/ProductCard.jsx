@@ -8,6 +8,9 @@ const ProductCard = ({
     icon,
     features = [],
     link,
+    // Carries the CMS product through to the application form so the applicant
+    // does not have to re-pick the product they just clicked on.
+    productId = null,
     gradient = 'primary',
     highlight = false
 }) => {
@@ -44,7 +47,10 @@ const ProductCard = ({
                     Learn More
                     <ArrowRight size={18} />
                 </Link>
-                <Link to="/loan-application" className="btn btn-secondary">
+                <Link
+                    to={productId ? `/loan-application?productId=${productId}` : '/loan-application'}
+                    className="btn btn-secondary"
+                >
                     Apply Now
                 </Link>
             </div>

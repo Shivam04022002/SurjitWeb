@@ -39,6 +39,7 @@ const Home = () => {
 
     const products = (cmsProducts && cmsProducts.length > 0)
         ? cmsProducts.map((p, i) => ({
+            productId: p._id,
             title: p.name,
             description: p.shortDescription || p.description || '',
             icon: p.icon || ['💼', '🛺', '🏠'][i % 3],

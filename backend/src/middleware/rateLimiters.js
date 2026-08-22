@@ -60,6 +60,36 @@ const reviewSubmissionLimiter = rateLimit({
 });
 
 // Clear a user's failed-attempt counter after a successful login.
+// ── Public loan application (per IP) ─────────────────────────────────────────
+// An unauthenticated write that accepts four file uploads and stores PAN and
+// Aadhaar. Generous enough that a genuine applicant who resubmits after a
+// validation error is never blocked, tight enough that bulk submission is not
+// worth attempting.
+const loanApplicationLimiter = rateLimit({
+    windowMs: env.LOAN_RATE_LIMIT_WINDOW_MS,
+    max: env.LOAN_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        success: false,
+        message: 'You have submitted several applications recently. Please try again later.',
+        errors: []
+    }
+});
+
+// Status lookups are cheap but enumerable, so they get their own, looser cap.
+const loanStatusLimiter = rateLimit({
+    windowMs: env.LOAN_STATUS_RATE_LIMIT_WINDOW_MS,
+    max: env.LOAN_STATUS_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        success: false,
+        message: 'Too many status checks. Please try again later.',
+        errors: []
+    }
+});
+
 const resetLoginLimiter = (req) => {
     try {
         loginLimiter.resetKey(loginKey(req));
@@ -68,4 +98,12 @@ const resetLoginLimiter = (req) => {
     }
 };
 
-module.exports = { apiLimiter, loginLimiter, reviewSubmissionLimiter, resetLoginLimiter, loginKey };
+module.exports = {
+    apiLimiter,
+    loginLimiter,
+    reviewSubmissionLimiter,
+    loanApplicationLimiter,
+    loanStatusLimiter,
+    resetLoginLimiter,
+    loginKey
+};
