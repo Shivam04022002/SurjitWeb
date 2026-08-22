@@ -16,6 +16,7 @@ const branchRoutes = require('./branch.routes');
 const homepageStatRoutes = require('./homepageStat.routes');
 const legalPageRoutes = require('./legalPage.routes');
 const nodalOfficerRoutes = require('./nodalOfficer.routes');
+const analyticsRoutes = require('./analytics.routes');
 
 const router = express.Router();
 
@@ -36,5 +37,6 @@ router.use('/v1/branches', branchRoutes);
 router.use('/v1/homepage-stats', homepageStatRoutes);
 router.use('/v1/legal-pages', legalPageRoutes);
 router.use('/v1/nodal-officers', nodalOfficerRoutes);
+router.use('/v1/analytics', analyticsRoutes);
 
 module.exports = router;

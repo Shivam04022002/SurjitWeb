@@ -90,6 +90,18 @@ const loanStatusLimiter = rateLimit({
     }
 });
 
+// ── Public analytics beacon (per IP) ─────────────────────────────────────────
+// One request per page view, so the ceiling has to accommodate a genuine
+// visitor browsing quickly, while still capping what a single source can write.
+const analyticsTrackLimiter = rateLimit({
+    windowMs: env.ANALYTICS_RATE_LIMIT_WINDOW_MS,
+    max: env.ANALYTICS_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    // A blocked beacon must never surface to a visitor as a broken page.
+    message: { success: false, message: 'Too many requests.', errors: [] }
+});
+
 const resetLoginLimiter = (req) => {
     try {
         loginLimiter.resetKey(loginKey(req));
@@ -102,6 +114,7 @@ module.exports = {
     apiLimiter,
     loginLimiter,
     reviewSubmissionLimiter,
+    analyticsTrackLimiter,
     loanApplicationLimiter,
     loanStatusLimiter,
     resetLoginLimiter,

@@ -1,0 +1,20 @@
+const express = require('express');
+const auth = require('../middleware/auth');
+const authorize = require('../middleware/authorize');
+const validate = require('../middleware/validate');
+const { ROLES } = require('../constants/roles');
+
+const analyticsController = require('../controllers/analytics.controller');
+const { overviewValidation } = require('../validators/analytics.validator');
+
+const router = express.Router();
+
+// Traffic analytics is aggregate, read-only and contains no applicant or
+// customer data, so it follows the same read band as the rest of the CMS.
+// There is no write or delete endpoint here for any role — the only way data
+// enters this collection is the anonymous public beacon.
+const canReadAnalytics = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+
+router.get('/overview', canReadAnalytics, overviewValidation, validate, analyticsController.getOverview);
+
+module.exports = router;

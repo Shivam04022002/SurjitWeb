@@ -25,6 +25,7 @@ import {
   PhotoLibrary,
   PermMedia,
   RequestQuote,
+  BarChart,
   People,
   Menu as MenuIcon,
   ChevronLeft,
@@ -110,6 +111,7 @@ const menuItems = [
     ]
   },
   { title: 'Loan Applications', icon: RequestQuote, path: '/loan-applications' },
+  { title: 'Website Analytics', icon: BarChart, path: '/analytics' },
   { title: 'Media', icon: PermMedia, path: '#' },
   { title: 'Users', icon: People, path: '/users' },
   { title: 'Settings', icon: Settings, path: '/settings' },

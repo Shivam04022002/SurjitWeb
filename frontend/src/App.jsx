@@ -3,6 +3,7 @@ import { Suspense, lazy } from 'react';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
+import PageViewTracker from './components/PageViewTracker';
 import PageLoader from './components/PageLoader';
 import './index.css';
 
@@ -30,6 +31,7 @@ function App() {
   return (
     <Router>
       <ScrollToTop />
+      <PageViewTracker />
       <div className="app">
         <Navbar />
         <main className="main-content">

@@ -8,6 +8,7 @@ import DashboardLayout from '../layouts/DashboardLayout'
 import CompanyInfoPage from '../pages/about/CompanyInfoPage'
 import DirectorsPage from '../pages/about/DirectorsPage'
 import LoanApplicationsPage from '../pages/loanApplications/LoanApplicationsPage'
+import AnalyticsPage from '../pages/analytics/AnalyticsPage'
 import LeadershipPage from '../pages/about/LeadershipPage'
 import ProductCategoriesPage from '../pages/products/ProductCategoriesPage'
 import ProductsPage from '../pages/products/ProductsPage'
@@ -82,6 +83,7 @@ const AppRoutes = () => {
         <Route path="about/company" element={<CompanyInfoPage />} />
         <Route path="about/directors" element={<DirectorsPage />} />
         <Route path="loan-applications" element={<LoanApplicationsPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="about/leadership" element={<LeadershipPage />} />
         <Route path="products/categories" element={<ProductCategoriesPage />} />
         <Route path="products" element={<ProductsPage />} />
