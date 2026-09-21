@@ -4,15 +4,20 @@ const { MODEL_RX } = require('../services/gemini/geminiClient');
 const { MAX_MONTHLY_BLOGS } = require('../services/gemini/geminiBlog.service');
 const zoned = require('../utils/zonedDate');
 
-// Gemini keys are URL-safe tokens. The rule only bounds the shape; whether a
-// key actually works is what Test Connection is for. Validation messages never
-// echo the submitted value.
+// Google issues keys in more than one format: classic "AIza…" keys and the
+// newer "AQ.…" keys, whose period an earlier allowlist of [A-Za-z0-9_-]
+// rejected. So the rule does not guess at Google's alphabet: any visible
+// ASCII character is accepted, and only what cannot be part of a key sent
+// in an HTTP header is refused — spaces, line breaks and other control
+// characters. Surrounding whitespace from a paste is trimmed; the key itself
+// is otherwise stored and sent exactly as entered. Whether it works is what
+// Test Connection is for. Messages never echo the submitted value.
 const apiKeyRule = (field = 'apiKey') => body(field)
     .optional({ checkFalsy: true })
     .isString().withMessage('API key must be text')
     .trim()
-    .isLength({ min: 20, max: 200 }).withMessage('API key must be 20-200 characters')
-    .matches(/^[A-Za-z0-9_-]+$/).withMessage('API key contains invalid characters');
+    .isLength({ min: 20, max: 512 }).withMessage('API key must be 20-512 characters')
+    .matches(/^[\x21-\x7E]+$/).withMessage('API key must not contain spaces, line breaks or special control characters');
 
 const modelRule = (field) => body(field)
     .optional()

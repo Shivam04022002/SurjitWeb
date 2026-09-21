@@ -36,6 +36,10 @@ const geminiBlog = require('../src/services/gemini/geminiBlog.service');
 
 const API_KEY = 'AIzaSyTESTKEY_abcdefghijklmnopqrstuv1234';
 const OTHER_KEY = 'AIzaSyOTHERKEY_zyxwvutsrqponmlkjihgf9876';
+// Shaped like a current Google AI Studio "AQ." key: a period after the prefix,
+// and further periods, underscores and hyphens in the body.
+const AQ_KEY = 'AQ.Ab8RN6LqZ-3xT_9vKp2mW.hY7cD4eF1gJ0kS5uV8wXzQ-_tR2';
+const VALID_KEYS = [API_KEY, OTHER_KEY, AQ_KEY];
 
 // ── Output capture: proves the key never reaches a log line ────────────────────
 const captured = [];
@@ -80,7 +84,12 @@ const jsonResponse = (status, body) => new Response(JSON.stringify(body), {
 
 const fakeGemini = async (url, init = {}) => {
     const headers = new Headers(init.headers || {});
-    gemini.calls.push({ url: String(url), key: headers.get('x-goog-api-key'), body: init.body ? JSON.parse(init.body) : null });
+    gemini.calls.push({
+        url: String(url),
+        key: headers.get('x-goog-api-key'),
+        authorization: headers.get('authorization'),
+        body: init.body ? JSON.parse(init.body) : null
+    });
 
     if (gemini.delayMs) {
         await new Promise((resolve, reject) => {
@@ -93,13 +102,35 @@ const fakeGemini = async (url, init = {}) => {
     }
 
     const key = headers.get('x-goog-api-key');
-    if (gemini.mode === 'invalidKey' || (key !== API_KEY && key !== OTHER_KEY)) {
+    if (gemini.mode === 'invalidKey' || !VALID_KEYS.includes(key)) {
         return jsonResponse(400, {
             error: {
                 code: 400,
                 message: `API key not valid. Please pass a valid API key. (${key})`,
                 status: 'INVALID_ARGUMENT',
                 details: [{ reason: 'API_KEY_INVALID' }]
+            }
+        });
+    }
+    // Google-shaped auth failures. Both echo the key in the message, so the
+    // tests also prove it is redacted before reaching a response or a log.
+    if (gemini.mode === 'unauth401') {
+        return jsonResponse(401, {
+            error: {
+                code: 401,
+                message: `Request had invalid authentication credentials (${key}).`,
+                status: 'UNAUTHENTICATED',
+                details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'ACCESS_TOKEN_TYPE_UNSUPPORTED' }]
+            }
+        });
+    }
+    if (gemini.mode === 'serviceDisabled') {
+        return jsonResponse(403, {
+            error: {
+                code: 403,
+                message: `Generative Language API has not been used in project 123 before or it is disabled. (${key})`,
+                status: 'PERMISSION_DENIED',
+                details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'SERVICE_DISABLED' }]
             }
         });
     }
@@ -325,6 +356,122 @@ describe('Gemini connection test', () => {
         const res = await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
         assert.equal(res.body.data.result.ok, false);
         assert.match(res.body.data.result.message, /model was not found/);
+    });
+});
+
+// ── Google key formats ─────────────────────────────────────────────────────────
+// Google AI Studio issues "AQ.…" keys as well as classic "AIza…" keys. An
+// earlier allowlist rejected the period, so the full AQ. key could never be
+// saved or tested.
+describe('Google key formats (AQ. and AIza)', () => {
+    after(async () => { await configure(); });
+
+    test('an AQ. key is accepted and stored byte-for-byte', async () => {
+        const res = await configure({ apiKey: AQ_KEY });
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.config.configured, true);
+        assert.equal(res.body.data.config.keyHint, AQ_KEY.slice(-4));
+        const doc = await IntegrationSetting.findOne({ provider: 'gemini' }).select('+encryptedKey').lean();
+        assert.strictEqual(decrypt(doc.encryptedKey), AQ_KEY);
+        assert.ok(!JSON.stringify(doc).includes(AQ_KEY));
+    });
+
+    test('Test Connection sends the stored AQ. key unchanged in x-goog-api-key only', async () => {
+        const res = await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
+        assert.equal(res.status, 200);
+        assert.equal(res.body.data.result.ok, true, res.text);
+        assert.ok(gemini.calls.length >= 1);
+        for (const c of gemini.calls) {
+            assert.strictEqual(c.key, AQ_KEY, 'header must carry the exact key');
+            assert.equal(c.authorization, null, 'no Authorization header');
+            assert.ok(!c.url.includes('?'), 'no query string');
+            assert.ok(!c.url.includes(AQ_KEY) && !c.url.includes('key='));
+        }
+        assert.equal(gemini.calls[0].url, `${BASE_URL}/models/gemini-2.5-flash`);
+    });
+
+    test('Google\'s success response is reported as connected, naming the models', async () => {
+        const { result } = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data;
+        assert.equal(result.ok, true);
+        assert.match(result.message, /^Connected\. Text model: gemini-2\.5-flash · Image model: gemini-2\.5-flash-image$/);
+        const cfg = (await call('GET', '/v1/gemini/config', { token: tokens.super })).body.data.config;
+        assert.equal(cfg.lastTest.ok, true);
+    });
+
+    test('an unsaved AQ. key can be tested as a candidate', async () => {
+        await configure();
+        const res = await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: { apiKey: AQ_KEY } });
+        assert.equal(res.body.data.result.ok, true, res.text);
+        assert.strictEqual(gemini.calls[0].key, AQ_KEY);
+        await configure({ apiKey: AQ_KEY });
+    });
+
+    test('the text model is checked first; the image model only after it passes', async () => {
+        gemini.mode = 'unauth401';
+        const { result } = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data;
+        assert.equal(result.ok, false);
+        assert.equal(result.failedCheck, 'Text model');
+        assert.equal(gemini.calls.length, 1, 'image model not requested after a failed text check');
+        assert.equal(gemini.calls[0].url, `${BASE_URL}/models/gemini-2.5-flash`);
+    });
+
+    test('Google 401 is reported as an invalid key, safely, without the key', async () => {
+        gemini.mode = 'unauth401';
+        const res = await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
+        assert.equal(res.status, 200, 'an upstream 401 must never become a CMS 401 (that logs the admin out)');
+        const { result } = res.body.data;
+        assert.equal(result.ok, false);
+        assert.match(result.message, /^Text model \(gemini-2\.5-flash\): The Gemini API key is not valid \(Google: ACCESS_TOKEN_TYPE_UNSUPPORTED\)/);
+        assert.ok(!res.text.includes(AQ_KEY), 'key must not appear in the response');
+        const cfg = (await call('GET', '/v1/gemini/config', { token: tokens.super })).text;
+        assert.ok(!cfg.includes(AQ_KEY), 'key must not appear in the recorded test result');
+    });
+
+    test('Google 400 API_KEY_INVALID that echoes the key is redacted', async () => {
+        gemini.mode = 'invalidKey';
+        const res = await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
+        assert.match(res.body.data.result.message, /API key is not valid \(Google: API_KEY_INVALID\)/);
+        assert.ok(!res.text.includes(AQ_KEY));
+        const genRes = await generate();
+        assert.equal(genRes.status, 422);
+        assert.ok(!genRes.text.includes(AQ_KEY));
+    });
+
+    test('Google 403 SERVICE_DISABLED explains what to enable', async () => {
+        gemini.mode = 'serviceDisabled';
+        const { result } = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data;
+        assert.equal(result.ok, false);
+        assert.match(result.message, /Google refused this key for the Gemini API \(Google: SERVICE_DISABLED\)\. The Generative Language API is not enabled/);
+    });
+
+    test('generation also sends the AQ. key unchanged in the header', async () => {
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        const req = gemini.calls.at(-1);
+        assert.strictEqual(req.key, AQ_KEY);
+        assert.equal(req.authorization, null);
+        assert.equal(req.url, `${BASE_URL}/models/gemini-2.5-flash:generateContent`);
+    });
+
+    test('classic AIza keys still work', async () => {
+        assert.equal((await configure({ apiKey: API_KEY })).status, 200);
+        const { result } = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data;
+        assert.equal(result.ok, true);
+        assert.strictEqual(gemini.calls[0].key, API_KEY);
+    });
+
+    test('surrounding whitespace from a paste is trimmed; nothing else is changed', async () => {
+        assert.equal((await configure({ apiKey: `  ${AQ_KEY}\n` })).status, 200);
+        const doc = await IntegrationSetting.findOne({ provider: 'gemini' }).select('+encryptedKey').lean();
+        assert.strictEqual(decrypt(doc.encryptedKey), AQ_KEY);
+    });
+
+    test('keys with inner spaces or line breaks are refused, without echoing them', async () => {
+        for (const bad of [`${AQ_KEY.slice(0, 20)} ${AQ_KEY.slice(20)}`, `${AQ_KEY.slice(0, 20)}\n${AQ_KEY.slice(20)}`, 'AQ.short']) {
+            const res = await call('PUT', '/v1/gemini/config', { token: tokens.super, body: { apiKey: bad } });
+            assert.equal(res.status, 400, JSON.stringify(bad));
+            assert.ok(!res.text.includes(AQ_KEY.slice(20)));
+        }
     });
 });
 
@@ -963,14 +1110,14 @@ describe('Save All as Drafts', () => {
 describe('API key exposure', () => {
     test('no API response ever contained a raw key', () => {
         for (const text of responses) {
-            assert.ok(!text.includes(API_KEY) && !text.includes(OTHER_KEY), text.slice(0, 200));
+            assert.ok(!VALID_KEYS.some((k) => text.includes(k)), text.slice(0, 200));
         }
         assert.ok(responses.length > 40);
     });
 
     test('no log line ever contained a raw key', () => {
         for (const line of captured) {
-            assert.ok(!line.includes(API_KEY) && !line.includes(OTHER_KEY), line.slice(0, 200));
+            assert.ok(!VALID_KEYS.some((k) => line.includes(k)), line.slice(0, 200));
         }
         assert.ok(captured.length > 0);
     });

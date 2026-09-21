@@ -177,7 +177,7 @@ const ApiSettingsPage = () => {
                 disabled={fromEnv}
                 fullWidth
                 autoComplete="new-password"
-                placeholder={hasStoredKey ? `Current key ends in ${config.keyHint} — leave blank to keep it` : 'AIza…'}
+                placeholder={hasStoredKey ? `Current key ends in ${config.keyHint} — leave blank to keep it` : 'Paste the complete key (AIza… or AQ.…)'}
                 error={!!errors.apiKey}
                 helperText={errors.apiKey || 'Stored encrypted on the server. It is never shown again after saving.'}
                 slotProps={{

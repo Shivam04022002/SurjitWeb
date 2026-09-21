@@ -28,22 +28,42 @@ const assertModel = (model) => {
 
 // Belt and braces: nothing Google sends back is expected to contain the key,
 // but any message that did would be scrubbed before it reaches a log or a
-// response.
+// response — the exact key, and anything shaped like a Google key in either
+// the classic "AIza…" or the newer "AQ.…" format.
 const scrub = (text, apiKey) => {
     let out = String(text || '');
     if (apiKey) out = out.split(apiKey).join('[redacted]');
-    return out.replace(/AIza[0-9A-Za-z_\-]{20,}/g, '[redacted]').slice(0, 300);
+    return out
+        .replace(/AIza[0-9A-Za-z_\-]{20,}/g, '[redacted]')
+        .replace(/AQ\.[\x21-\x7E]{10,}/g, '[redacted]')
+        .slice(0, 300);
+};
+
+// Google's machine-readable reason (ErrorInfo.reason, e.g. API_KEY_INVALID,
+// SERVICE_DISABLED). A fixed vocabulary that never contains the key, so it is
+// safe to show and tells an admin what to fix.
+const reasonOf = (body) => {
+    const info = (body?.error?.details || []).find((d) => d && typeof d.reason === 'string');
+    return info && /^[A-Z_]{3,64}$/.test(info.reason) ? info.reason : '';
 };
 
 const upstreamError = (status, body, apiKey) => {
     const detail = scrub(body?.error?.message, apiKey);
-    const reason = JSON.stringify(body?.error?.details || '');
+    const reason = reasonOf(body);
+    const code = reason ? ` (Google: ${reason})` : ` (HTTP ${status})`;
 
-    if (status === 400 && /API_KEY_INVALID|API key not valid/i.test(`${reason} ${detail}`)) {
-        return new AppError('The Gemini API key is not valid. Update it on the API page.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
+    // 400 API_KEY_INVALID is Google's answer to a key it does not recognise;
+    // 401 UNAUTHENTICATED is the same verdict from the auth layer.
+    if ((status === 400 && /API_KEY_INVALID|API key not valid/i.test(`${reason} ${detail}`)) || status === 401) {
+        return new AppError(`The Gemini API key is not valid${code}. Paste the complete key on the API page.`, HTTP_STATUS.UNPROCESSABLE_ENTITY);
     }
-    if (status === 401 || status === 403) {
-        return new AppError('The Gemini API key does not have permission to use this model.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
+    if (status === 403) {
+        const hint = reason === 'SERVICE_DISABLED'
+            ? ' The Generative Language API is not enabled for this key\'s Google project.'
+            : reason === 'API_KEY_SERVICE_BLOCKED' || reason === 'API_KEY_HTTP_REFERRER_BLOCKED' || reason === 'API_KEY_IP_ADDRESS_BLOCKED'
+                ? ' The key\'s restrictions in Google Cloud do not allow this server to use the Gemini API.'
+                : '';
+        return new AppError(`Google refused this key for the Gemini API${code}.${hint}`, HTTP_STATUS.UNPROCESSABLE_ENTITY);
     }
     if (status === 404) {
         return new AppError('The configured Gemini model was not found. Check the model name on the API page.', HTTP_STATUS.UNPROCESSABLE_ENTITY);

@@ -98,9 +98,12 @@ const removeKey = async (userId) => {
     return publicStatus();
 };
 
-// Checks the key against each configured model without generating anything.
-// A candidate key (typed but not yet saved) can be tested; only a test of the
-// saved configuration is recorded.
+// Checks the key against each configured model without generating anything
+// (a model lookup spends no tokens). The text model is checked first; the
+// image model only once the key has authenticated, so a bad key fails on one
+// request and the message says which check failed. A candidate key (typed but
+// not yet saved) can be tested; only a test of the saved configuration is
+// recorded.
 const testConnection = async ({ apiKey: candidate } = {}) => {
     const doc = await load();
     const models = effectiveModels(doc);
@@ -113,12 +116,20 @@ const testConnection = async ({ apiKey: candidate } = {}) => {
     if (!apiKey) {
         result = { ok: false, message: 'No API key is configured.' };
     } else {
-        try {
-            for (const c of checks) await gemini.getModel(apiKey, c.model);
-            result = { ok: true, message: `Connected. ${checks.map((c) => `${c.label}: ${c.model}`).join(' · ')}` };
-        } catch (err) {
-            result = { ok: false, message: gemini.scrub(err.message, apiKey) };
+        const passed = [];
+        let failure = null;
+        for (const c of checks) {
+            try {
+                await gemini.getModel(apiKey, c.model);
+                passed.push(c);
+            } catch (err) {
+                failure = { check: c, message: gemini.scrub(err.message, apiKey) };
+                break;
+            }
         }
+        result = failure
+            ? { ok: false, message: `${failure.check.label} (${failure.check.model}): ${failure.message}`, failedCheck: failure.check.label }
+            : { ok: true, message: `Connected. ${passed.map((c) => `${c.label}: ${c.model}`).join(' · ')}` };
     }
 
     if (!candidate && doc) {
