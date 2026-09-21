@@ -42,12 +42,36 @@ const trackPageView = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Recorded', {}, HTTP_STATUS.CREATED);
 });
 
+// Anonymous user-action beacon (CTA, phone, email, content clicks). The
+// validator has already reduced the body to an allowlisted action and route
+// paths.
+const trackEvent = asyncHandler(async (req, res) => {
+    await analyticsService.recordEvent({
+        sessionId: req.body.sessionId,
+        action: req.body.action,
+        path: req.body.path,
+        target: req.body.target
+    });
+    return sendSuccess(res, 'Recorded', {}, HTTP_STATUS.CREATED);
+});
+
 // ── Admin ──────────────────────────────────────────────────────────────────────
 
+// `range`, `from` and `to` are validated before reaching here.
+const rangeParams = (q) => ({ range: q.range, from: q.from, to: q.to });
+
 const getOverview = asyncHandler(async (req, res) => {
-    // `range` is validated against an allowlist before reaching here.
-    const overview = await analyticsService.getOverview(req.query.range);
+    const overview = await analyticsService.getOverview(rangeParams(req.query));
     return sendSuccess(res, 'Analytics fetched successfully', overview, HTTP_STATUS.OK);
 });
 
-module.exports = { trackPageView, getOverview };
+const getPages = asyncHandler(async (req, res) => {
+    const pages = await analyticsService.getPages({
+        ...rangeParams(req.query),
+        page: req.query.page || 1,
+        limit: req.query.limit || 25
+    });
+    return sendSuccess(res, 'Pages fetched successfully', pages, HTTP_STATUS.OK);
+});
+
+module.exports = { trackPageView, trackEvent, getOverview, getPages };

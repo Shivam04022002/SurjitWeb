@@ -1,270 +1,594 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Box, Container, Typography, Card, CardContent, Stack, Button,
-  ToggleButton, ToggleButtonGroup, CircularProgress, Alert, useTheme,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, LinearProgress
+  Box, Container, Typography, Card, CardContent, Stack, Button, TextField, Popover,
+  ToggleButton, ToggleButtonGroup, CircularProgress, Alert, Link, Tooltip, Dialog,
+  DialogTitle, DialogContent, DialogActions, TablePagination,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material'
-import { Refresh, TrendingUp, Visibility } from '@mui/icons-material'
+import {
+  Refresh, People, Visibility, AssignmentTurnedIn, ContactPhone, Timer, ExitToApp,
+  InfoOutlined, OpenInNew, TouchApp, LocationOff, CalendarMonth
+} from '@mui/icons-material'
 import { analyticsService } from '../../services/analytics.service'
+import { LineChart, DonutChart, BarList } from './charts'
+import { SERIES, nf } from './chartTheme'
 
-const RANGES = [
+const SITE_URL = 'https://surjitfinance.com'
+
+const PRESETS = [
   { value: 'today', label: 'Today' },
   { value: '7d', label: '7 Days' },
-  { value: '30d', label: '30 Days' }
+  { value: '30d', label: '30 Days' },
+  { value: '90d', label: '90 Days' }
 ]
 
-const nf = new Intl.NumberFormat('en-IN')
-
-const shortDate = (iso) => {
-  const d = new Date(iso + 'T00:00:00')
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+// Colour follows the source, whatever else is on screen.
+const SOURCE_COLORS = {
+  direct: SERIES.blue,
+  search: SERIES.orange,
+  social: SERIES.aqua,
+  referral: SERIES.yellow
 }
 
-// A small inline SVG chart rather than a charting dependency. The admin bundle
-// is already large, and this needs two series over at most 30 points.
-const TrafficChart = ({ daily }) => {
-  const theme = useTheme()
-  const width = 720
-  const height = 220
-  const padL = 44
-  const padR = 12
-  const padT = 12
-  const padB = 28
+const TRAFFIC_SERIES = [
+  { key: 'pageViews', label: 'Page Views', color: SERIES.blue },
+  { key: 'visits', label: 'Visitors', color: SERIES.orange }
+]
 
-  const max = Math.max(1, ...daily.map((d) => Math.max(d.pageViews, d.visits)))
-  const plotW = width - padL - padR
-  const plotH = height - padT - padB
-  const stepX = daily.length > 1 ? plotW / (daily.length - 1) : 0
-  const x = (i) => padL + (daily.length > 1 ? i * stepX : plotW / 2)
-  const y = (v) => padT + plotH - (v / max) * plotH
+const LOAN_SERIES = [
+  { key: 'loanApplicationClicks', label: 'Loan Application Clicks', color: SERIES.blue }
+]
 
-  const line = (key) => daily.map((d, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(d[key])}`).join(' ')
-
-  // At most five y-axis gridlines, on whole numbers.
-  const ticks = 4
-  const gridVals = Array.from({ length: ticks + 1 }, (_, i) => Math.round((max / ticks) * i))
-
-  const views = theme.palette.primary.main
-  const visits = theme.palette.success.main
-
-  return (
-    <Box sx={{ width: '100%', overflowX: 'auto' }}>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ width: '100%', minWidth: 480, height: 'auto', display: 'block' }}
-        role="img"
-        aria-label="Daily visits and page views"
-      >
-        {gridVals.map((v, i) => (
-          <g key={i}>
-            <line
-              x1={padL} x2={width - padR} y1={y(v)} y2={y(v)}
-              stroke={theme.palette.divider} strokeWidth="1"
-            />
-            <text
-              x={padL - 8} y={y(v) + 4} textAnchor="end"
-              fontSize="11" fill={theme.palette.text.secondary}
-            >
-              {v}
-            </text>
-          </g>
-        ))}
-
-        <path d={line('pageViews')} fill="none" stroke={views} strokeWidth="2" />
-        <path d={line('visits')} fill="none" stroke={visits} strokeWidth="2" />
-
-        {daily.map((d, i) => (
-          <g key={d.date}>
-            <circle cx={x(i)} cy={y(d.pageViews)} r="2.5" fill={views} />
-            <circle cx={x(i)} cy={y(d.visits)} r="2.5" fill={visits} />
-            <title>{`${d.date} — ${d.visits} visits, ${d.pageViews} page views`}</title>
-          </g>
-        ))}
-
-        {/* Label the ends, and the middle when there is room. */}
-        {daily.map((d, i) => {
-          const show = i === 0 || i === daily.length - 1 ||
-            (daily.length > 6 && i === Math.floor(daily.length / 2))
-          if (!show) return null
-          return (
-            <text
-              key={d.date} x={x(i)} y={height - 8}
-              textAnchor={i === 0 ? 'start' : i === daily.length - 1 ? 'end' : 'middle'}
-              fontSize="11" fill={theme.palette.text.secondary}
-            >
-              {shortDate(d.date)}
-            </text>
-          )
-        })}
-      </svg>
-
-      <Stack direction="row" spacing={3} sx={{ mt: 1, pl: 1 }}>
-        <Stack direction="row" spacing={0.75} alignItems="center">
-          <Box sx={{ width: 12, height: 3, bgcolor: views, borderRadius: 1 }} />
-          <Typography variant="caption" color="text.secondary">Page Views</Typography>
-        </Stack>
-        <Stack direction="row" spacing={0.75} alignItems="center">
-          <Box sx={{ width: 12, height: 3, bgcolor: visits, borderRadius: 1 }} />
-          <Typography variant="caption" color="text.secondary">Visits</Typography>
-        </Stack>
-      </Stack>
-    </Box>
-  )
+// Days arrive as YYYY-MM-DD in the business timezone; parse them as local
+// calendar dates so the label never shifts by a day.
+const parseDay = (day) => {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(y, m - 1, d)
 }
 
-const StatCard = ({ label, value, icon: Icon, color }) => (
-  <Card sx={{ flex: 1, minWidth: 200 }}>
+const formatAxisDate = (day, long = false) => parseDay(day).toLocaleDateString('en-GB', long
+  ? { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }
+  : { day: 'numeric', month: 'short' })
+
+const formatRangeDay = (day) => parseDay(day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+
+const localToday = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const formatDuration = (sec) => {
+  if (sec == null) return '—'
+  if (sec < 60) return `${sec}s`
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  const s = sec % 60
+  return h ? `${h}h ${m}m` : `${m}m ${s}s`
+}
+
+const formatPercent = (ratio) => (ratio == null ? '—' : `${(ratio * 100).toFixed(1)}%`)
+
+const formatActivityTime = (iso) => {
+  const d = new Date(iso)
+  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })
+  return d.toDateString() === new Date().toDateString()
+    ? time
+    : `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${time}`
+}
+
+// ── Building blocks ────────────────────────────────────────────────────────────
+
+const StatCard = ({ label, value, icon: Icon, color, caption, hint }) => (
+  <Card sx={{ height: '100%' }}>
     <CardContent>
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-        <Icon fontSize="small" sx={{ color }} />
-        <Typography variant="body2" color="text.secondary">{label}</Typography>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+        <Box sx={{ width: 32, height: 32, borderRadius: 1.5, display: 'grid', placeItems: 'center', bgcolor: `${color}14` }}>
+          <Icon fontSize="small" sx={{ color }} />
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>{label}</Typography>
+        {hint && (
+          <Tooltip title={hint} arrow>
+            <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
+          </Tooltip>
+        )}
       </Stack>
-      <Typography variant="h4" fontWeight={700}>{nf.format(value)}</Typography>
+      <Typography variant="h4" fontWeight={700} lineHeight={1.15}>{value}</Typography>
+      {caption && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+          {caption}
+        </Typography>
+      )}
     </CardContent>
   </Card>
 )
 
+// minWidth 0 lets a grid cell shrink below its content (a wide table then
+// scrolls inside the card instead of widening the page).
+const Section = ({ title, subtitle, action, children, sx }) => (
+  <Card sx={{ height: '100%', minWidth: 0, ...sx }}>
+    <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Stack direction="row" alignItems="flex-start" spacing={1} sx={{ mb: 2 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="subtitle1" fontWeight={600}>{title}</Typography>
+          {subtitle && <Typography variant="caption" color="text.secondary">{subtitle}</Typography>}
+        </Box>
+        {action}
+      </Stack>
+      <Box sx={{ flex: 1 }}>{children}</Box>
+    </CardContent>
+  </Card>
+)
+
+const Empty = ({ children = 'No data available', icon: Icon }) => (
+  <Stack alignItems="center" justifyContent="center" spacing={1} sx={{ py: 5, color: 'text.secondary', height: '100%' }}>
+    {Icon && <Icon sx={{ color: 'text.disabled' }} />}
+    <Typography variant="body2" color="text.secondary" align="center">{children}</Typography>
+  </Stack>
+)
+
+const PageLink = ({ path }) => (
+  <Link
+    href={`${SITE_URL}${path}`}
+    target="_blank"
+    rel="noopener noreferrer"
+    underline="hover"
+    color="inherit"
+    sx={{ wordBreak: 'break-all', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+  >
+    {path}
+    <OpenInNew sx={{ fontSize: 13, color: 'text.disabled' }} />
+  </Link>
+)
+
+// ── Custom range picker ──────────────────────────────────────────────────────
+
+const CustomRangePopover = ({ anchorEl, onClose, initial, onApply }) => {
+  const [from, setFrom] = useState(initial.from)
+  const [to, setTo] = useState(initial.to)
+  const max = localToday()
+  const invalid = !from || !to || from > to || to > max
+
+  return (
+    <Popover
+      open={!!anchorEl}
+      anchorEl={anchorEl}
+      onClose={onClose}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+    >
+      <Stack spacing={2} sx={{ p: 2, width: 280 }}>
+        <Typography variant="subtitle2">Custom range</Typography>
+        <TextField
+          label="From" type="date" size="small" value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: to || max } }}
+        />
+        <TextField
+          label="To" type="date" size="small" value={to}
+          onChange={(e) => setTo(e.target.value)}
+          slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: from, max } }}
+        />
+        <Typography variant="caption" color="text.secondary">Up to 366 days.</Typography>
+        <Stack direction="row" spacing={1} justifyContent="flex-end">
+          <Button size="small" onClick={onClose}>Cancel</Button>
+          <Button size="small" variant="contained" disabled={invalid} onClick={() => onApply({ from, to })}>
+            Apply
+          </Button>
+        </Stack>
+      </Stack>
+    </Popover>
+  )
+}
+
+// ── Top pages "View All" ─────────────────────────────────────────────────────
+
+// Mounted only while open, so each opening starts on page one for the range
+// currently selected.
+const AllPagesDialog = ({ onClose, range, rangeLabel }) => {
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
+  const [result, setResult] = useState({ key: null, rows: [], total: 0, error: '' })
+
+  // Loading is derived: the rows on screen belong to some other request.
+  const requestKey = `${page}|${rowsPerPage}`
+  const loading = result.key !== requestKey
+  const error = result.error
+
+  useEffect(() => {
+    let cancelled = false
+    analyticsService.getPages(range, { page: page + 1, limit: rowsPerPage })
+      .then((res) => {
+        if (!cancelled) setResult({ key: requestKey, rows: res?.data?.rows || [], total: res?.data?.total || 0, error: '' })
+      })
+      .catch((err) => {
+        if (!cancelled) setResult((r) => ({ ...r, key: requestKey, error: err?.response?.data?.message || 'Could not load pages.' }))
+      })
+    return () => { cancelled = true }
+  }, [range, page, rowsPerPage, requestKey])
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        All Pages
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{rangeLabel}</Typography>
+      </DialogTitle>
+      <DialogContent dividers sx={{ p: 0 }}>
+        {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
+        <TableContainer sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity 150ms' }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: 56 }}>#</TableCell>
+                <TableCell>Page</TableCell>
+                <TableCell align="right">Page Views</TableCell>
+                <TableCell align="right">Unique Visitors</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {result.rows.map((p, i) => (
+                <TableRow key={p.path} hover>
+                  <TableCell>{page * rowsPerPage + i + 1}</TableCell>
+                  <TableCell><PageLink path={p.path} /></TableCell>
+                  <TableCell align="right">{nf.format(p.pageViews)}</TableCell>
+                  <TableCell align="right">{nf.format(p.visitors)}</TableCell>
+                </TableRow>
+              ))}
+              {!loading && !result.rows.length && !error && (
+                <TableRow><TableCell colSpan={4}><Empty /></TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </DialogContent>
+      <TablePagination
+        component="div"
+        count={result.total}
+        page={page}
+        rowsPerPage={rowsPerPage}
+        rowsPerPageOptions={[25, 50, 100]}
+        onPageChange={(e, p) => setPage(p)}
+        onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0) }}
+      />
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
 const AnalyticsPage = () => {
-  const [range, setRange] = useState('7d')
+  const [range, setRange] = useState({ range: '7d' })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [customAnchor, setCustomAnchor] = useState(null)
+  const [allPagesOpen, setAllPagesOpen] = useState(false)
+  // Ignores a slow response for a range the admin has already moved away from.
+  const requestId = useRef(0)
 
   const fetchOverview = useCallback(async () => {
+    const id = ++requestId.current
     setLoading(true)
     setError('')
     try {
       const res = await analyticsService.getOverview(range)
-      setData(res?.data || null)
+      if (id === requestId.current) setData(res?.data || null)
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not load analytics. Please try again.')
-      setData(null)
+      if (id === requestId.current) {
+        setError(err?.response?.data?.message || 'Could not load analytics. Please try again.')
+      }
     } finally {
-      setLoading(false)
+      if (id === requestId.current) setLoading(false)
     }
   }, [range])
 
   useEffect(() => { fetchOverview() }, [fetchOverview])
 
-  const hasTraffic = !!data && (data.totalPageViews > 0 || data.totalVisits > 0)
-  const topMax = data?.topPages?.length ? data.topPages[0].pageViews : 0
+  const rangeLabel = data
+    ? (data.from === data.to ? formatRangeDay(data.from) : `${formatRangeDay(data.from)} – ${formatRangeDay(data.to)}`)
+    : ''
+
+  const onPreset = (e, value) => {
+    // Custom opens its picker from its own onClick, which also fires when it
+    // is already selected (the group reports null for that).
+    if (!value || value === 'custom') return
+    setRange({ range: value })
+  }
+
+  const k = data?.kpis
+  const contactCaption = k?.contactBreakdown
+    ?.filter((a) => a.clicks > 0)
+    .map((a) => `${a.label.replace(/ Click$/, '')} ${nf.format(a.clicks)}`)
+    .join(' · ')
+  const loanTotal = data ? data.daily.reduce((n, d) => n + d.loanApplicationClicks, 0) : 0
+  const sourceTotal = data ? data.sources.reduce((n, s) => n + s.visitors, 0) : 0
+  const actionsTotal = data ? data.actions.reduce((n, a) => n + a.clicks, 0) : 0
 
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
+      {/* ── Header ── */}
       <Stack
-        direction={{ xs: 'column', sm: 'row' }}
+        direction={{ xs: 'column', md: 'row' }}
         spacing={2}
         justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        alignItems={{ xs: 'flex-start', md: 'center' }}
         sx={{ mb: 3 }}
       >
         <Box>
           <Typography variant="h5" fontWeight={700}>Website Analytics</Typography>
           <Typography variant="body2" color="text.secondary">
-            Anonymous traffic from the public website
+            Track website traffic, page performance and user engagement
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={range}
-            onChange={(e, v) => { if (v) setRange(v) }}
-          >
-            {RANGES.map((r) => (
-              <ToggleButton key={r.value} value={r.value}>{r.label}</ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-          <Button size="small" startIcon={<Refresh />} onClick={fetchOverview} disabled={loading}>
-            Refresh
-          </Button>
+        <Stack alignItems={{ xs: 'flex-start', md: 'flex-end' }} spacing={1} sx={{ maxWidth: '100%' }}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ maxWidth: '100%' }}>
+            <ToggleButtonGroup
+              size="small" exclusive value={range.range} onChange={onPreset}
+              sx={{ maxWidth: '100%', overflowX: 'auto' }}
+            >
+              {PRESETS.map((r) => (
+                <ToggleButton key={r.value} value={r.value} sx={{ px: 1.5 }}>{r.label}</ToggleButton>
+              ))}
+              <ToggleButton value="custom" onClick={(e) => setCustomAnchor(e.currentTarget)} sx={{ px: 1.5 }}>
+                <CalendarMonth sx={{ fontSize: 16, mr: 0.5 }} />Custom
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Button size="small" variant="outlined" startIcon={<Refresh />} onClick={fetchOverview} disabled={loading}>
+              Refresh
+            </Button>
+          </Stack>
+          {rangeLabel && (
+            <Typography variant="caption" color="text.secondary">
+              {rangeLabel}
+              {data?.timezone && ` · ${data.timezone}`}
+            </Typography>
+          )}
         </Stack>
       </Stack>
 
-      {loading && (
+      {customAnchor && (
+        <CustomRangePopover
+          anchorEl={customAnchor}
+          onClose={() => setCustomAnchor(null)}
+          initial={{ from: data?.from || localToday(), to: data?.to || localToday() }}
+          onApply={({ from, to }) => {
+            setCustomAnchor(null)
+            setRange({ range: 'custom', from, to })
+          }}
+        />
+      )}
+
+      {loading && !data && (
         <Stack alignItems="center" sx={{ py: 8 }}>
           <CircularProgress />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Loading analytics…
-          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Loading analytics…</Typography>
         </Stack>
       )}
 
-      {!loading && error && (
+      {error && (
         <Alert
           severity="error"
+          sx={{ mb: 3 }}
           action={<Button color="inherit" size="small" onClick={fetchOverview}>Retry</Button>}
         >
           {error}
         </Alert>
       )}
 
-      {!loading && !error && data && (
-        <>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 3 }}>
-            <StatCard label="Total Visits" value={data.totalVisits} icon={TrendingUp} color="success.main" />
-            <StatCard label="Total Page Views" value={data.totalPageViews} icon={Visibility} color="primary.main" />
-          </Stack>
+      {data && (
+        // A refetch keeps the current figures on screen, dimmed, rather than
+        // blanking the page.
+        <Box sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity 150ms', pointerEvents: loading ? 'none' : 'auto' }}>
+          {/* ── KPI cards ── */}
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 2,
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(6, 1fr)' },
+              mb: 3
+            }}
+          >
+            <StatCard
+              label="Total Visitors" value={nf.format(k.visitors)} icon={People} color={SERIES.orange}
+              caption="Unique browsing sessions"
+              hint="A visitor is a browsing session that ends after 30 minutes of inactivity. The site stores no personal identifier, so someone returning on another day counts again."
+            />
+            <StatCard
+              label="Total Page Views" value={nf.format(k.pageViews)} icon={Visibility} color={SERIES.blue}
+              caption={k.visitors ? `${(k.pageViews / k.visitors).toFixed(1)} pages per visitor` : 'No data available'}
+            />
+            <StatCard
+              label="Loan Application Clicks" value={nf.format(k.loanApplicationClicks)} icon={AssignmentTurnedIn} color="#1a237e"
+              caption="Clicks on Apply / Loan Application buttons"
+              hint="Counts clicks on any Loan Application call-to-action on the website. It does not count submitted, approved or disbursed applications."
+            />
+            <StatCard
+              label="Contact Clicks" value={nf.format(k.contactClicks)} icon={ContactPhone} color={SERIES.aqua}
+              caption={contactCaption || 'Phone, email, Contact Us and map clicks'}
+            />
+            <StatCard
+              label="Avg Session Duration" value={formatDuration(k.avgSessionDurationSec)} icon={Timer} color={SERIES.yellow}
+              caption={k.avgSessionDurationSec == null ? 'No data available' : 'First to last activity in a session'}
+              hint="Time from a session's first page view to its last page view or tracked click. Single-page sessions with no clicks count as 0s."
+            />
+            <StatCard
+              label="Bounce Rate" value={formatPercent(k.bounceRate)} icon={ExitToApp} color="#e34948"
+              caption={k.bounceRate == null ? 'No data available' : 'Left after one page, no clicks'}
+            />
+          </Box>
 
-          {!hasTraffic && (
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="body1" align="center" color="text.secondary" sx={{ py: 4 }}>
-                  No website traffic data yet.
-                </Typography>
-              </CardContent>
-            </Card>
-          )}
-
-          {hasTraffic && (
-            <>
-              <Card sx={{ mb: 3 }}>
-                <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-                    Daily Traffic
-                  </Typography>
-                  <TrafficChart daily={data.daily || []} />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-                    Top Pages
-                  </Typography>
-                  <TableContainer component={Paper} elevation={0} sx={{ overflowX: 'auto' }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Page</TableCell>
-                          <TableCell align="right">Visits</TableCell>
-                          <TableCell align="right">Views</TableCell>
-                          <TableCell sx={{ width: '30%' }} />
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {data.topPages.map((p) => (
-                          <TableRow key={p.path}>
-                            <TableCell sx={{ wordBreak: 'break-all' }}>{p.path}</TableCell>
-                            <TableCell align="right">{nf.format(p.visits)}</TableCell>
-                            <TableCell align="right">{nf.format(p.pageViews)}</TableCell>
-                            <TableCell>
-                              <LinearProgress
-                                variant="determinate"
-                                value={topMax ? (p.pageViews / topMax) * 100 : 0}
-                                sx={{ height: 6, borderRadius: 3 }}
-                              />
-                            </TableCell>
-                          </TableRow>
+          {/* ── Traffic + source ── */}
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, mb: 2 }}>
+            <Section title="Traffic Overview" subtitle="Daily page views and visitors">
+              <LineChart
+                data={data.daily}
+                series={TRAFFIC_SERIES}
+                formatDate={formatAxisDate}
+                ariaLabel={`Daily page views and visitors, ${rangeLabel}. Total ${k.pageViews} page views and ${k.visitors} visitors.`}
+              />
+            </Section>
+            <Section title="User Source" subtitle="How visitors reached the website">
+              {sourceTotal ? (
+                <Stack spacing={2.5}>
+                  <DonutChart
+                    totalLabel="Visitors"
+                    items={data.sources.map((s) => ({ key: s.key, label: s.label, value: s.visitors, color: SOURCE_COLORS[s.key] }))}
+                  />
+                  {data.referrers.length > 0 && (
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                        Top referring sites
+                      </Typography>
+                      <Stack spacing={0.5}>
+                        {data.referrers.map((r) => (
+                          <Stack key={r.host} direction="row" spacing={1}>
+                            <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap title={r.host}>{r.host}</Typography>
+                            <Typography variant="body2" fontWeight={600}>{nf.format(r.visitors)}</Typography>
+                          </Stack>
                         ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </>
+                      </Stack>
+                    </Box>
+                  )}
+                </Stack>
+              ) : <Empty />}
+            </Section>
+          </Box>
+
+          {/* ── Pages + actions ── */}
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, mb: 2 }}>
+            <Section
+              title="Top Pages"
+              subtitle="Most viewed pages in this period"
+              action={data.topPages.total > data.topPages.rows.length && (
+                <Button size="small" onClick={() => setAllPagesOpen(true)}>
+                  View All ({nf.format(data.topPages.total)})
+                </Button>
+              )}
+            >
+              {data.topPages.rows.length ? (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ width: 40 }}>#</TableCell>
+                        <TableCell>Page</TableCell>
+                        <TableCell align="right">Page Views</TableCell>
+                        <TableCell align="right">Unique Visitors</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {data.topPages.rows.map((p, i) => (
+                        <TableRow key={p.path} hover>
+                          <TableCell sx={{ color: 'text.secondary' }}>{i + 1}</TableCell>
+                          <TableCell><PageLink path={p.path} /></TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>{nf.format(p.pageViews)}</TableCell>
+                          <TableCell align="right">{nf.format(p.visitors)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : <Empty />}
+            </Section>
+
+            <Section
+              title="Key User Actions"
+              subtitle={actionsTotal ? `${nf.format(actionsTotal)} tracked clicks` : 'Clicks on buttons and links'}
+            >
+              <BarList
+                items={data.actions.map((a) => ({ key: a.action, label: a.label, value: a.clicks }))}
+                emptyText="No tracked clicks in this period"
+              />
+            </Section>
+          </Box>
+
+          {/* ── Trends ── */}
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, mb: 2 }}>
+            <Section
+              title="Loan Application Click Trend"
+              subtitle={`${nf.format(loanTotal)} clicks on Loan Application buttons`}
+            >
+              <LineChart
+                data={data.daily}
+                series={LOAN_SERIES}
+                formatDate={formatAxisDate}
+                height={220}
+                area
+                ariaLabel={`Daily Loan Application clicks, ${rangeLabel}. Total ${loanTotal}.`}
+              />
+            </Section>
+            <Section title="Visitor Trend by Source" subtitle="New visitors per day, by where they came from">
+              <LineChart
+                data={data.sourceTrend}
+                series={data.sources.map((s) => ({ key: s.key, label: s.label, color: SOURCE_COLORS[s.key] }))}
+                formatDate={formatAxisDate}
+                height={220}
+                ariaLabel={`Daily visitors by source, ${rangeLabel}.`}
+              />
+            </Section>
+          </Box>
+
+          {/* ── Device, location, activity ── */}
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', xl: 'repeat(3, 1fr)' } }}>
+            <Section title="Device Type" subtitle="Visitors by device">
+              <BarList
+                items={data.devices.map((d) => ({ key: d.key, label: d.label, value: d.visitors }))}
+              />
+            </Section>
+
+            <Section title="Traffic by City">
+              <Empty icon={LocationOff}>
+                Location analytics are not available yet.
+                <Typography component="span" variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                  Visitor IP addresses are not stored, so no location is recorded.
+                </Typography>
+              </Empty>
+            </Section>
+
+            <Section title="Recent Activity" subtitle="Latest anonymous page views and clicks">
+              {data.recentActivity.length ? (
+                <Stack spacing={0} sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                  {data.recentActivity.map((a, i) => (
+                    <Stack
+                      key={`${a.at}-${i}`}
+                      direction="row"
+                      spacing={1.5}
+                      alignItems="flex-start"
+                      sx={{ py: 1, borderBottom: i < data.recentActivity.length - 1 ? 1 : 0, borderColor: 'divider' }}
+                    >
+                      {a.type === 'action'
+                        ? <TouchApp sx={{ fontSize: 18, mt: 0.25, color: SERIES.blue }} />
+                        : <Visibility sx={{ fontSize: 18, mt: 0.25, color: 'text.disabled' }} />}
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" fontWeight={a.type === 'action' ? 600 : 400} noWrap>
+                          {a.type === 'action' ? a.label : `Viewed ${a.path}`}
+                        </Typography>
+                        {a.type === 'action' && (
+                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                            on {a.path}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                        {formatActivityTime(a.at)}
+                      </Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              ) : <Empty />}
+            </Section>
+          </Box>
+        </Box>
+      )}
+
+      {allPagesOpen && (
+        <AllPagesDialog
+          onClose={() => setAllPagesOpen(false)}
+          range={range}
+          rangeLabel={rangeLabel}
+        />
       )}
     </Container>
   )

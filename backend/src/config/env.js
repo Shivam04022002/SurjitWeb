@@ -34,6 +34,8 @@ const env = {
     // limiter: this is an unauthenticated write that also accepts a file.
     ANALYTICS_RATE_LIMIT_WINDOW_MS: parseInt(process.env.ANALYTICS_RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 min
     ANALYTICS_RATE_LIMIT_MAX: parseInt(process.env.ANALYTICS_RATE_LIMIT_MAX || '300', 10),
+    // Calendar days in the analytics dashboard are this zone's days.
+    ANALYTICS_TIMEZONE: process.env.ANALYTICS_TIMEZONE || 'Asia/Kolkata',
     LOAN_RATE_LIMIT_WINDOW_MS: parseInt(process.env.LOAN_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
     LOAN_RATE_LIMIT_MAX: parseInt(process.env.LOAN_RATE_LIMIT_MAX || '10', 10),
     LOAN_STATUS_RATE_LIMIT_WINDOW_MS: parseInt(process.env.LOAN_STATUS_RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 min

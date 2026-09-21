@@ -178,7 +178,7 @@ const Navbar = () => {
           </a>
 
           {primaryBtnUrl?.startsWith('http') ? (
-            <a href={primaryBtnUrl} className="btn btn-primary btn-sm" target="_blank" rel="noopener noreferrer">
+            <a href={primaryBtnUrl} className="btn btn-primary btn-sm" target="_blank" rel="noopener noreferrer" data-track="loan_application_click">
               {primaryBtnText}
             </a>
           ) : (

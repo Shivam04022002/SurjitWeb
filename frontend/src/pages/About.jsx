@@ -224,7 +224,7 @@ const About = () => {
                                     {settings.officeAddress}{settings.city ? `, ${settings.city}` : ''}{settings.state ? `, ${settings.state}` : ''}{settings.pinCode ? ` - ${settings.pinCode}` : ''}
                                 </address>
                                 {settings.googleMapsUrl && (
-                                    <a href={settings.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="maps-link">View on Map</a>
+                                    <a href={settings.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="maps-link" data-track="map_click">View on Map</a>
                                 )}
                             </div>
                         )}

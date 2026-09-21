@@ -5,7 +5,7 @@ const validate = require('../middleware/validate');
 const { ROLES } = require('../constants/roles');
 
 const analyticsController = require('../controllers/analytics.controller');
-const { overviewValidation } = require('../validators/analytics.validator');
+const { overviewValidation, pagesValidation } = require('../validators/analytics.validator');
 
 const router = express.Router();
 
@@ -16,5 +16,6 @@ const router = express.Router();
 const canReadAnalytics = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
 
 router.get('/overview', canReadAnalytics, overviewValidation, validate, analyticsController.getOverview);
+router.get('/pages', canReadAnalytics, pagesValidation, validate, analyticsController.getPages);
 
 module.exports = router;

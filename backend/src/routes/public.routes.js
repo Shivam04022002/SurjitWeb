@@ -26,7 +26,7 @@ const { createUpload } = require('../middleware/upload');
 const validate = require('../middleware/validate');
 const { reviewSubmissionLimiter, analyticsTrackLimiter } = require('../middleware/rateLimiters');
 const { submitReviewValidation } = require('../validators/review.validator');
-const { trackPageViewValidation } = require('../validators/analytics.validator');
+const { trackPageViewValidation, trackEventValidation } = require('../validators/analytics.validator');
 
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
@@ -242,6 +242,16 @@ router.post(
     trackPageViewValidation,
     validate,
     analyticsController.trackPageView
+);
+
+// Anonymous user-action beacon: CTA, phone, email and content clicks. Shares
+// the page-view limiter's budget — both are the same visitor browsing.
+router.post(
+    '/analytics/event',
+    analyticsTrackLimiter,
+    trackEventValidation,
+    validate,
+    analyticsController.trackEvent
 );
 
 // ── Annual reports ─────────────────────────────────────────────────────────────

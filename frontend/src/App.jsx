@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 import PageViewTracker from './components/PageViewTracker';
+import ActionTracker from './components/ActionTracker';
 import PageLoader from './components/PageLoader';
 import './index.css';
 
@@ -32,6 +33,7 @@ function App() {
     <Router>
       <ScrollToTop />
       <PageViewTracker />
+      <ActionTracker />
       <div className="app">
         <Navbar />
         <main className="main-content">
