@@ -12,6 +12,7 @@ const {
     testConnectionValidation,
     generateBlogValidation,
     generateImageValidation,
+    planMonthValidation,
     saveDraftValidation
 } = require('../validators/gemini.validator');
 
@@ -41,6 +42,7 @@ router.post('/config/test', superAdminOnly, geminiLimiter, testConnectionValidat
 router.get('/availability', canGenerate, geminiController.getAvailability);
 router.post('/blogs/generate', canGenerate, geminiLimiter, generateBlogValidation, validate, geminiController.generateBlog);
 router.post('/blogs/image', canGenerate, geminiLimiter, generateImageValidation, validate, geminiController.generateImage);
+router.post('/blogs/plan', canGenerate, geminiLimiter, planMonthValidation, validate, geminiController.planMonth);
 router.post('/blogs/drafts', canGenerate, draftUpload, saveDraftValidation, validate, geminiController.saveDraft);
 
 module.exports = router;

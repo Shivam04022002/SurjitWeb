@@ -49,7 +49,7 @@ for (const level of ['log', 'info', 'warn', 'error']) {
 
 // ── Fake Gemini ────────────────────────────────────────────────────────────────
 const realFetch = global.fetch;
-const gemini = { mode: 'ok', delayMs: 0, calls: [], category: 'Business Loans', image: true };
+const gemini = { mode: 'ok', delayMs: 0, calls: [], category: 'Business Loans', image: true, planMode: 'clean' };
 
 const words = (n) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
 
@@ -111,6 +111,30 @@ const fakeGemini = async (url, init = {}) => {
 
     const request = JSON.parse(init.body);
     if (gemini.mode === 'blocked') return jsonResponse(200, { promptFeedback: { blockReason: 'SAFETY' } });
+
+    // Monthly plan: as many items as the prompt asks for. 'messy' adds what a
+    // model can get wrong: days outside the month, an unknown category, a
+    // repeated topic and markup in tags.
+    if (request.generationConfig?.responseSchema?.properties?.items) {
+        const prompt = request.contents[0].parts[0].text;
+        const n = Number(/Plan exactly (\d+)/.exec(prompt)[1]);
+        const last = Number(/between 1 and (\d+)/.exec(prompt)[1]);
+        const items = Array.from({ length: n }, (_, i) => ({
+            topic: `Planned topic number ${i + 1} about growing a kirana store`,
+            day: Math.min(last, 1 + i * 2),
+            category: 'Business Loans',
+            tags: ['kirana', 'kirana', '<i>growth</i>'],
+            seoKeywords: ['kirana loan', 'small business']
+        }));
+        if (gemini.planMode === 'messy' && n >= 6) {
+            items[0].day = 40;
+            items[1].day = 0;
+            items[2].category = 'Nope';
+            items[3] = { ...items[2], day: 9 };
+            items[4].day = '5';
+        }
+        return jsonResponse(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ items }) }] }, finishReason: 'STOP' }] });
+    }
 
     if (request.generationConfig?.responseModalities) {
         const parts = gemini.image ? [{ inlineData: { mimeType: 'image/png', data: PNG_1PX } }] : [{ text: 'no image' }];
@@ -188,6 +212,7 @@ beforeEach(() => {
     gemini.delayMs = 0;
     gemini.category = 'Business Loans';
     gemini.image = true;
+    gemini.planMode = 'clean';
     gemini.calls = [];
     env.GEMINI_API_KEY = '';
     env.GEMINI_TIMEOUT_MS = 55000;
@@ -330,7 +355,9 @@ describe('Authentication and RBAC', () => {
     test('availability tells an Editor whether Gemini is ready, without key details', async () => {
         const res = await call('GET', '/v1/gemini/availability', { token: tokens.editor });
         assert.equal(res.status, 200);
-        assert.deepEqual(Object.keys(res.body.data.availability).sort(), ['configured', 'imageGenerationEnabled', 'imageModel', 'textModel']);
+        const { availability } = res.body.data;
+        assert.deepEqual(Object.keys(availability).sort(), ['configured', 'imageGenerationEnabled', 'imageModel', 'limits', 'textModel']);
+        assert.deepEqual(Object.keys(availability.limits).sort(), ['maxMonthlyBlogs', 'maxParallel', 'requestsPerWindow', 'windowMinutes']);
     });
 });
 
@@ -624,6 +651,311 @@ describe('Draft creation', () => {
         const now = JSON.stringify(await Blog.findById(published._id).lean());
         assert.equal(now, publishedSnapshot);
         assert.equal(await Blog.countDocuments({ status: 'published', slug: { $nin: ['live-post', 'how-to-grow-your-kirana-store-with-a-small-business-loan'] } }), 0);
+    });
+});
+
+// ── Monthly blogs ──────────────────────────────────────────────────────────────
+const uploadsDir = path.join(__dirname, '..', 'src', 'uploads', 'blog');
+const blogUploads = () => new Set(fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : []);
+
+const plan = (body, token = tokens.super) => call('POST', '/v1/gemini/blogs/plan', { token, body });
+
+describe('Monthly plan', () => {
+    let activeId;
+
+    before(async () => {
+        activeId = String((await BlogCategory.findOne({ slug: 'business-loans' }))._id);
+    });
+
+    test('returns the requested number of rows, every date inside the month', async () => {
+        gemini.planMode = 'clean';
+        const res = await plan({ year: 2024, month: 2, count: 12 });
+        assert.equal(res.status, 200, res.text);
+        const { month, rows, warnings } = res.body.data;
+        assert.equal(month, '2024-02');
+        assert.equal(rows.length, 12);
+        assert.equal(warnings.length, 0);
+        for (const r of rows) {
+            assert.match(r.createDate, /^2024-02-(0[1-9]|1\d|2[0-9])$/, r.createDate);
+            assert.ok(r.topic.length >= 3);
+        }
+        const dates = rows.map((r) => r.createDate);
+        assert.deepEqual(dates, [...dates].sort(), 'rows are in date order');
+        // February 2024 is a leap month: 29 days are offered to Gemini.
+        assert.match(gemini.calls.at(-1).body.contents[0].parts[0].text, /between 1 and 29/);
+    });
+
+    test('out-of-range days are moved inside the month, never dropped or overflowed', async () => {
+        gemini.planMode = 'messy';
+        const { rows } = (await plan({ year: 2026, month: 4, count: 6 })).body.data;
+        for (const r of rows) assert.match(r.createDate, /^2026-04-(0[1-9]|[12]\d|30)$/, r.createDate);
+    });
+
+    test('categories are existing active ones or empty, never invented', async () => {
+        gemini.planMode = 'messy';
+        const { rows, warnings } = (await plan({ year: 2026, month: 4, count: 6 })).body.data;
+        for (const r of rows) {
+            if (r.category) assert.deepEqual(r.category, { _id: activeId, name: 'Business Loans' });
+        }
+        assert.ok(rows.some((r) => r.category === null));
+        assert.ok(warnings.some((w) => /no valid category/.test(w)));
+        assert.equal(await BlogCategory.countDocuments({ name: /Nope/i }), 0);
+        const schema = gemini.calls.at(-1).body.generationConfig.responseSchema;
+        assert.deepEqual(schema.properties.items.items.properties.category.enum, ['Business Loans']);
+    });
+
+    test('duplicate topics are removed and a short plan is reported', async () => {
+        gemini.planMode = 'messy';
+        const { rows, warnings } = (await plan({ year: 2026, month: 4, count: 6 })).body.data;
+        assert.equal(new Set(rows.map((r) => r.topic.toLowerCase())).size, rows.length);
+        assert.equal(rows.length, 5);
+        assert.ok(warnings.some((w) => /suggested 5 of 6/.test(w)));
+    });
+
+    test('tags and keywords are cleaned', async () => {
+        gemini.planMode = 'messy';
+        const { rows } = (await plan({ year: 2026, month: 4, count: 6 })).body.data;
+        for (const r of rows) {
+            assert.ok(r.tags.every((t) => !t.includes('<')));
+            assert.equal(new Set(r.tags).size, r.tags.length);
+            assert.ok(Array.isArray(r.seoKeywords));
+        }
+    });
+
+    test('the prompt names the month and lists existing blogs to avoid repeating', async () => {
+        gemini.planMode = 'clean';
+        await plan({ year: 2026, month: 10, count: 3 });
+        const prompt = gemini.calls.at(-1).body.contents[0].parts[0].text;
+        assert.match(prompt, /Plan exactly 3 blog articles for October 2026/);
+        assert.match(prompt, /\* Live post/);
+    });
+
+    test('validates month, year and count', async () => {
+        for (const body of [
+            { year: 2026, month: 13, count: 3 },
+            { year: 2026, month: 0, count: 3 },
+            { year: 1999, month: 5, count: 3 },
+            { year: 2026, month: 5, count: 0 },
+            { year: 2026, month: 5, count: 32 },
+            { year: 2099, month: 5, count: 3 }
+        ]) {
+            const res = await plan(body);
+            assert.equal(res.status, 400, JSON.stringify(body));
+        }
+    });
+
+    test('planning writes nothing', async () => {
+        gemini.planMode = 'clean';
+        const before = await Blog.countDocuments();
+        await plan({ year: 2026, month: 10, count: 5 });
+        assert.equal(await Blog.countDocuments(), before);
+    });
+
+    test('Editors can plan; Content Managers cannot; login required', async () => {
+        gemini.planMode = 'clean';
+        assert.equal((await plan({ year: 2026, month: 10, count: 2 }, tokens.editor)).status, 200);
+        assert.equal((await plan({ year: 2026, month: 10, count: 2 }, tokens.content)).status, 403);
+        assert.equal((await call('POST', '/v1/gemini/blogs/plan', { body: { year: 2026, month: 10, count: 2 } })).status, 401);
+    });
+
+    test('Gemini failures surface with the same handling as single generation', async () => {
+        gemini.mode = 'rateLimited';
+        const res = await plan({ year: 2026, month: 10, count: 3 });
+        assert.equal(res.status, 429);
+        assert.ok(!res.text.includes(API_KEY));
+    });
+});
+
+describe('Monthly row generation', () => {
+    let activeId;
+    let inactiveId;
+
+    before(async () => {
+        activeId = String((await BlogCategory.findOne({ slug: 'business-loans' }))._id);
+        inactiveId = String((await BlogCategory.findOne({ slug: 'inactive-old' }))._id);
+    });
+
+    const row = (overrides = {}) => ({
+        topic: 'Budgeting for a new e-rickshaw', createDate: '2026-10-07',
+        category: activeId, tags: ['e-rickshaw', '<b>budget</b>'], seoKeywords: ['e-rickshaw loan'],
+        rowKey: 'row_0001_abcdef', ...overrides
+    });
+
+    test('uses the row\'s category, tags and keywords instead of asking Gemini', async () => {
+        gemini.category = 'Something Else';
+        const res = await generate(row());
+        assert.equal(res.status, 200, res.text);
+        const { blog, warnings, createDate } = res.body.data;
+        assert.deepEqual(blog.category, { _id: activeId, name: 'Business Loans' });
+        assert.deepEqual(blog.tags, ['e-rickshaw', 'budget']);
+        assert.equal(blog.seo.metaKeywords, 'e-rickshaw loan');
+        assert.equal(createDate, '2026-10-07');
+        assert.equal(warnings.length, 0);
+        const req = gemini.calls.at(-1).body;
+        assert.equal(req.generationConfig.responseSchema.properties.category, undefined);
+        assert.match(req.contents[0].parts[0].text, /blog category "Business Loans"/);
+    });
+
+    test('an inactive or unknown category is refused', async () => {
+        assert.equal((await generate(row({ category: inactiveId }))).status, 400);
+        assert.equal((await generate(row({ category: new mongoose.Types.ObjectId().toString() }))).status, 400);
+        assert.equal((await generate(row({ category: 'not-an-id' }))).status, 400);
+    });
+
+    test('hint lists are validated', async () => {
+        assert.equal((await generate(row({ tags: 'not a list' }))).status, 400);
+        assert.equal((await generate(row({ rowKey: 'bad key!' }))).status, 400);
+    });
+
+    test('different rows run side by side; the same row twice is refused', async () => {
+        gemini.delayMs = 300;
+        const [a, b] = await Promise.all([generate(row({ rowKey: 'row_a_123456' })), generate(row({ rowKey: 'row_b_123456' }))]);
+        assert.deepEqual([a.status, b.status], [200, 200]);
+
+        const [c, d] = await Promise.all([generate(row({ rowKey: 'row_c_123456' })), generate(row({ rowKey: 'row_c_123456' }))]);
+        assert.deepEqual([c.status, d.status].sort(), [200, 409]);
+    });
+
+    test('an admin never has more than two Gemini calls running', async () => {
+        gemini.delayMs = 300;
+        const results = await Promise.all(['row_x_1', 'row_x_2', 'row_x_3'].map((k) => generate(row({ rowKey: `${k}23456` }))));
+        const statuses = results.map((r) => r.status).sort();
+        assert.deepEqual(statuses, [200, 200, 409]);
+        assert.match(results.find((r) => r.status === 409).body.message, /Too many Gemini requests/);
+        assert.equal(geminiBlog._perAdmin.size, 0, 'counters released');
+        assert.equal(geminiBlog._inFlight.size, 0);
+    });
+
+    test('row images run side by side too', async () => {
+        gemini.delayMs = 200;
+        const body = (k) => ({ title: 'T', summary: 'S', imagePrompt: 'P', rowKey: k });
+        const [a, b] = await Promise.all([
+            call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: body('img_a_123456') }),
+            call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: body('img_b_123456') })
+        ]);
+        assert.deepEqual([a.status, b.status], [200, 200]);
+    });
+});
+
+describe('Save All as Drafts', () => {
+    let activeId;
+    const png = () => new Blob([Buffer.from(PNG_1PX, 'base64')], { type: 'image/png' });
+
+    before(async () => {
+        activeId = String((await BlogCategory.findOne({ slug: 'business-loans' }))._id);
+    });
+
+    const monthlyForm = (fields = {}, withImage = true) => {
+        const values = {
+            title: 'Monthly blog', slug: 'monthly-blog', summary: 'Summary.', content: '<p>Body</p>',
+            author: 'Surjit Finance', category: activeId, tags: 'a, b',
+            'seo.metaTitle': 'T', 'seo.metaDescription': 'D', 'seo.metaKeywords': 'k',
+            createDate: '2026-10-07', planMonth: '2026-10', idempotencyKey: 'key_monthly_000001',
+            status: 'published', ...fields
+        };
+        const form = new FormData();
+        for (const [k, v] of Object.entries(values)) if (v !== undefined) form.append(k, v);
+        if (withImage) form.append('featuredImage', png(), 'gemini-featured.png');
+        return form;
+    };
+
+    const saveMonthly = (fields, withImage) => call('POST', '/v1/gemini/blogs/drafts', { token: tokens.super, form: monthlyForm(fields, withImage) });
+
+    test('saves a row as a draft, never published, with its planned date', async () => {
+        const res = await saveMonthly();
+        assert.equal(res.status, 201, res.text);
+        const blog = res.body.data.blog;
+        uploadedFiles.push(blog.featuredImage.fileName);
+        assert.equal(res.body.data.duplicate, false);
+        assert.equal(blog.status, 'draft');
+        assert.equal(blog.publishedAt, null);
+        assert.equal(blog.createdAt, '2026-10-07T06:30:00.000Z');
+    });
+
+    test('retrying the same row returns the saved draft and stores no second image', async () => {
+        const filesBefore = blogUploads();
+        const draftsBefore = await Blog.countDocuments({ slug: /^monthly-blog/ });
+        const res = await saveMonthly();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.duplicate, true);
+        assert.equal(res.body.data.blog.slug, 'monthly-blog');
+        assert.equal(await Blog.countDocuments({ slug: /^monthly-blog/ }), draftsBefore, 'no duplicate draft');
+        assert.deepEqual(blogUploads(), filesBefore, 'the retried upload was removed');
+    });
+
+    test('the same key from another admin is a different request', async () => {
+        const res = await call('POST', '/v1/gemini/blogs/drafts', {
+            token: tokens.editor, form: monthlyForm({ slug: 'monthly-blog-editor' }, false)
+        });
+        assert.equal(res.status, 201, res.text);
+    });
+
+    test('a failed save keeps nothing and can be retried with the same key', async () => {
+        const filesBefore = blogUploads();
+        const clash = await saveMonthly({ slug: 'live-post', idempotencyKey: 'key_monthly_000002' });
+        assert.equal(clash.status, 409);
+        assert.deepEqual(blogUploads(), filesBefore, 'image of the failed save was removed');
+
+        const retry = await saveMonthly({ slug: 'monthly-blog-retry', idempotencyKey: 'key_monthly_000002' });
+        assert.equal(retry.status, 201, retry.text);
+        uploadedFiles.push(retry.body.data.blog.featuredImage.fileName);
+    });
+
+    test('a single-blog save that fails also leaves no stored image', async () => {
+        const filesBefore = blogUploads();
+        const res = await saveMonthly({ slug: 'live-post', idempotencyKey: undefined, planMonth: undefined });
+        assert.equal(res.status, 409);
+        assert.deepEqual(blogUploads(), filesBefore);
+    });
+
+    test('the create date must stay inside the planned month', async () => {
+        const res = await saveMonthly({ slug: 'monthly-outside', createDate: '2026-11-01', idempotencyKey: 'key_monthly_000003' }, false);
+        assert.equal(res.status, 400);
+        assert.ok(res.body.errors.some((e) => e.field === 'planMonth'));
+    });
+
+    test('a malformed idempotency key is refused', async () => {
+        const res = await saveMonthly({ slug: 'monthly-badkey', idempotencyKey: 'short' }, false);
+        assert.equal(res.status, 400);
+    });
+
+    test('end to end: plan, generate every row, save every row as a draft', async () => {
+        gemini.planMode = 'clean';
+        gemini.category = 'Business Loans';
+        const published = await Blog.find({ status: 'published' }).lean();
+
+        const { rows } = (await plan({ year: 2026, month: 11, count: 4 })).body.data;
+        assert.equal(rows.length, 4);
+
+        const saved = [];
+        for (const [i, r] of rows.entries()) {
+            const gen = await generate({
+                topic: r.topic, createDate: r.createDate, category: r.category?._id,
+                tags: r.tags, seoKeywords: r.seoKeywords, rowKey: `e2e_row_${i}_abc`
+            });
+            assert.equal(gen.status, 200, gen.text);
+            const b = gen.body.data.blog;
+            const form = new FormData();
+            const fields = {
+                title: b.title, slug: `${b.slug}-${i}`, summary: b.summary, content: b.content, author: b.author,
+                category: b.category?._id || '', tags: b.tags.join(', '),
+                'seo.metaTitle': b.seo.metaTitle, 'seo.metaDescription': b.seo.metaDescription, 'seo.metaKeywords': b.seo.metaKeywords,
+                createDate: r.createDate, planMonth: '2026-11', idempotencyKey: `e2e_save_${i}_abc`
+            };
+            for (const [k, v] of Object.entries(fields)) form.append(k, v);
+            const res = await call('POST', '/v1/gemini/blogs/drafts', { token: tokens.super, form });
+            assert.equal(res.status, 201, res.text);
+            saved.push({ blog: res.body.data.blog, date: r.createDate });
+        }
+
+        for (const { blog, date } of saved) {
+            const db = await Blog.findById(blog._id).lean();
+            assert.equal(db.status, 'draft');
+            assert.equal(db.publishedAt, null);
+            assert.equal(db.createdAt.toISOString().slice(0, 10), date);
+            assert.ok(date.startsWith('2026-11-'));
+        }
+        assert.deepEqual(await Blog.find({ status: 'published' }).lean(), published, 'published blogs untouched');
     });
 });
 

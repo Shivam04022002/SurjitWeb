@@ -47,7 +47,15 @@ const generateImage = async ({ title, summary, imagePrompt }) => {
   return response.data
 }
 
-// Multipart, same fields as the normal blog create; saved as a draft.
+// A month's schedule: topics, dates, categories, tags and keywords to review
+// before any blog is generated. Nothing is saved.
+const planMonth = async ({ year, month, count }) => {
+  const response = await api.post(`${BASE}/blogs/plan`, { year, month, count })
+  return response.data
+}
+
+// Multipart, same fields as the normal blog create; saved as a draft. With an
+// idempotencyKey, repeating a save that already succeeded returns that draft.
 const saveDraft = async (formData) => {
   const response = await api.post(`${BASE}/blogs/drafts`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
@@ -63,5 +71,6 @@ export const geminiService = {
   getAvailability,
   generateBlog,
   generateImage,
+  planMonth,
   saveDraft
 }
