@@ -1,5 +1,6 @@
 const geminiConfig = require('../services/gemini/geminiConfig.service');
 const geminiBlog = require('../services/gemini/geminiBlog.service');
+const bulkPlan = require('../services/gemini/bulkPlan.service');
 const { normaliseBody, collectFiles } = require('./blog/blogs.controller');
 const { sendSuccess } = require('../utils/response');
 const HTTP_STATUS = require('../constants/httpStatus');
@@ -37,15 +38,13 @@ const testConnection = asyncHandler(async (req, res) => {
 
 // ── Blog generation (Super Admin, Editor) ──────────────────────────────────────
 
-// Also reports the limits the monthly flow plans around, so the CMS can tell
-// an admin up front how many Gemini requests a month will take.
+// Also reports the Gemini limits bulk generation works within.
 const getAvailability = asyncHandler(async (req, res) => {
     const availability = {
         ...(await geminiConfig.availability()),
         limits: {
             requestsPerWindow: env.GEMINI_RATE_LIMIT_MAX,
             windowMinutes: Math.round(env.GEMINI_RATE_LIMIT_WINDOW_MS / 60000),
-            maxMonthlyBlogs: geminiBlog.MAX_MONTHLY_BLOGS,
             maxParallel: geminiBlog.MAX_PARALLEL_PER_ADMIN
         }
     };
@@ -72,12 +71,28 @@ const generateImage = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Featured image generated', { image });
 });
 
-const planMonth = asyncHandler(async (req, res) => {
-    const plan = await geminiBlog.planMonth(
-        { year: req.body.year, month: req.body.month, count: req.body.count },
-        req.user._id
-    );
-    return sendSuccess(res, 'Monthly plan generated', plan);
+// ── Excel monthly plan (Super Admin, Editor) ──────────────────────────────────
+// Planning only: nothing here calls Gemini or writes to the database, and the
+// uploaded workbook is read from memory and discarded.
+
+const bulkTemplate = asyncHandler(async (req, res) => {
+    const buffer = await bulkPlan.buildTemplate();
+    res.set({
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="gemini-blog-plan-template.xlsx"',
+        'Cache-Control': 'no-store'
+    });
+    return res.status(HTTP_STATUS.OK).send(buffer);
+});
+
+const bulkParse = asyncHandler(async (req, res) => {
+    const plan = await bulkPlan.parseWorkbook(req.file);
+    return sendSuccess(res, `${plan.summary.valid} of ${plan.summary.total} rows are ready to generate`, plan);
+});
+
+const bulkValidate = asyncHandler(async (req, res) => {
+    const plan = await bulkPlan.validateRows(req.body.rows);
+    return sendSuccess(res, 'Rows validated', plan);
 });
 
 // Same body shape and file fields as the normal blog create endpoint, so the
@@ -97,5 +112,6 @@ const saveDraft = asyncHandler(async (req, res) => {
 
 module.exports = {
     getConfig, saveConfig, removeKey, testConnection,
-    getAvailability, generateBlog, generateImage, planMonth, saveDraft
+    getAvailability, generateBlog, generateImage, saveDraft,
+    bulkTemplate, bulkParse, bulkValidate
 };

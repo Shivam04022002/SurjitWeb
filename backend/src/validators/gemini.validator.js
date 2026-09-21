@@ -1,7 +1,6 @@
 const { body } = require('express-validator');
 const { createBlogValidation } = require('./blog/blogs.validator');
 const { MODEL_RX } = require('../services/gemini/geminiClient');
-const { MAX_MONTHLY_BLOGS } = require('../services/gemini/geminiBlog.service');
 const zoned = require('../utils/zonedDate');
 
 // Google issues keys in more than one format: classic "AIza…" keys and the
@@ -82,17 +81,17 @@ const generateImageValidation = [
     clientKeyRule('rowKey')
 ];
 
-// A month to plan: 2000 onwards, and starting no more than a year ahead —
-// later create dates are refused on save anyway.
-const planMonthValidation = [
-    body('year').isInt({ min: 2000, max: 2100 }).withMessage('Year must be a valid year').toInt(),
-    body('month').isInt({ min: 1, max: 12 }).withMessage('Month must be 1-12').toInt(),
-    body('count').isInt({ min: 1, max: MAX_MONTHLY_BLOGS })
-        .withMessage(`Number of blogs must be between 1 and ${MAX_MONTHLY_BLOGS}`).toInt(),
-    body('month').custom((month, { req }) => {
-        const first = `${req.body.year}-${String(month).padStart(2, '0')}-01`;
-        return first <= zoned.addDays(zoned.today(), 365);
-    }).withMessage('Choose a month that starts within the next year')
+// Plan rows edited in the CMS, sent back for the same validation an upload
+// gets. Shapes only; the rules themselves live in bulkPlan.service.
+const validateBulkRowsValidation = [
+    body('rows').isArray({ min: 1, max: 200 }).withMessage('rows must be a list of 1-200 plan rows'),
+    body('rows').custom((rows) => rows.every((r) => r && typeof r === 'object'
+        && ['string', 'number', 'undefined'].includes(typeof r.date) && (r.date === undefined || String(r.date).length <= 40)
+        && ['string', 'undefined'].includes(typeof r.topic) && (r.topic === undefined || r.topic.length <= 500)
+        && ['string', 'undefined'].includes(typeof r.category) && (r.category === undefined || r.category.length <= 200)
+        && ['string', 'boolean', 'undefined'].includes(typeof r.generateImage)
+        && (r.sourceRow === undefined || r.sourceRow === null || Number.isInteger(r.sourceRow))))
+        .withMessage('Each row needs text values for date, topic, category and generateImage')
 ];
 
 // Every rule the normal blog create endpoint applies, plus the create date.
@@ -113,6 +112,6 @@ module.exports = {
     testConnectionValidation,
     generateBlogValidation,
     generateImageValidation,
-    planMonthValidation,
+    validateBulkRowsValidation,
     saveDraftValidation
 };

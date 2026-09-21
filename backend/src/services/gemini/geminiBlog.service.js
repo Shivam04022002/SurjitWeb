@@ -16,8 +16,9 @@ const HTTP_STATUS = require('../../constants/httpStatus');
 //   generateBlog   topic + date  -> a validated, sanitised draft payload
 //   generateImage  title/summary -> a featured image (base64), not yet stored
 //   saveDraft      edited payload + image file -> a Blog with status 'draft'
-//   planMonth      month + count -> a schedule of topics; each row is then
-//                  generated with generateBlog and saved with saveDraft
+//
+// Bulk plans (Excel) are read by bulkPlan.service; each of their rows is then
+// generated with generateBlog and saved with saveDraft, like a single blog.
 //
 // Nothing here publishes. Generated content is only a proposal until an admin
 // saves it, and saving always goes through blogsService.createBlog with the
@@ -28,10 +29,9 @@ const MAX_TAGS = 8;
 const MAX_KEYWORDS = 15;
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // the blog upload limit
-// Gemini calls one admin may have running at once. Monthly generation runs
+// Gemini calls one admin may have running at once. Bulk generation runs
 // rows two at a time; this stops a second tab from multiplying that.
 const MAX_PARALLEL_PER_ADMIN = 2;
-const MAX_MONTHLY_BLOGS = 31;
 
 const slugify = (s) => String(s || '').toLowerCase().trim()
     .replace(/[^a-z0-9]+/g, '-')
@@ -76,8 +76,8 @@ const blogSchema = (categoryNames) => ({
         ...(categoryNames.length ? ['category'] : [])]
 });
 
-// Optional guidance from a monthly plan row: the admin's chosen category and
-// the tags/keywords the plan settled on.
+// Optional guidance from a plan row (bulk upload): the admin's chosen category and
+// any tags/keywords the row carries.
 const planHints = ({ categoryName, tags = [], seoKeywords = [] }) => [
     categoryName ? `The article belongs to the blog category "${categoryName}".` : '',
     seoKeywords.length ? `Where they fit naturally, cover these search phrases: ${seoKeywords.join('; ')}.` : '',
@@ -131,7 +131,7 @@ const loadProductNames = async () => {
 // markup, content keeps only formatting tags, lengths are held to the model's
 // limits, and the category must be one that already exists.
 //
-// `overrides` carries what an admin already decided in a monthly plan: a
+// `overrides` carries what an admin already decided for a plan row: a
 // category (already checked to be an active one) and tag/keyword lists, which
 // replace Gemini's own suggestions when present.
 const normaliseGenerated = async (raw, categories, overrides = {}) => {
@@ -290,127 +290,6 @@ const generateImage = ({ title, summary, imagePrompt, rowKey }, userId) =>
         return { mimeType, data: image.data, size: bytes, model: config.imageModel };
     });
 
-// ── Monthly plan ──────────────────────────────────────────────────────────────
-
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-    'August', 'September', 'October', 'November', 'December'];
-
-const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
-const pad = (n) => String(n).padStart(2, '0');
-
-const planSchema = (categoryNames) => ({
-    type: 'OBJECT',
-    properties: {
-        items: {
-            type: 'ARRAY',
-            items: {
-                type: 'OBJECT',
-                properties: {
-                    topic: { type: 'STRING', description: 'A specific blog topic or working title, 40-100 characters.' },
-                    day: { type: 'INTEGER', description: 'Day of the month to date the blog.' },
-                    ...(categoryNames.length ? { category: { type: 'STRING', enum: categoryNames } } : {}),
-                    tags: { type: 'ARRAY', items: { type: 'STRING' }, description: '3-6 short tags.' },
-                    seoKeywords: { type: 'ARRAY', items: { type: 'STRING' }, description: '3-6 search keywords or phrases.' }
-                },
-                required: ['topic', 'day', 'tags', 'seoKeywords', ...(categoryNames.length ? ['category'] : [])]
-            }
-        }
-    },
-    required: ['items']
-});
-
-const buildPlanPrompt = ({ monthName, year, count, lastDay, productNames, categoryNames, existingTitles }) => [
-    'You plan the blog calendar for Surjit Finance, an Indian financial services company.'
-        + (productNames.length ? ` Its loan products include: ${productNames.join(', ')}.` : ''),
-    'Readers are ordinary people in India: small business owners, drivers, families and first-time borrowers.',
-    '',
-    `Plan exactly ${count} blog articles for ${monthName} ${year}.`,
-    '- Give each a specific, useful topic. Vary topics across the products and across practical money subjects'
-        + ' (budgeting, credit scores, documents, EMI planning, business growth, vehicle ownership, avoiding loan fraud).',
-    `- Where it genuinely fits, reflect what matters to Indian households or small businesses in ${monthName},`
-        + ' without inventing dates, schemes or figures.',
-    `- Spread the articles across the month: "day" is between 1 and ${lastDay}.`,
-    categoryNames.length ? `- Choose each article's category only from: ${categoryNames.join(', ')}.` : '',
-    existingTitles.length
-        ? `- Do not repeat or closely copy these existing articles:\n${existingTitles.map((t) => `  * ${t}`).join('\n')}`
-        : '',
-    '- No promises of loan approval, no interest rates, no competitor names.'
-].filter((line) => line !== '').join('\n');
-
-// Asks Gemini for a month's schedule and turns it into rows the admin reviews
-// before anything is written. Every create date is forced inside the chosen
-// month (and inside the window the save endpoint accepts), and every category
-// is an existing active one or empty — never invented.
-const planMonth = ({ year, month, count }, userId) => exclusive(jobKey(userId, 'plan'), userId, async () => {
-    const config = await requireConfig();
-    const [categories, productNames, recent] = await Promise.all([
-        loadCategories(),
-        loadProductNames(),
-        Blog.find().sort({ createdAt: -1 }).limit(60).select('title').lean()
-    ]);
-
-    const monthKey = `${year}-${pad(month)}`;
-    // A create date more than a year ahead is refused on save, so a plan for
-    // the month containing that limit stops at it.
-    const latest = zoned.addDays(zoned.today(), 365);
-    const lastDay = latest.startsWith(monthKey) ? Number(latest.slice(8, 10)) : daysInMonth(year, month);
-
-    const raw = await gemini.generateJson(config.apiKey, config.textModel, {
-        prompt: buildPlanPrompt({
-            monthName: MONTH_NAMES[month - 1], year, count, lastDay, productNames,
-            categoryNames: categories.map((c) => c.name),
-            existingTitles: recent.map((b) => b.title).filter(Boolean)
-        }),
-        schema: planSchema(categories.map((c) => c.name)),
-        temperature: 0.9
-    });
-
-    const warnings = [];
-    const seen = new Set();
-    const items = (Array.isArray(raw.items) ? raw.items : [])
-        .map((item) => ({ ...item, topic: clip(plainText(item?.topic), 200) }))
-        .filter((item) => {
-            const k = item.topic.toLowerCase();
-            if (item.topic.length < 3 || seen.has(k)) return false;
-            seen.add(k);
-            return true;
-        })
-        .slice(0, count);
-
-    if (!items.length) {
-        throw new AppError('Gemini did not return a usable plan. Please try again.', HTTP_STATUS.BAD_GATEWAY);
-    }
-    if (items.length < count) {
-        warnings.push(`Gemini suggested ${items.length} of ${count} topics. Add rows or generate the plan again.`);
-    }
-
-    // Days Gemini chose are kept when they fall inside the month; anything
-    // missing or out of range takes an evenly spaced slot instead.
-    const spread = (i) => Math.min(lastDay, Math.max(1, Math.floor(1 + ((i + 0.5) * lastDay) / items.length)));
-    let uncategorised = 0;
-
-    const rows = items.map((item, i) => {
-        const d = Number.isInteger(item.day) && item.day >= 1 && item.day <= lastDay ? item.day : spread(i);
-        const match = categories.find((c) => c.name.toLowerCase() === plainText(item.category).toLowerCase());
-        if (!match) uncategorised++;
-        return {
-            topic: item.topic,
-            createDate: `${monthKey}-${pad(d)}`,
-            category: match ? { _id: String(match._id), name: match.name } : null,
-            tags: cleanList(item.tags, MAX_TAGS, 40),
-            seoKeywords: cleanList(item.seoKeywords, MAX_KEYWORDS, 60)
-        };
-    }).sort((a, b) => a.createDate.localeCompare(b.createDate));
-
-    if (!categories.length) {
-        warnings.push('No active blog categories exist, so none were assigned. Create one under Blog Categories if needed.');
-    } else if (uncategorised) {
-        warnings.push(`${uncategorised} row(s) have no valid category. Choose one before generating.`);
-    }
-
-    return { month: monthKey, rows, warnings, model: config.textModel };
-});
-
 // ── Draft save ────────────────────────────────────────────────────────────────
 
 // Uploaded images belong to the draft they came with. When a save does not
@@ -491,7 +370,7 @@ const saveDraft = async (data, files = {}, { userId, idempotencyKey } = {}) => {
 };
 
 module.exports = {
-    generateBlog, generateImage, saveDraft, planMonth, normaliseGenerated, slugify,
-    MAX_MONTHLY_BLOGS, MAX_PARALLEL_PER_ADMIN,
+    generateBlog, generateImage, saveDraft, normaliseGenerated, slugify,
+    MAX_PARALLEL_PER_ADMIN,
     _inFlight: inFlight, _perAdmin: perAdmin
 };

@@ -53,7 +53,7 @@ for (const level of ['log', 'info', 'warn', 'error']) {
 
 // ── Fake Gemini ────────────────────────────────────────────────────────────────
 const realFetch = global.fetch;
-const gemini = { mode: 'ok', delayMs: 0, calls: [], category: 'Business Loans', image: true, planMode: 'clean' };
+const gemini = { mode: 'ok', delayMs: 0, calls: [], category: 'Business Loans', image: true };
 
 const words = (n) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
 
@@ -143,30 +143,6 @@ const fakeGemini = async (url, init = {}) => {
     const request = JSON.parse(init.body);
     if (gemini.mode === 'blocked') return jsonResponse(200, { promptFeedback: { blockReason: 'SAFETY' } });
 
-    // Monthly plan: as many items as the prompt asks for. 'messy' adds what a
-    // model can get wrong: days outside the month, an unknown category, a
-    // repeated topic and markup in tags.
-    if (request.generationConfig?.responseSchema?.properties?.items) {
-        const prompt = request.contents[0].parts[0].text;
-        const n = Number(/Plan exactly (\d+)/.exec(prompt)[1]);
-        const last = Number(/between 1 and (\d+)/.exec(prompt)[1]);
-        const items = Array.from({ length: n }, (_, i) => ({
-            topic: `Planned topic number ${i + 1} about growing a kirana store`,
-            day: Math.min(last, 1 + i * 2),
-            category: 'Business Loans',
-            tags: ['kirana', 'kirana', '<i>growth</i>'],
-            seoKeywords: ['kirana loan', 'small business']
-        }));
-        if (gemini.planMode === 'messy' && n >= 6) {
-            items[0].day = 40;
-            items[1].day = 0;
-            items[2].category = 'Nope';
-            items[3] = { ...items[2], day: 9 };
-            items[4].day = '5';
-        }
-        return jsonResponse(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ items }) }] }, finishReason: 'STOP' }] });
-    }
-
     if (request.generationConfig?.responseModalities) {
         const parts = gemini.image ? [{ inlineData: { mimeType: 'image/png', data: PNG_1PX } }] : [{ text: 'no image' }];
         return jsonResponse(200, { candidates: [{ content: { parts }, finishReason: 'STOP' }] });
@@ -243,7 +219,6 @@ beforeEach(() => {
     gemini.delayMs = 0;
     gemini.category = 'Business Loans';
     gemini.image = true;
-    gemini.planMode = 'clean';
     gemini.calls = [];
     env.GEMINI_API_KEY = '';
     env.GEMINI_TIMEOUT_MS = 55000;
@@ -504,7 +479,7 @@ describe('Authentication and RBAC', () => {
         assert.equal(res.status, 200);
         const { availability } = res.body.data;
         assert.deepEqual(Object.keys(availability).sort(), ['configured', 'imageGenerationEnabled', 'imageModel', 'limits', 'textModel']);
-        assert.deepEqual(Object.keys(availability.limits).sort(), ['maxMonthlyBlogs', 'maxParallel', 'requestsPerWindow', 'windowMinutes']);
+        assert.deepEqual(Object.keys(availability.limits).sort(), ['maxParallel', 'requestsPerWindow', 'windowMinutes']);
     });
 });
 
@@ -801,119 +776,11 @@ describe('Draft creation', () => {
     });
 });
 
-// ── Monthly blogs ──────────────────────────────────────────────────────────────
+// ── Row generation and bulk saves ──────────────────────────────────────────────
 const uploadsDir = path.join(__dirname, '..', 'src', 'uploads', 'blog');
 const blogUploads = () => new Set(fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : []);
 
-const plan = (body, token = tokens.super) => call('POST', '/v1/gemini/blogs/plan', { token, body });
-
-describe('Monthly plan', () => {
-    let activeId;
-
-    before(async () => {
-        activeId = String((await BlogCategory.findOne({ slug: 'business-loans' }))._id);
-    });
-
-    test('returns the requested number of rows, every date inside the month', async () => {
-        gemini.planMode = 'clean';
-        const res = await plan({ year: 2024, month: 2, count: 12 });
-        assert.equal(res.status, 200, res.text);
-        const { month, rows, warnings } = res.body.data;
-        assert.equal(month, '2024-02');
-        assert.equal(rows.length, 12);
-        assert.equal(warnings.length, 0);
-        for (const r of rows) {
-            assert.match(r.createDate, /^2024-02-(0[1-9]|1\d|2[0-9])$/, r.createDate);
-            assert.ok(r.topic.length >= 3);
-        }
-        const dates = rows.map((r) => r.createDate);
-        assert.deepEqual(dates, [...dates].sort(), 'rows are in date order');
-        // February 2024 is a leap month: 29 days are offered to Gemini.
-        assert.match(gemini.calls.at(-1).body.contents[0].parts[0].text, /between 1 and 29/);
-    });
-
-    test('out-of-range days are moved inside the month, never dropped or overflowed', async () => {
-        gemini.planMode = 'messy';
-        const { rows } = (await plan({ year: 2026, month: 4, count: 6 })).body.data;
-        for (const r of rows) assert.match(r.createDate, /^2026-04-(0[1-9]|[12]\d|30)$/, r.createDate);
-    });
-
-    test('categories are existing active ones or empty, never invented', async () => {
-        gemini.planMode = 'messy';
-        const { rows, warnings } = (await plan({ year: 2026, month: 4, count: 6 })).body.data;
-        for (const r of rows) {
-            if (r.category) assert.deepEqual(r.category, { _id: activeId, name: 'Business Loans' });
-        }
-        assert.ok(rows.some((r) => r.category === null));
-        assert.ok(warnings.some((w) => /no valid category/.test(w)));
-        assert.equal(await BlogCategory.countDocuments({ name: /Nope/i }), 0);
-        const schema = gemini.calls.at(-1).body.generationConfig.responseSchema;
-        assert.deepEqual(schema.properties.items.items.properties.category.enum, ['Business Loans']);
-    });
-
-    test('duplicate topics are removed and a short plan is reported', async () => {
-        gemini.planMode = 'messy';
-        const { rows, warnings } = (await plan({ year: 2026, month: 4, count: 6 })).body.data;
-        assert.equal(new Set(rows.map((r) => r.topic.toLowerCase())).size, rows.length);
-        assert.equal(rows.length, 5);
-        assert.ok(warnings.some((w) => /suggested 5 of 6/.test(w)));
-    });
-
-    test('tags and keywords are cleaned', async () => {
-        gemini.planMode = 'messy';
-        const { rows } = (await plan({ year: 2026, month: 4, count: 6 })).body.data;
-        for (const r of rows) {
-            assert.ok(r.tags.every((t) => !t.includes('<')));
-            assert.equal(new Set(r.tags).size, r.tags.length);
-            assert.ok(Array.isArray(r.seoKeywords));
-        }
-    });
-
-    test('the prompt names the month and lists existing blogs to avoid repeating', async () => {
-        gemini.planMode = 'clean';
-        await plan({ year: 2026, month: 10, count: 3 });
-        const prompt = gemini.calls.at(-1).body.contents[0].parts[0].text;
-        assert.match(prompt, /Plan exactly 3 blog articles for October 2026/);
-        assert.match(prompt, /\* Live post/);
-    });
-
-    test('validates month, year and count', async () => {
-        for (const body of [
-            { year: 2026, month: 13, count: 3 },
-            { year: 2026, month: 0, count: 3 },
-            { year: 1999, month: 5, count: 3 },
-            { year: 2026, month: 5, count: 0 },
-            { year: 2026, month: 5, count: 32 },
-            { year: 2099, month: 5, count: 3 }
-        ]) {
-            const res = await plan(body);
-            assert.equal(res.status, 400, JSON.stringify(body));
-        }
-    });
-
-    test('planning writes nothing', async () => {
-        gemini.planMode = 'clean';
-        const before = await Blog.countDocuments();
-        await plan({ year: 2026, month: 10, count: 5 });
-        assert.equal(await Blog.countDocuments(), before);
-    });
-
-    test('Editors can plan; Content Managers cannot; login required', async () => {
-        gemini.planMode = 'clean';
-        assert.equal((await plan({ year: 2026, month: 10, count: 2 }, tokens.editor)).status, 200);
-        assert.equal((await plan({ year: 2026, month: 10, count: 2 }, tokens.content)).status, 403);
-        assert.equal((await call('POST', '/v1/gemini/blogs/plan', { body: { year: 2026, month: 10, count: 2 } })).status, 401);
-    });
-
-    test('Gemini failures surface with the same handling as single generation', async () => {
-        gemini.mode = 'rateLimited';
-        const res = await plan({ year: 2026, month: 10, count: 3 });
-        assert.equal(res.status, 429);
-        assert.ok(!res.text.includes(API_KEY));
-    });
-});
-
-describe('Monthly row generation', () => {
+describe('Row generation (bulk rows)', () => {
     let activeId;
     let inactiveId;
 
@@ -1066,13 +933,17 @@ describe('Save All as Drafts', () => {
         assert.equal(res.status, 400);
     });
 
-    test('end to end: plan, generate every row, save every row as a draft', async () => {
-        gemini.planMode = 'clean';
+    test('end to end: generate every row, save every row as a draft', async () => {
         gemini.category = 'Business Loans';
         const published = await Blog.find({ status: 'published' }).lean();
 
-        const { rows } = (await plan({ year: 2026, month: 11, count: 4 })).body.data;
-        assert.equal(rows.length, 4);
+        const rows = [3, 10, 17, 24].map((d, i) => ({
+            topic: `Planned topic number ${i + 1} about growing a kirana store`,
+            createDate: `2026-11-${String(d).padStart(2, '0')}`,
+            category: { _id: activeId, name: 'Business Loans' },
+            tags: ['kirana'],
+            seoKeywords: ['kirana loan']
+        }));
 
         const saved = [];
         for (const [i, r] of rows.entries()) {
@@ -1101,6 +972,282 @@ describe('Save All as Drafts', () => {
             assert.equal(db.publishedAt, null);
             assert.equal(db.createdAt.toISOString().slice(0, 10), date);
             assert.ok(date.startsWith('2026-11-'));
+        }
+        assert.deepEqual(await Blog.find({ status: 'published' }).lean(), published, 'published blogs untouched');
+    });
+});
+
+// ── Excel bulk plan ────────────────────────────────────────────────────────────
+describe('Excel bulk plan', () => {
+    const XLSX = require('xlsx');
+    const HEAD = ['Date', 'Blog Topic', 'Category', 'Generate Image'];
+    const serial = (iso) => {
+        const [y, m, d] = iso.split('-').map(Number);
+        return (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000;
+    };
+    const workbook = (aoa, { bookType = 'xlsx', mutate } = {}) => {
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        if (mutate) mutate(ws);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Plan');
+        return XLSX.write(wb, { type: 'buffer', bookType });
+    };
+    const upload = (buffer, name = 'plan.xlsx', token = tokens.super) => {
+        const form = new FormData();
+        form.append('file', new Blob([buffer]), name);
+        return call('POST', '/v1/gemini/blogs/bulk/parse', { token, form });
+    };
+    const validateRows = (rows, token = tokens.super) => call('POST', '/v1/gemini/blogs/bulk/validate', { token, body: { rows } });
+    const rowErrors = (row, field) => row.errors.filter((e) => !field || e.field === field).map((e) => e.message).join(' | ');
+
+    let activeId;
+    before(async () => {
+        activeId = String((await BlogCategory.findOne({ slug: 'business-loans' }))._id);
+    });
+
+    test('a valid .xlsx plan parses into rows ready to generate', async () => {
+        const buffer = workbook([
+            HEAD,
+            ['05/10/2026', 'How to choose the right vehicle loan', 'Business Loans', 'Yes'],
+            ['12/10/2026', 'Understanding loan repayment schedules', 'business loans', 'No'],
+            ['2026-10-19', 'Simple ways to improve your credit score', '', ''],
+            [null, 'Budgeting for festival season', null, 'yes']
+        ], { mutate: (ws) => { ws.A5 = { t: 'n', v: serial('2026-10-26') }; } });
+        const res = await upload(buffer);
+        assert.equal(res.status, 200, res.text);
+        const { rows, summary, file } = res.body.data;
+        assert.deepEqual(summary, { total: 4, valid: 4, invalid: 0, imagesRequested: 3 });
+        assert.deepEqual(rows.map((r) => r.date), ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26']);
+        assert.deepEqual(rows.map((r) => r.sourceRow), [2, 3, 4, 5]);
+        assert.deepEqual(rows[0].category, { _id: activeId, name: 'Business Loans' });
+        assert.deepEqual(rows[1].category, { _id: activeId, name: 'Business Loans' }, 'category names match case-insensitively');
+        assert.equal(rows[2].category, null, 'blank category is left for Gemini');
+        assert.deepEqual(rows.map((r) => r.generateImage), [true, false, true, true]);
+        assert.equal(rows[2].imageDefaulted, true);
+        assert.equal(rows[3].input.date, '26/10/2026', 'an Excel date cell is shown as a date');
+        assert.deepEqual(file.columns, ['Date', 'Blog Topic', 'Category', 'Generate Image']);
+    });
+
+    test('a legacy .xls workbook is read too', async () => {
+        const res = await upload(workbook([HEAD, ['07/11/2026', 'Loan against property basics', '', 'No']], { bookType: 'biff8' }), 'plan.xls');
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.rows[0].date, '2026-11-07');
+    });
+
+    test('missing required columns are reported by name', async () => {
+        const res = await upload(workbook([['When', 'Subject', 'Category'], ['05/10/2026', 'x', '']]));
+        assert.equal(res.status, 400);
+        assert.match(res.body.message, /Missing required columns: Date, Blog Topic/);
+    });
+
+    test('invalid dates are rejected with the value as entered', async () => {
+        const res = await upload(workbook([
+            HEAD,
+            ['31/02/2026', 'Topic with an impossible date', '', 'Yes'],
+            ['2026/13/01', 'Topic with a slashed ISO date', '', 'Yes'],
+            ['next Tuesday', 'Topic with a word date', '', 'Yes'],
+            ['10/21/2026', 'Topic with a month-first date', '', 'Yes'],
+            ['01/01/2099', 'Topic dated too far ahead', '', 'Yes'],
+            ['', 'Topic without a date', '', 'Yes'],
+            ['15/10/2026', 'A perfectly valid topic', '', 'Yes']
+        ]));
+        assert.equal(res.status, 200);
+        const { rows, summary } = res.body.data;
+        assert.deepEqual(summary, { total: 7, valid: 1, invalid: 6, imagesRequested: 1 });
+        assert.match(rowErrors(rows[0], 'date'), /"31\/02\/2026" does not exist/);
+        assert.match(rowErrors(rows[1], 'date'), /not in DD\/MM\/YYYY format/);
+        assert.match(rowErrors(rows[2], 'date'), /"next Tuesday" is not in DD\/MM\/YYYY format/);
+        assert.match(rowErrors(rows[3], 'date'), /"10\/21\/2026" does not exist/, 'day-first: month 21 is not guessed');
+        assert.match(rowErrors(rows[4], 'date'), /one year from today/);
+        assert.match(rowErrors(rows[5], 'date'), /Date is required/);
+        assert.equal(rows[0].input.date, '31/02/2026', 'the invalid value is shown unchanged');
+        assert.equal(rows[6].valid, true);
+    });
+
+    test('categories must be existing active ones', async () => {
+        const { rows } = (await upload(workbook([
+            HEAD,
+            ['05/10/2026', 'Topic in a made-up category', 'General', 'Yes'],
+            ['06/10/2026', 'Topic in an inactive category', 'Inactive Old', 'Yes']
+        ]))).body.data;
+        assert.match(rowErrors(rows[0], 'category'), /"General" does not exist/);
+        assert.match(rowErrors(rows[1], 'category'), /"Inactive Old" is inactive/);
+        assert.equal(rows[0].input.category, 'General');
+        assert.equal(await BlogCategory.countDocuments({ name: 'General' }), 0, 'no category is created');
+    });
+
+    test('duplicate topics and dates are flagged on the later row', async () => {
+        const { rows, summary } = (await upload(workbook([
+            HEAD,
+            ['05/10/2026', 'Saving for a new shop', '', 'Yes'],
+            ['06/10/2026', '  saving FOR a new   shop ', '', 'Yes'],
+            ['05/10/2026', 'A different topic on the same day', '', 'Yes']
+        ]))).body.data;
+        assert.equal(rows[0].valid, true);
+        assert.match(rowErrors(rows[1], 'topic'), /Duplicate topic — same as row 2/);
+        assert.match(rowErrors(rows[2], 'date'), /Duplicate date — row 2 already uses 05\/10\/2026/);
+        assert.equal(summary.valid, 1);
+    });
+
+    test('partial files keep their valid rows usable', async () => {
+        const { rows, summary } = (await upload(workbook([
+            HEAD,
+            ['05/10/2026', 'Valid topic one', '', 'Yes'],
+            ['bad', 'Invalid date row', '', 'Yes'],
+            ['07/10/2026', 'Valid topic two', '', 'maybe'],
+            ['08/10/2026', 'Valid topic three', '', 'No']
+        ]))).body.data;
+        assert.deepEqual(rows.map((r) => r.valid), [true, false, false, true]);
+        assert.match(rowErrors(rows[2], 'generateImage'), /Yes or No, not "maybe"/);
+        assert.deepEqual(summary, { total: 4, valid: 2, invalid: 2, imagesRequested: 1 });
+    });
+
+    test('formula cells are refused, never evaluated', async () => {
+        const { rows } = (await upload(workbook([
+            HEAD,
+            ['05/10/2026', 'placeholder', '', 'Yes']
+        ], { mutate: (ws) => { ws.B2 = { t: 's', v: 'Computed title', f: 'CONCAT("Computed"," title")' }; } }))).body.data;
+        assert.equal(rows[0].valid, false);
+        assert.match(rowErrors(rows[0], 'topic'), /contains a formula/);
+    });
+
+    test('blank rows are skipped and row numbers stay true to the sheet', async () => {
+        const { rows } = (await upload(workbook([HEAD, [], ['05/10/2026', 'After a blank row', '', 'Yes']]))).body.data;
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].sourceRow, 3);
+    });
+
+    test('non-Excel files, oversized files and too many rows are refused', async () => {
+        assert.equal((await upload(Buffer.from('Date,Blog Topic\n05/10/2026,x'), 'plan.csv')).status, 400);
+        const fake = await upload(Buffer.from('this is not really a spreadsheet at all'), 'plan.xlsx');
+        assert.equal(fake.status, 400);
+        assert.match(fake.body.message, /not a valid Excel workbook/);
+        const big = await upload(Buffer.alloc(2 * 1024 * 1024 + 10, 1), 'plan.xlsx');
+        assert.equal(big.status, 400);
+        assert.match(big.body.message, /larger than 2 MB/);
+        const many = [HEAD, ...Array.from({ length: 101 }, (_, i) => [`01/10/2026`, `Topic ${i}`, '', 'No'])];
+        const tooMany = await upload(workbook(many));
+        assert.equal(tooMany.status, 400);
+        assert.match(tooMany.body.message, /more than 100 blog rows/);
+        const empty = await upload(workbook([HEAD]));
+        assert.equal(empty.status, 400);
+        assert.match(empty.body.message, /No blog rows/);
+        const noFile = await call('POST', '/v1/gemini/blogs/bulk/parse', { token: tokens.super, form: new FormData() });
+        assert.equal(noFile.status, 400);
+    });
+
+    test('uploading stores nothing and writes nothing', async () => {
+        const blogs = await Blog.countDocuments();
+        const files = blogUploads();
+        await upload(workbook([HEAD, ['05/10/2026', 'Nothing is saved', '', 'Yes']]));
+        assert.equal(await Blog.countDocuments(), blogs);
+        assert.deepEqual(blogUploads(), files);
+    });
+
+    test('edited rows are re-validated with the same rules', async () => {
+        const res = await validateRows([
+            { date: '2026-10-05', topic: 'Edited topic', category: activeId, generateImage: true },
+            { date: '05/10/2026', topic: 'edited TOPIC', category: 'Business Loans', generateImage: 'No' },
+            { date: '2026-10-06', topic: 'ok', category: '', generateImage: false }
+        ]);
+        assert.equal(res.status, 200, res.text);
+        const { rows } = res.body.data;
+        assert.deepEqual(rows[0].category, { _id: activeId, name: 'Business Loans' }, 'category by id');
+        assert.match(rowErrors(rows[1]), /Duplicate topic — same as #1/);
+        assert.match(rowErrors(rows[1]), /Duplicate date — #1 already uses 05\/10\/2026/);
+        assert.match(rowErrors(rows[2], 'topic'), /3-200 characters/);
+        assert.equal((await call('POST', '/v1/gemini/blogs/bulk/validate', { token: tokens.super, body: { rows: [] } })).status, 400);
+        assert.equal((await call('POST', '/v1/gemini/blogs/bulk/validate', { token: tokens.super, body: { rows: [{ topic: { $ne: 1 } }] } })).status, 400);
+    });
+
+    test('an existing blog title is a warning, not an error', async () => {
+        const { rows } = (await validateRows([{ date: '2026-10-05', topic: 'Live post', category: '', generateImage: 'Yes' }])).body.data;
+        assert.equal(rows[0].valid, true);
+        assert.match(rows[0].warnings[0], /already exists/);
+    });
+
+    test('the template downloads with the plan layout and active categories', async () => {
+        const res = await realFetch(`${baseUrl}/api/v1/gemini/blogs/bulk/template`, { headers: { Authorization: `Bearer ${tokens.editor}` } });
+        assert.equal(res.status, 200);
+        assert.match(res.headers.get('content-type'), /spreadsheetml/);
+        assert.match(res.headers.get('content-disposition'), /gemini-blog-plan-template\.xlsx/);
+        const wb = XLSX.read(Buffer.from(await res.arrayBuffer()), { type: 'buffer' });
+        assert.deepEqual(wb.SheetNames, ['Blog Plan', 'Categories', 'Instructions']);
+        const plan = XLSX.utils.sheet_to_json(wb.Sheets['Blog Plan'], { header: 1 });
+        assert.deepEqual(plan[0], HEAD);
+        const cats = XLSX.utils.sheet_to_json(wb.Sheets.Categories, { header: 1 }).flat();
+        assert.ok(cats.includes('Business Loans') && !cats.includes('Inactive Old'));
+        // The template itself uploads cleanly.
+        const reparsed = await upload(Buffer.from(await (await realFetch(`${baseUrl}/api/v1/gemini/blogs/bulk/template`, { headers: { Authorization: `Bearer ${tokens.super}` } })).arrayBuffer()));
+        assert.equal(reparsed.body.data.summary.invalid, 0, reparsed.text);
+    });
+
+    test('bulk planning is limited to Super Admin and Editor', async () => {
+        const buffer = workbook([HEAD, ['05/10/2026', 'RBAC topic', '', 'Yes']]);
+        assert.equal((await upload(buffer, 'plan.xlsx', tokens.content)).status, 403);
+        assert.equal((await validateRows([{ date: '2026-10-05', topic: 'RBAC' }], tokens.content)).status, 403);
+        assert.equal((await realFetch(`${baseUrl}/api/v1/gemini/blogs/bulk/template`, { headers: { Authorization: `Bearer ${tokens.content}` } })).status, 403);
+        assert.equal((await realFetch(`${baseUrl}/api/v1/gemini/blogs/bulk/template`)).status, 401);
+        assert.equal((await upload(buffer, 'plan.xlsx', tokens.editor)).status, 200);
+    });
+
+    test('end to end: upload, generate valid rows, retry the failure, save all as drafts', async () => {
+        gemini.category = 'Business Loans';
+        const published = await Blog.find({ status: 'published' }).lean();
+        const { rows } = (await upload(workbook([
+            HEAD,
+            ['03/12/2026', 'Bulk topic one about kirana stores', 'Business Loans', 'Yes'],
+            ['10/12/2026', 'Bulk topic two about e-rickshaws', '', 'No'],
+            ['bad date', 'Bulk topic that stays invalid', '', 'Yes'],
+            ['17/12/2026', 'Bulk topic three about savings', '', 'Yes']
+        ]))).body.data;
+        const valid = rows.filter((r) => r.valid);
+        assert.equal(valid.length, 3);
+
+        // Generate every valid row the way the CMS does; the second fails once.
+        const generated = {};
+        const generateRow = async (r, i) => {
+            const res = await generate({ topic: r.topic, createDate: r.date, category: r.category?._id, rowKey: `bulk_row_${i}_x1` });
+            if (res.status === 200) generated[i] = res.body.data.blog;
+            return res.status;
+        };
+        gemini.mode = 'ok';
+        assert.equal(await generateRow(valid[0], 0), 200);
+        gemini.mode = 'serverError';
+        assert.equal(await generateRow(valid[1], 1), 502, 'a failed row');
+        gemini.mode = 'ok';
+        assert.equal(await generateRow(valid[2], 2), 200, 'does not stop the rest');
+        assert.equal(await generateRow(valid[1], 1), 200, 'retry only the failed row');
+
+        // Images only where the row asked for one.
+        const imageCalls = valid.filter((r) => r.generateImage).length;
+        assert.equal(imageCalls, 2);
+
+        const saved = [];
+        for (const [i, r] of valid.entries()) {
+            const b = generated[i];
+            const form = new FormData();
+            const fields = {
+                title: b.title, slug: `${b.slug}-bulk-${i}`, summary: b.summary, content: b.content, author: b.author,
+                category: b.category?._id || '', tags: b.tags.join(', '),
+                'seo.metaTitle': b.seo.metaTitle, 'seo.metaDescription': b.seo.metaDescription, 'seo.metaKeywords': b.seo.metaKeywords,
+                createDate: r.date, idempotencyKey: `bulk_save_${i}_x1`
+            };
+            for (const [k, v] of Object.entries(fields)) form.append(k, v);
+            const res = await call('POST', '/v1/gemini/blogs/drafts', { token: tokens.super, form });
+            assert.equal(res.status, 201, res.text);
+            saved.push({ id: res.body.data.blog._id, date: r.date, form });
+        }
+        // Save All again (e.g. after a lost response): no duplicates.
+        const again = await call('POST', '/v1/gemini/blogs/drafts', { token: tokens.super, form: saved[0].form });
+        assert.equal(again.status, 200);
+        assert.equal(again.body.data.duplicate, true);
+
+        for (const s of saved) {
+            const db = await Blog.findById(s.id).lean();
+            assert.equal(db.status, 'draft');
+            assert.equal(db.publishedAt, null);
+            assert.equal(db.createdAt.toISOString().slice(0, 10), s.date);
         }
         assert.deepEqual(await Blog.find({ status: 'published' }).lean(), published, 'published blogs untouched');
     });

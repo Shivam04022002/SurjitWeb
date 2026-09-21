@@ -9,11 +9,11 @@ import ImageUpload from '../../components/ImageUpload'
 import { SITE_URL, slugify, formatDay } from './geminiBlogUtils'
 
 // The editable preview of a generated blog, shared by the Single Blog and
-// Monthly Blogs flows. Every field is editable; nothing here saves — the
+// Bulk Upload flows. Every field is editable; nothing here saves — the
 // parent decides when to send the draft.
 //
 // `image` describes the featured image: { status, preview, error, key } where
-// status is idle | generating | ready | failed | off. A generated image and an
+// status is idle | generating | ready | failed | skipped | off | uploaded. A generated image and an
 // uploaded one are handled the same way: the parent keeps the File and sends
 // it with the draft, so it reaches the media store only on a successful save.
 const GeneratedBlogEditor = ({
@@ -138,6 +138,11 @@ const GeneratedBlogEditor = ({
               <Alert severity="warning" sx={{ mt: 1.5 }}>
                 {image.error} You can retry, or upload your own image above.
               </Alert>
+            )}
+            {image.status === 'skipped' && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                No image was requested for this blog. Upload one above, or generate one.
+              </Typography>
             )}
             {image.status === 'off' && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>

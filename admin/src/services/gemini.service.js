@@ -47,10 +47,27 @@ const generateImage = async ({ title, summary, imagePrompt }) => {
   return response.data
 }
 
-// A month's schedule: topics, dates, categories, tags and keywords to review
-// before any blog is generated. Nothing is saved.
-const planMonth = async ({ year, month, count }) => {
-  const response = await api.post(`${BASE}/blogs/plan`, { year, month, count })
+// ── Excel monthly plan ─────────────────────────────────────────────────────────
+// Planning only: none of these call Gemini or save anything.
+
+const downloadBulkTemplate = async () => {
+  const response = await api.get(`${BASE}/blogs/bulk/template`, { responseType: 'blob' })
+  return response.data
+}
+
+// The workbook is read and validated on the server; the rows come back.
+const parseBulkFile = async (file) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  const response = await api.post(`${BASE}/blogs/bulk/parse`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return response.data
+}
+
+// Re-checks plan rows after edits, with the same rules as an upload.
+const validateBulkRows = async (rows) => {
+  const response = await api.post(`${BASE}/blogs/bulk/validate`, { rows })
   return response.data
 }
 
@@ -71,6 +88,8 @@ export const geminiService = {
   getAvailability,
   generateBlog,
   generateImage,
-  planMonth,
-  saveDraft
+  saveDraft,
+  downloadBulkTemplate,
+  parseBulkFile,
+  validateBulkRows
 }

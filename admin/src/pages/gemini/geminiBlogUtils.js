@@ -23,8 +23,8 @@ export const splitList = (value) => String(value || '').split(',').map((v) => v.
 
 // A random id the server accepts as a row or idempotency key.
 export const newKey = (prefix) => {
-  const rand = window.crypto?.randomUUID
-    ? window.crypto.randomUUID().replace(/-/g, '')
+  const rand = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID().replace(/-/g, '')
     : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`
   return `${prefix}_${rand}`.slice(0, 64)
 }
