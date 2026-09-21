@@ -88,5 +88,8 @@ module.exports = {
     deleteBlog,
     publishBlog,
     unpublishBlog,
-    duplicateBlog
+    duplicateBlog,
+    // Shared with the Gemini draft endpoint, which accepts the same body.
+    normaliseBody,
+    collectFiles
 };

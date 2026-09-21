@@ -102,6 +102,23 @@ const analyticsTrackLimiter = rateLimit({
     message: { success: false, message: 'Too many requests.', errors: [] }
 });
 
+// ── Gemini generation (per admin account) ────────────────────────────────────
+// Each call spends paid Gemini quota. Keyed on the signed-in admin rather than
+// the IP, so one account cannot run up the bill and a shared office IP does
+// not throttle everyone. Mounted after `auth`, so req.user is always set.
+const geminiLimiter = rateLimit({
+    windowMs: env.GEMINI_RATE_LIMIT_WINDOW_MS,
+    max: env.GEMINI_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => `admin:${req.user ? req.user._id : req.ip}`,
+    message: {
+        success: false,
+        message: 'Gemini request limit reached for this hour. Please try again later.',
+        errors: []
+    }
+});
+
 const resetLoginLimiter = (req) => {
     try {
         loginLimiter.resetKey(loginKey(req));
@@ -115,6 +132,7 @@ module.exports = {
     loginLimiter,
     reviewSubmissionLimiter,
     analyticsTrackLimiter,
+    geminiLimiter,
     loanApplicationLimiter,
     loanStatusLimiter,
     resetLoginLimiter,

@@ -47,7 +47,23 @@ const env = {
     AUTH_RATE_LIMIT_WINDOW_MS: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 min
     AUTH_RATE_LIMIT_MAX: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '10', 10),
 
-    SUPER_ADMIN_EMAIL: process.env.SUPER_ADMIN_EMAIL || 'admin@surjitfinance.com',
+    // Gemini blog generation. The API key is normally entered in the CMS (API
+    // page) and stored encrypted; GEMINI_API_KEY, when set, takes precedence
+    // and the CMS then shows it as managed by the server environment.
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+    GEMINI_TEXT_MODEL: process.env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash',
+    GEMINI_IMAGE_MODEL: process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
+    // Kept under nginx's default 60s proxy timeout so a slow model surfaces as
+    // a clear error rather than a gateway timeout.
+    GEMINI_TIMEOUT_MS: parseInt(process.env.GEMINI_TIMEOUT_MS || '55000', 10),
+    GEMINI_RATE_LIMIT_WINDOW_MS: parseInt(process.env.GEMINI_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
+    GEMINI_RATE_LIMIT_MAX: parseInt(process.env.GEMINI_RATE_LIMIT_MAX || '40', 10),
+    // Encrypts integration secrets at rest. Falls back to a key derived from
+    // JWT_ACCESS_SECRET, so rotating that secret without setting this one
+    // means stored integration keys must be re-entered.
+    SETTINGS_ENCRYPTION_KEY: process.env.SETTINGS_ENCRYPTION_KEY || '',
+
+    SUPER_ADMIN_EMAIL:process.env.SUPER_ADMIN_EMAIL || 'admin@surjitfinance.com',
     SUPER_ADMIN_PASSWORD: process.env.SUPER_ADMIN_PASSWORD || 'Admin@123'
 };
 

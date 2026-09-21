@@ -44,6 +44,11 @@ const startOfDay = (day) => {
     return new Date(utcMidnight - offsetAt(new Date(utcMidnight)));
 };
 
+// Midday of a calendar day in the business timezone. Used where a date-only
+// value has to become an instant: noon reads as the same calendar date in
+// every timezone from UTC-11 to UTC+11, so the date never appears shifted.
+const middayOf = (day) => new Date(startOfDay(day).getTime() + 12 * 60 * 60 * 1000);
+
 // Pure calendar arithmetic — no timezone involved.
 const addDays = (day, n) => {
     const [y, m, d] = parseDay(day);
@@ -64,4 +69,4 @@ const isValidDay = (value) => {
     return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 };
 
-module.exports = { TIMEZONE, dayOf, today, startOfDay, addDays, daysBetween, isValidDay };
+module.exports = { TIMEZONE, dayOf, today, startOfDay, middayOf, addDays, daysBetween, isValidDay };

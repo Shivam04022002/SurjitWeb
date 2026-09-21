@@ -30,6 +30,8 @@ import BranchesPage from '../pages/branches/BranchesPage'
 import HomepageStatsPage from '../pages/homepageStats/HomepageStatsPage'
 import LegalPagesPage from '../pages/legal/LegalPagesPage'
 import NodalOfficersPage from '../pages/nodalOfficers/NodalOfficersPage'
+import ApiSettingsPage from '../pages/integrations/ApiSettingsPage'
+import GeminiBlogsPage from '../pages/gemini/GeminiBlogsPage'
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth()
@@ -107,6 +109,8 @@ const AppRoutes = () => {
         <Route path="nodal-officers" element={<NodalOfficersPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="integrations/api" element={<ApiSettingsPage />} />
+        <Route path="gemini-blogs" element={<GeminiBlogsPage />} />
       </Route>
     </Routes>
   )

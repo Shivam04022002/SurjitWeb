@@ -50,8 +50,12 @@ import {
   Insights,
   Gavel,
   SupportAgent,
-  Settings
+  Settings,
+  AutoAwesome,
+  Api
 } from '@mui/icons-material'
+import { useAuth } from '../hooks/useAuth'
+import { ROLES } from '../utils/constants'
 
 const drawerWidth = 260
 
@@ -110,10 +114,14 @@ const menuItems = [
       { title: 'Nodal Officers', icon: SupportAgent, path: '/nodal-officers' }
     ]
   },
+  // `roles` hides an entry from roles the server would refuse anyway; entries
+  // without it are shown to everyone, as before.
+  { title: 'Gemini Blogs', icon: AutoAwesome, path: '/gemini-blogs', roles: [ROLES.SUPER_ADMIN, ROLES.EDITOR] },
   { title: 'Loan Applications', icon: RequestQuote, path: '/loan-applications' },
   { title: 'Website Analytics', icon: BarChart, path: '/analytics' },
   { title: 'Media', icon: PermMedia, path: '#' },
   { title: 'Users', icon: People, path: '/users' },
+  { title: 'API', icon: Api, path: '/integrations/api', roles: [ROLES.SUPER_ADMIN] },
   { title: 'Settings', icon: Settings, path: '/settings' },
   { title: 'Profile', icon: AccountCircle, path: '/profile' }
 ]
@@ -121,6 +129,7 @@ const menuItems = [
 const Sidebar = ({ mobileOpen, onDrawerToggle }) => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuth()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [openGroups, setOpenGroups] = useState({ 'About Us': true, Products: true, Career: true, Gallery: true, Content: true })
@@ -152,7 +161,7 @@ const Sidebar = ({ mobileOpen, onDrawerToggle }) => {
       </Box>
       <Divider />
       <List sx={{ flexGrow: 1, pt: 1 }}>
-        {menuItems.map((item) => {
+        {menuItems.filter((item) => !item.roles || item.roles.includes(user?.role)).map((item) => {
           const Icon = item.icon
 
           if (item.children) {
