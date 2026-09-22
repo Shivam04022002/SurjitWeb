@@ -12,6 +12,8 @@ process.env.JWT_ACCESS_SECRET = 'test-access-secret-for-gemini-suite';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-for-gemini-suite';
 process.env.CORS_ORIGIN = 'http://localhost:5174';
 process.env.GEMINI_RATE_LIMIT_MAX = '1000';
+// Retries back off for milliseconds, not seconds, so the suite stays fast.
+process.env.GEMINI_RETRY_BASE_MS = '5';
 process.env.AWS_S3_BUCKET_NAME = '';
 process.env.AWS_ACCESS_KEY_ID = '';
 delete process.env.GEMINI_API_KEY;
@@ -53,7 +55,7 @@ for (const level of ['log', 'info', 'warn', 'error']) {
 
 // ── Fake Gemini ────────────────────────────────────────────────────────────────
 const realFetch = global.fetch;
-const gemini = { mode: 'ok', delayMs: 0, calls: [], category: 'Business Loans', image: true };
+const gemini = { mode: 'ok', delayMs: 0, calls: [], category: 'Business Loans', image: true, sequence: [] };
 
 const words = (n) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
 
@@ -78,9 +80,33 @@ const blogJson = () => ({
 
 const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-const jsonResponse = (status, body) => new Response(JSON.stringify(body), {
-    status, headers: { 'Content-Type': 'application/json' }
+const jsonResponse = (status, body, headers = {}) => new Response(JSON.stringify(body), {
+    status, headers: { 'Content-Type': 'application/json', ...headers }
 });
+
+// Google-shaped failures for the response sequence. Every message echoes the
+// key, so each test also proves it is scrubbed.
+const googleError = (kind, key) => {
+    const err = (code, status, message, extra = {}) => ({ error: { code, status, message: `${message} (${key})`, ...extra } });
+    switch (kind) {
+        case 503: return jsonResponse(503, err(503, 'UNAVAILABLE', 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.'));
+        case '503-retry-after-1': return jsonResponse(503, err(503, 'UNAVAILABLE', 'Overloaded.'), { 'Retry-After': '1' });
+        case '503-retry-after-120': return jsonResponse(503, err(503, 'UNAVAILABLE', 'Overloaded.'), { 'Retry-After': '120' });
+        case 500: return jsonResponse(500, err(500, 'INTERNAL', 'An internal error has occurred.'));
+        case 400: return jsonResponse(400, err(400, 'INVALID_ARGUMENT', 'Invalid JSON payload received.'));
+        case 401: return jsonResponse(401, err(401, 'UNAUTHENTICATED', 'Request had invalid authentication credentials.'));
+        case 403: return jsonResponse(403, err(403, 'PERMISSION_DENIED', 'Permission denied.'));
+        case 404: return jsonResponse(404, err(404, 'NOT_FOUND', 'models/x is not found.'));
+        case '429-retryinfo': return jsonResponse(429, err(429, 'RESOURCE_EXHAUSTED', 'You exceeded your current quota, please check your plan and billing details.', {
+            details: [
+                { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests' }] },
+                { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '37s' }
+            ]
+        }));
+        case '429-header': return jsonResponse(429, err(429, 'RESOURCE_EXHAUSTED', 'You exceeded your current quota.'), { 'Retry-After': '20' });
+        default: throw new Error(`unknown fake error ${kind}`);
+    }
+};
 
 const fakeGemini = async (url, init = {}) => {
     const headers = new Headers(init.headers || {});
@@ -112,6 +138,12 @@ const fakeGemini = async (url, init = {}) => {
                 details: [{ reason: 'API_KEY_INVALID' }]
             }
         });
+    }
+    // A per-test script of responses: each POST takes the next entry; 'ok'
+    // (or an empty script) falls through to the normal fake behaviour.
+    if (gemini.sequence.length && init.method === 'POST') {
+        const next = gemini.sequence.shift();
+        if (next !== 'ok') return googleError(next, key);
     }
     // Google-shaped auth failures. Both echo the key in the message, so the
     // tests also prove it is redacted before reaching a response or a log.
@@ -242,6 +274,7 @@ beforeEach(() => {
     gemini.delayMs = 0;
     gemini.category = 'Business Loans';
     gemini.image = true;
+    gemini.sequence = [];
     gemini.calls = [];
     env.GEMINI_API_KEY = '';
     env.GEMINI_TIMEOUT_MS = 55000;
@@ -573,6 +606,162 @@ describe('Model used for generation', () => {
         assert.equal(res.status, 429);
         assert.match(res.body.message, /^Gemini quota exceeded for "gemini-2\.5-flash-image" \(Google: RESOURCE_EXHAUSTED\)\. Google says: "You exceeded your current quota, please check your plan and billing details/);
         assert.ok(!res.text.includes(AQ_KEY));
+    });
+});
+
+// ── Transient Google failures and retries ──────────────────────────────────────
+// Production, 2026-09-22: gemini-3.6-flash intermittently answered 503
+// UNAVAILABLE ("high demand"), which surfaced as a bare "temporarily
+// unavailable". Transient 500/503 are now retried (at most twice, within the
+// timeout budget); everything else fails at once with Google's details.
+describe('Transient Google failures and retries', () => {
+    before(async () => { await configure({ apiKey: AQ_KEY, textModel: 'gemini-3.6-flash' }); });
+    after(async () => { await configure(); });
+
+    const posts = () => gemini.calls.filter((c) => c.method === 'POST');
+    const noKey = (res) => {
+        assert.ok(!res.text.includes(AQ_KEY), 'key in response');
+        assert.ok(!captured.some((line) => line.includes(AQ_KEY)), 'key in a log line');
+    };
+
+    test('a successful generation makes exactly one request', async () => {
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(posts().length, 1);
+    });
+
+    test('503 -> retry -> success', async () => {
+        const logsBefore = captured.length;
+        gemini.sequence = [503];
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(posts().length, 2, 'one retry');
+        assert.equal(new Set(posts().map((c) => c.url)).size, 1, 'the same request is retried');
+        const retryLog = captured.slice(logsBefore).find((l) => l.includes('Gemini transient error, retrying'));
+        assert.ok(retryLog, 'the retry is logged');
+        assert.match(retryLog, /"status":503/);
+        assert.match(retryLog, /"googleStatus":"UNAVAILABLE"/);
+        assert.match(retryLog, /"model":"gemini-3\.6-flash"/);
+        noKey(res);
+    });
+
+    test('503 -> retry -> retry -> final failure keeps Google\'s details', async () => {
+        gemini.sequence = [503, 503, 503];
+        const res = await generate();
+        assert.equal(res.status, 502);
+        assert.equal(posts().length, 3, 'initial request plus two retries, no more');
+        assert.match(res.body.message, /^Gemini is temporarily unavailable \(Google: UNAVAILABLE\) after 3 attempts\. Google says: "This model is currently experiencing high demand\. Spikes in demand are usually temporary\./);
+        assert.match(res.body.message, /Please try again shortly\.$/);
+        assert.match(res.body.message, /\[redacted\]/);
+        noKey(res);
+    });
+
+    test('500 is retried the same way', async () => {
+        gemini.sequence = [500];
+        const ok = await generate();
+        assert.equal(ok.status, 200);
+        assert.equal(posts().length, 2);
+
+        gemini.calls = [];
+        gemini.sequence = [500, 500, 500];
+        const failed = await generate();
+        assert.equal(failed.status, 502);
+        assert.equal(posts().length, 3);
+        assert.match(failed.body.message, /\(Google: INTERNAL\) after 3 attempts\. Google says: "An internal error has occurred\./);
+        noKey(failed);
+    });
+
+    test('a Retry-After on a 503 is honoured', async () => {
+        gemini.sequence = ['503-retry-after-1'];
+        const started = Date.now();
+        const res = await generate();
+        assert.equal(res.status, 200);
+        assert.equal(posts().length, 2);
+        assert.ok(Date.now() - started >= 950, 'waited about as long as Google asked');
+    });
+
+    test('a retry that would not fit the time budget is not attempted', async () => {
+        gemini.sequence = ['503-retry-after-120'];
+        const res = await generate();
+        assert.equal(res.status, 502);
+        assert.equal(posts().length, 1, 'no retry past the budget');
+        assert.match(res.body.message, /Google suggests retrying in 120s\./);
+        noKey(res);
+    });
+
+    test('retries stay inside a short overall timeout', async () => {
+        env.GEMINI_TIMEOUT_MS = 3000;
+        gemini.sequence = [503, 503, 503];
+        const res = await generate();
+        assert.equal(res.status, 502);
+        assert.equal(posts().length, 1, 'too little budget left for another attempt');
+    });
+
+    test('429 quota keeps Google\'s details, the retry delay, and is not retried', async () => {
+        gemini.sequence = ['429-retryinfo'];
+        const res = await generate();
+        assert.equal(res.status, 429);
+        assert.equal(posts().length, 1, 'quota is never retried automatically');
+        assert.match(res.body.message, /^Gemini quota exceeded for "gemini-3\.6-flash" \(Google: RESOURCE_EXHAUSTED\)\. Google says: "You exceeded your current quota, please check your plan and billing details\./);
+        assert.match(res.body.message, /Google suggests retrying in 37s\.$/);
+        assert.doesNotMatch(res.body.message, /temporarily unavailable/);
+        noKey(res);
+    });
+
+    test('a Retry-After header on a 429 is surfaced too', async () => {
+        gemini.sequence = ['429-header'];
+        const res = await generate();
+        assert.equal(res.status, 429);
+        assert.equal(posts().length, 1);
+        assert.match(res.body.message, /Google suggests retrying in 20s\./);
+    });
+
+    for (const code of [400, 401, 403, 404]) {
+        test(`${code} is permanent and never retried`, async () => {
+            gemini.sequence = [code];
+            const res = await generate();
+            assert.equal(posts().length, 1, `${code} retried`);
+            assert.notEqual(res.status, 200);
+            noKey(res);
+        });
+    }
+
+    test('image generation retries a 503 once and returns one image', async () => {
+        gemini.sequence = [503];
+        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: { title: 'T', summary: 'S' } });
+        assert.equal(res.status, 200, res.text);
+        assert.equal(posts().length, 2);
+        assert.equal(res.body.data.image.data, PNG_1PX);
+    });
+
+    test('Test Connection rides out a single 503', async () => {
+        gemini.sequence = [503];
+        const { result } = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data;
+        assert.equal(result.ok, true, result.message);
+    });
+
+    test('a retried generation still saves exactly one draft per idempotency key', async () => {
+        gemini.sequence = [503];
+        const gen = await generate({ topic: 'Retry then save once', createDate: '2026-10-12' });
+        assert.equal(gen.status, 200);
+        const b = gen.body.data.blog;
+        const form = () => {
+            const f = new FormData();
+            const fields = {
+                title: b.title, slug: 'retry-then-save-once', summary: b.summary, content: b.content, author: b.author,
+                category: '', tags: b.tags.join(', '), 'seo.metaTitle': b.seo.metaTitle, 'seo.metaDescription': b.seo.metaDescription,
+                'seo.metaKeywords': b.seo.metaKeywords, createDate: '2026-10-12', idempotencyKey: 'retry_save_key_001'
+            };
+            for (const [k, v] of Object.entries(fields)) f.append(k, v);
+            return f;
+        };
+        const first = await call('POST', '/v1/gemini/blogs/drafts', { token: tokens.super, form: form() });
+        const second = await call('POST', '/v1/gemini/blogs/drafts', { token: tokens.super, form: form() });
+        assert.equal(first.status, 201, first.text);
+        assert.equal(second.status, 200);
+        assert.equal(second.body.data.duplicate, true);
+        assert.equal(await Blog.countDocuments({ slug: 'retry-then-save-once' }), 1);
+        assert.equal((await Blog.findOne({ slug: 'retry-then-save-once' }).lean()).status, 'draft');
     });
 });
 

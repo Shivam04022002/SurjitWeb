@@ -1,6 +1,7 @@
 const env = require('../../config/env');
 const { AppError } = require('../../middleware/errorHandler');
 const HTTP_STATUS = require('../../constants/httpStatus');
+const logger = require('../../utils/logger');
 
 // Minimal client for the Gemini REST API (Generative Language API, v1beta).
 // Plain fetch rather than an SDK: three calls are needed, and this keeps the
@@ -47,10 +48,26 @@ const reasonOf = (body) => {
     return info && /^[A-Z_]{3,64}$/.test(info.reason) ? info.reason : '';
 };
 
-// Google's explanation is passed on, scrubbed of the key: for a model or quota
-// problem it is the only place that says what to do (for example which model
-// replaces a retired one), and a generic message hides that.
-const upstreamError = (status, body, apiKey, model) => {
+// How long Google asks us to wait, in whole seconds, or null. Read from the
+// RetryInfo detail ("retryDelay": "37s") or a Retry-After header (seconds or
+// an HTTP date). Only a plain number ever reaches a message.
+const retryDelayOf = (body, headers) => {
+    const info = (body?.error?.details || []).find((d) => d && typeof d.retryDelay === 'string');
+    const fromBody = info && /^(\d+(?:\.\d+)?)s$/.exec(info.retryDelay);
+    if (fromBody) return Math.ceil(Number(fromBody[1]));
+    const header = headers && typeof headers.get === 'function' ? headers.get('retry-after') : null;
+    if (header && /^\d+$/.test(header.trim())) return Number(header.trim());
+    if (header) {
+        const at = Date.parse(header);
+        if (!Number.isNaN(at)) return Math.max(0, Math.ceil((at - Date.now()) / 1000));
+    }
+    return null;
+};
+
+// Google's explanation is passed on, scrubbed of the key: for a model, quota
+// or overload problem it is the only place that says what to do (which model
+// replaces a retired one, when a quota resets), and a generic message hides it.
+const upstreamError = (status, body, apiKey, model, { retryAfter = null, attempts = 1 } = {}) => {
     const detail = scrub(body?.error?.message, apiKey);
     const reason = reasonOf(body);
     const googleStatus = /^[A-Z_]{3,40}$/.test(body?.error?.status || '') ? body.error.status : '';
@@ -80,19 +97,46 @@ const upstreamError = (status, body, apiKey, model) => {
             HTTP_STATUS.UNPROCESSABLE_ENTITY
         );
     }
+    const wait = retryAfter !== null ? ` Google suggests retrying in ${retryAfter}s.` : '';
+    // Quota errors stay quota errors: never retried here and never reworded as
+    // an outage. The CMS pauses a bulk run on 429 and resumes on request.
     if (status === 429) {
         const quota = reason === 'RATE_LIMIT_EXCEEDED' ? false : /quota|billing|RESOURCE_EXHAUSTED/i.test(`${googleStatus} ${detail}`);
         return new AppError(
             quota
-                ? `Gemini quota exceeded for ${model ? `"${model}"` : 'this model'}${code}.${says}`
-                : `Gemini rate limit reached${code}. Please wait and try again.`,
+                ? `Gemini quota exceeded for ${model ? `"${model}"` : 'this model'}${code}.${says}${wait}`
+                : `Gemini rate limit reached${code}.${wait || ' Please wait and try again.'}`,
             HTTP_STATUS.TOO_MANY_REQUESTS
         );
     }
     if (status >= 500) {
-        return new AppError('Gemini is temporarily unavailable. Please try again shortly.', HTTP_STATUS.BAD_GATEWAY);
+        const tries = attempts > 1 ? ` after ${attempts} attempts` : '';
+        return new AppError(
+            `Gemini is temporarily unavailable${code}${tries}.${says}${wait} Please try again shortly.`,
+            HTTP_STATUS.BAD_GATEWAY
+        );
     }
     return new AppError(`Gemini rejected the request${detail ? `: ${detail}` : '.'}`, HTTP_STATUS.BAD_GATEWAY);
+};
+
+// Transient upstream failures — Google overloaded (503) or erroring (500) —
+// are retried here, inside one call, before any response is used. Nothing
+// else runs until this returns, so a retry can never save a draft or store an
+// image twice. Everything else (400/401/403/404, 429 quota, timeouts) fails
+// at once: retrying would not change the answer, or would spend quota.
+const RETRYABLE = new Set([500, 503]);
+const MAX_RETRIES = 2;
+// A retry is only started if at least this much of the budget would remain.
+const MIN_ATTEMPT_MS = 5000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Short exponential backoff with jitter: ~1s, then ~2s (GEMINI_RETRY_BASE_MS
+// sets the base). A delay Google asks for is honoured when it is longer.
+const backoffMs = (retry, retryAfter) => {
+    const base = env.GEMINI_RETRY_BASE_MS * 2 ** retry;
+    const jitter = Math.floor(Math.random() * Math.min(250, env.GEMINI_RETRY_BASE_MS));
+    return Math.max(base + jitter, retryAfter !== null ? retryAfter * 1000 : 0);
 };
 
 const request = async (apiKey, path, { method = 'GET', body, timeoutMs = env.GEMINI_TIMEOUT_MS, model } = {}) => {
@@ -100,35 +144,59 @@ const request = async (apiKey, path, { method = 'GET', body, timeoutMs = env.GEM
         throw new AppError('Gemini is not configured. Add an API key on the API page.', HTTP_STATUS.SERVICE_UNAVAILABLE);
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // One budget for the whole call, retries included, so the request still
+    // finishes inside the nginx proxy timeout.
+    const deadline = Date.now() + timeoutMs;
+    const payload = body ? JSON.stringify(body) : undefined;
 
-    let res;
-    try {
-        res = await fetch(`${BASE_URL}${path}`, {
-            method,
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-            body: body ? JSON.stringify(body) : undefined,
-            signal: controller.signal
-        });
-    } catch (err) {
-        if (err.name === 'AbortError') {
-            throw new AppError('Gemini took too long to respond. Please try again.', HTTP_STATUS.GATEWAY_TIMEOUT);
+    for (let attempt = 1; ; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), Math.max(1, deadline - Date.now()));
+
+        let res;
+        try {
+            res = await fetch(`${BASE_URL}${path}`, {
+                method,
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+                body: payload,
+                signal: controller.signal
+            });
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                throw new AppError('Gemini took too long to respond. Please try again.', HTTP_STATUS.GATEWAY_TIMEOUT);
+            }
+            throw new AppError('Could not reach Gemini. Check the server\'s internet connection.', HTTP_STATUS.BAD_GATEWAY);
+        } finally {
+            clearTimeout(timer);
         }
-        throw new AppError('Could not reach Gemini. Check the server\'s internet connection.', HTTP_STATUS.BAD_GATEWAY);
-    } finally {
-        clearTimeout(timer);
-    }
 
-    let json = null;
-    try {
-        json = await res.json();
-    } catch {
-        json = null;
-    }
+        let json = null;
+        try {
+            json = await res.json();
+        } catch {
+            json = null;
+        }
+        if (res.ok) return json || {};
 
-    if (!res.ok) throw upstreamError(res.status, json, apiKey, model);
-    return json || {};
+        const retryAfter = retryDelayOf(json, res.headers);
+        if (RETRYABLE.has(res.status) && attempt <= MAX_RETRIES) {
+            const delay = backoffMs(attempt - 1, retryAfter);
+            if (Date.now() + delay + MIN_ATTEMPT_MS <= deadline) {
+                // Safe metadata only: never the key, the prompt or the body.
+                logger.warn('Gemini transient error, retrying', {
+                    model: model || '',
+                    method,
+                    status: res.status,
+                    googleStatus: /^[A-Z_]{3,40}$/.test(json?.error?.status || '') ? json.error.status : '',
+                    attempt,
+                    retryInMs: delay
+                });
+                await sleep(delay);
+                continue;
+            }
+        }
+        throw upstreamError(res.status, json, apiKey, model, { retryAfter, attempts: attempt });
+    }
 };
 
 // Looks the model up without spending tokens. A successful lookup does NOT
@@ -206,4 +274,4 @@ const generateImage = async (apiKey, model, { prompt }) => {
     return { mimeType: part.inlineData.mimeType || 'image/png', data: part.inlineData.data };
 };
 
-module.exports = { getModel, probeGeneration, generateJson, generateImage, scrub, BASE_URL, MODEL_RX };
+module.exports = { getModel, probeGeneration, generateJson, generateImage, scrub, BASE_URL, MODEL_RX, MAX_RETRIES };

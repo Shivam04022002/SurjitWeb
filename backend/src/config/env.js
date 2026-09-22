@@ -56,6 +56,10 @@ const env = {
     // Kept under nginx's default 60s proxy timeout so a slow model surfaces as
     // a clear error rather than a gateway timeout.
     GEMINI_TIMEOUT_MS: parseInt(process.env.GEMINI_TIMEOUT_MS || '55000', 10),
+    // Base delay for retrying a transient Gemini failure (500/503): about this
+    // long before the first retry and twice that before the second. Retries
+    // share the GEMINI_TIMEOUT_MS budget.
+    GEMINI_RETRY_BASE_MS: parseInt(process.env.GEMINI_RETRY_BASE_MS || '1000', 10),
     GEMINI_RATE_LIMIT_WINDOW_MS: parseInt(process.env.GEMINI_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
     GEMINI_RATE_LIMIT_MAX: parseInt(process.env.GEMINI_RATE_LIMIT_MAX || '40', 10),
     // Encrypts integration secrets at rest. Falls back to a key derived from
