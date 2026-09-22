@@ -284,7 +284,8 @@ const generateWithFallback = async (config, { prompt, schema }) => {
     if (textModels.NOT_A_FREE_TEXT_MODEL.test(config.textModel)) {
         throw new AppError(`The configured text model (${config.textModel}) is an image, audio or video model. Choose a Gemini text model on the API page.`, HTTP_STATUS.UNPROCESSABLE_ENTITY);
     }
-    const models = textModels.candidateModels(config.textModel);
+    // Exactly the fallbacks in force: saved on the API page, else the environment.
+    const models = textModels.candidateModels(config.textModel, config.textFallbacks);
     const deadline = Date.now() + env.GEMINI_TIMEOUT_MS;
     const skipped = [];
     const unavailable = [];

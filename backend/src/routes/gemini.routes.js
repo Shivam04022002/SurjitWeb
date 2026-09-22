@@ -16,6 +16,7 @@ const {
     testConnectionValidation,
     savePexelsKeyValidation,
     testPexelsValidation,
+    saveFallbacksValidation,
     generateBlogValidation,
     generateImageValidation,
     validateBulkRowsValidation,
@@ -59,6 +60,9 @@ router.get('/config', superAdminOnly, geminiController.getConfig);
 router.put('/config', superAdminOnly, saveConfigValidation, validate, geminiController.saveConfig);
 router.delete('/config/key', superAdminOnly, geminiController.removeKey);
 router.post('/config/test', superAdminOnly, geminiLimiter, testConnectionValidation, validate, geminiController.testConnection);
+router.get('/config/fallbacks', superAdminOnly, geminiController.getFallbacks);
+router.put('/config/fallbacks', superAdminOnly, saveFallbacksValidation, validate, geminiController.saveFallbacks);
+router.delete('/config/fallbacks', superAdminOnly, geminiController.clearFallbacks);
 
 // Pexels (featured images): the same Super Admin rule as the Gemini key.
 router.get('/pexels/config', superAdminOnly, geminiController.getPexelsConfig);

@@ -30,6 +30,24 @@ const testConnection = async (apiKey) => {
   return response.data
 }
 
+// Free fallback text models, tried after the text model on quota or overload
+// errors. Model names only; these calls never carry the API key.
+
+const getFallbacks = async () => {
+  const response = await api.get(`${BASE}/config/fallbacks`)
+  return response.data
+}
+
+const saveFallbacks = async (models) => {
+  const response = await api.put(`${BASE}/config/fallbacks`, { models })
+  return response.data
+}
+
+const clearFallbacks = async () => {
+  const response = await api.delete(`${BASE}/config/fallbacks`)
+  return response.data
+}
+
 // ── Pexels API key (Super Admin) ───────────────────────────────────────────────
 // Same rules as the Gemini key: sent only when saved or tested, and only its
 // last four characters ever come back.
@@ -115,6 +133,9 @@ export const geminiService = {
   saveConfig,
   removeKey,
   testConnection,
+  getFallbacks,
+  saveFallbacks,
+  clearFallbacks,
   getPexelsConfig,
   savePexelsKey,
   removePexelsKey,

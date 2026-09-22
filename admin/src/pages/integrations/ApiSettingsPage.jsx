@@ -11,6 +11,12 @@ import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 import PexelsSettingsCard from './PexelsSettingsCard'
+import { parseModelList, formatModelList } from './modelList'
+
+const FALLBACK_SOURCE_LABELS = {
+  saved: 'Saved on this page',
+  environment: 'Server environment (GEMINI_FALLBACK_TEXT_MODELS)'
+}
 
 const SOURCE_LABELS = {
   environment: 'Server environment (GEMINI_API_KEY)',
@@ -47,6 +53,9 @@ const ApiSettingsPage = () => {
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [errors, setErrors] = useState({})
+  const [fallbackText, setFallbackText] = useState('')
+  const [fallbackBusy, setFallbackBusy] = useState('')
+  const [fallbackError, setFallbackError] = useState('')
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
 
   const showToast = useCallback((message, severity = 'success') => setToast({ open: true, message, severity }), [])
@@ -56,6 +65,10 @@ const ApiSettingsPage = () => {
     setTextModel(c.textModel || '')
     setImageModel(c.imageModel || '')
     setImageEnabled(c.imageGenerationEnabled !== false)
+    // Only a list saved here is editable; an environment list is shown in
+    // the status panel, never copied into the field.
+    setFallbackText(c.fallbackSource === 'saved' ? formatModelList(c.textFallbacks) : '')
+    setFallbackError('')
   }
 
   useEffect(() => {
@@ -109,6 +122,36 @@ const ApiSettingsPage = () => {
       setTestResult({ ok: false, message: err?.response?.data?.message || 'The connection test could not be run.' })
     } finally {
       setTesting(false)
+    }
+  }
+
+  const handleSaveFallbacks = async () => {
+    setFallbackBusy('save')
+    setFallbackError('')
+    try {
+      await geminiService.saveFallbacks(parseModelList(fallbackText))
+      const refreshed = await geminiService.getConfig()
+      applyConfig(refreshed.data.config)
+      showToast('Free fallback models saved')
+    } catch (err) {
+      setFallbackError(err?.response?.data?.errors?.[0]?.message || err?.response?.data?.message || 'Could not save the fallback models')
+    } finally {
+      setFallbackBusy('')
+    }
+  }
+
+  const handleClearFallbacks = async () => {
+    setFallbackBusy('clear')
+    setFallbackError('')
+    try {
+      await geminiService.clearFallbacks()
+      const refreshed = await geminiService.getConfig()
+      applyConfig(refreshed.data.config)
+      showToast('Free fallback models cleared')
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Could not clear the fallback models', 'error')
+    } finally {
+      setFallbackBusy('')
     }
   }
 
@@ -221,6 +264,41 @@ const ApiSettingsPage = () => {
                 />
               </Stack>
 
+              <Box>
+                <TextField
+                  label="Free fallback models"
+                  fullWidth
+                  value={fallbackText}
+                  onChange={(e) => { setFallbackText(e.target.value); setFallbackError('') }}
+                  placeholder="e.g. gemini-3.1-flash-lite, gemini-3.5-flash-lite"
+                  error={!!fallbackError}
+                  helperText={fallbackError || 'Optional. Used automatically when the primary text model hits quota or temporary availability errors. Only free text models are allowed. Separate names with commas.'}
+                  slotProps={{ htmlInput: { spellCheck: false } }}
+                />
+                <Stack direction="row" spacing={1.5} sx={{ mt: 1 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={fallbackBusy === 'save' ? <CircularProgress size={14} /> : <Save />}
+                    onClick={handleSaveFallbacks}
+                    disabled={!!fallbackBusy || !parseModelList(fallbackText).length}
+                  >
+                    Save Fallbacks
+                  </Button>
+                  {config?.fallbackSource === 'saved' && (
+                    <Button
+                      size="small"
+                      color="error"
+                      startIcon={fallbackBusy === 'clear' ? <CircularProgress size={14} color="inherit" /> : <DeleteOutline />}
+                      onClick={handleClearFallbacks}
+                      disabled={!!fallbackBusy}
+                    >
+                      Clear Fallbacks
+                    </Button>
+                  )}
+                </Stack>
+              </Box>
+
               <FormControlLabel
                 control={<Switch checked={imageEnabled} onChange={(e) => setImageEnabled(e.target.checked)} />}
                 label="Find featured images automatically (free, from Pexels)"
@@ -276,9 +354,14 @@ const ApiSettingsPage = () => {
             </StatusRow>
             <StatusRow label="Text model"><Typography variant="body2">{config?.textModel}</Typography></StatusRow>
             <StatusRow label="Free fallbacks">
-              <Typography variant="body2" color={config?.textFallbacks?.length ? 'text.primary' : 'text.secondary'}>
-                {config?.textFallbacks?.length ? config.textFallbacks.join(', ') : 'None (GEMINI_FALLBACK_TEXT_MODELS)'}
-              </Typography>
+              {config?.textFallbacks?.length ? (
+                <Stack spacing={0.25}>
+                  {config.textFallbacks.map((m) => (
+                    <Typography key={m} variant="body2" sx={{ fontFamily: 'monospace' }}>{m}</Typography>
+                  ))}
+                  <Typography variant="caption" color="text.secondary">{FALLBACK_SOURCE_LABELS[config.fallbackSource]}</Typography>
+                </Stack>
+              ) : <Typography variant="body2" color="text.secondary">None</Typography>}
             </StatusRow>
             <StatusRow label="Featured images">
               <Typography variant="body2">

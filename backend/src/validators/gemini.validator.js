@@ -45,6 +45,13 @@ const savePexelsKeyValidation = [
 ];
 const testPexelsValidation = [apiKeyRule()];
 
+// Free fallback models: the list's shape here; each name (text models only,
+// no duplicates, not the primary model) is checked by the service, which
+// knows the primary model.
+const saveFallbacksValidation = [
+    body('models').isArray({ max: 20 }).withMessage('Fallback models must be a list of model names')
+];
+
 // The admin's create date: a real calendar day, not before 2000 and not more
 // than a year ahead.
 const createDateRule = () => body('createDate')
@@ -130,6 +137,7 @@ module.exports = {
     testConnectionValidation,
     savePexelsKeyValidation,
     testPexelsValidation,
+    saveFallbacksValidation,
     generateBlogValidation,
     generateImageValidation,
     validateBulkRowsValidation,

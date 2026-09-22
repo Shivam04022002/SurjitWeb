@@ -316,6 +316,7 @@ after(async () => {
 
 beforeEach(async () => {
     await IntegrationSetting.deleteOne({ provider: 'pexels' });
+    await IntegrationSetting.updateOne({ provider: 'gemini' }, { $unset: { fallbackTextModels: 1 } });
     pexelsFake.validKeys = [PEXELS_KEY, PEXELS_DB_KEY];
     gemini.mode = 'ok';
     gemini.delayMs = 0;
@@ -2091,6 +2092,213 @@ describe('Pexels API configuration', () => {
         assert.equal(result.ok, true, result.message);
         assert.match(result.message, /Images: Pexels \(search verified\)/);
         assert.equal(pexelsFake.searches.at(-1).auth, PEXELS_DB_KEY);
+    });
+});
+
+// ── Free fallback models on the API page ──────────────────────────────────────
+describe('Free fallback model settings', () => {
+    before(async () => { await configure({ apiKey: AQ_KEY, textModel: 'gemini-3.6-flash' }); });
+    after(async () => { await configure(); });
+
+    const getFb = (token = tokens.super) => call('GET', '/v1/gemini/config/fallbacks', { token });
+    const saveFb = (models, token = tokens.super) => call('PUT', '/v1/gemini/config/fallbacks', { token, body: { models } });
+    const clearFb = (token = tokens.super) => call('DELETE', '/v1/gemini/config/fallbacks', { token });
+    const savedList = async () => (await IntegrationSetting.findOne({ provider: 'gemini' }).lean()).fallbackTextModels;
+    const posted = () => gemini.calls.filter((c) => c.method === 'POST').map((c) => (/\/models\/([^:]+):/.exec(c.url) || [])[1]);
+
+    test('nothing saved and no environment list: no fallbacks', async () => {
+        const fb = (await getFb()).body.data.fallbacks;
+        assert.deepEqual(fb.models, []);
+        assert.equal(fb.source, 'none');
+        assert.equal(fb.primary, 'gemini-3.6-flash');
+        assert.equal(await savedList(), undefined, 'nothing is populated by default');
+        const cfg = (await call('GET', '/v1/gemini/config', { token: tokens.super })).body.data.config;
+        assert.deepEqual(cfg.textFallbacks, []);
+        assert.equal(cfg.fallbackSource, 'none');
+    });
+
+    test('a list is saved, trimmed, kept in order and read back', async () => {
+        const res = await saveFb(['  gemini-3.1-flash-lite ', 'gemini-3.5-flash-lite', '']);
+        assert.equal(res.status, 200, res.text);
+        assert.deepEqual(res.body.data.fallbacks.models, ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']);
+        assert.equal(res.body.data.fallbacks.source, 'saved');
+        assert.deepEqual(await savedList(), ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']);
+        assert.deepEqual((await getFb()).body.data.fallbacks.models, ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']);
+        const cfg = (await call('GET', '/v1/gemini/config', { token: tokens.super })).body.data.config;
+        assert.deepEqual(cfg.textFallbacks, ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']);
+        assert.equal(cfg.textModel, 'gemini-3.6-flash', 'primary model unchanged');
+        assert.ok(!res.text.includes(AQ_KEY));
+        await clearFb();
+    });
+
+    test('clearing removes the saved list', async () => {
+        await saveFb(['gemini-3.1-flash-lite']);
+        const res = await clearFb();
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body.data.fallbacks.models, []);
+        assert.equal(res.body.data.fallbacks.source, 'none');
+        assert.equal(await savedList(), undefined);
+    });
+
+    for (const bad of ['gemini-3.1-flash-image', 'gemini-2.5-flash-image-preview', 'imagen-4.0-generate-001']) {
+        test(`image model refused: ${bad}`, async () => {
+            const res = await saveFb(['gemini-3.1-flash-lite', bad]);
+            assert.equal(res.status, 400);
+            assert.match(res.body.errors[0].message, /is not a text model/);
+            assert.equal(await savedList(), undefined, 'nothing saved, not even the valid entry');
+        });
+    }
+
+    for (const bad of ['veo-3.0-generate-001', 'gemini-2.5-flash-preview-tts', 'gemini-2.5-flash-native-audio-dialog',
+        'gemini-live-2.5-flash', 'gemini-embedding-001', 'aqa', 'gemini-2.5-computer-use-preview']) {
+        test(`media or non-generation model refused: ${bad}`, async () => {
+            const res = await saveFb([bad]);
+            assert.equal(res.status, 400);
+            assert.deepEqual(res.body.errors.map((e) => e.field), ['models']);
+            assert.equal(await savedList(), undefined);
+        });
+    }
+
+    test('duplicates are refused, whatever the case or spacing', async () => {
+        for (const list of [['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite'], ['gemini-3.1-flash-lite', '  gemini-3.1-flash-lite  ']]) {
+            const res = await saveFb(list);
+            assert.equal(res.status, 400);
+            assert.match(res.body.errors[0].message, /listed more than once/);
+        }
+        // Model names are lowercase, so a case variant is refused outright.
+        assert.equal((await saveFb(['gemini-3.1-flash-lite', 'GEMINI-3.1-FLASH-LITE'])).status, 400);
+        assert.equal(await savedList(), undefined);
+    });
+
+    test('the primary text model cannot be a fallback', async () => {
+        const res = await saveFb(['gemini-3.1-flash-lite', 'gemini-3.6-flash']);
+        assert.equal(res.status, 400);
+        assert.match(res.body.errors[0].message, /is the primary text model/);
+        assert.equal(await savedList(), undefined);
+    });
+
+    test('the primary text model cannot be changed to a saved fallback', async () => {
+        await saveFb(['gemini-3.1-flash-lite']);
+        const res = await call('PUT', '/v1/gemini/config', { token: tokens.super, body: { textModel: 'gemini-3.1-flash-lite' } });
+        assert.equal(res.status, 400);
+        assert.deepEqual(res.body.errors.map((e) => e.field), ['textModel']);
+        assert.equal((await IntegrationSetting.findOne({ provider: 'gemini' }).lean()).textModel, 'gemini-3.6-flash');
+        await clearFb();
+    });
+
+    test('malformed lists are refused without saving', async () => {
+        for (const models of [[], ['   '], 'gemini-3.1-flash-lite', [42], ['../../etc'], ['a', 'b', 'c', 'd', 'e', 'f'].map((x) => `gemini-${x}`)]) {
+            const res = await saveFb(models);
+            assert.equal(res.status, 400, JSON.stringify(models));
+        }
+        assert.equal((await call('PUT', '/v1/gemini/config/fallbacks', { token: tokens.super, body: {} })).status, 400);
+        assert.equal(await savedList(), undefined);
+    });
+
+    test('fallback settings are Super Admin only', async () => {
+        for (const role of ['editor', 'content']) {
+            assert.equal((await getFb(tokens[role])).status, 403);
+            assert.equal((await saveFb(['gemini-3.1-flash-lite'], tokens[role])).status, 403);
+            assert.equal((await clearFb(tokens[role])).status, 403);
+        }
+        assert.equal((await call('GET', '/v1/gemini/config/fallbacks', {})).status, 401);
+        assert.equal(await savedList(), undefined);
+    });
+
+    test('the Gemini key, primary model and Pexels configuration are unchanged', async () => {
+        await call('PUT', '/v1/gemini/pexels/config', { token: tokens.super, body: { apiKey: PEXELS_DB_KEY } });
+        const gBefore = await IntegrationSetting.findOne({ provider: 'gemini' }).select('+encryptedKey').lean();
+        const pBefore = await IntegrationSetting.findOne({ provider: 'pexels' }).select('+encryptedKey').lean();
+        await saveFb(['gemini-3.1-flash-lite']);
+        await clearFb();
+        const gAfter = await IntegrationSetting.findOne({ provider: 'gemini' }).select('+encryptedKey').lean();
+        const pAfter = await IntegrationSetting.findOne({ provider: 'pexels' }).select('+encryptedKey').lean();
+        assert.deepEqual(gAfter.encryptedKey, gBefore.encryptedKey);
+        assert.equal(gAfter.keyHint, gBefore.keyHint);
+        assert.equal(gAfter.textModel, 'gemini-3.6-flash');
+        assert.equal(decrypt(gAfter.encryptedKey), AQ_KEY);
+        assert.deepEqual(pAfter, pBefore);
+    });
+
+    test('a saved list takes precedence over GEMINI_FALLBACK_TEXT_MODELS', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash';
+        await saveFb(['gemini-flash-lite-latest']);
+        const fb = (await getFb()).body.data.fallbacks;
+        assert.equal(fb.source, 'saved');
+        assert.deepEqual(fb.models, ['gemini-flash-lite-latest']);
+        assert.deepEqual(fb.environmentModels, ['gemini-3.5-flash']);
+
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo' };
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.model, 'gemini-flash-lite-latest');
+        assert.deepEqual(posted(), ['gemini-3.6-flash', 'gemini-flash-lite-latest'], 'the environment model is not used');
+        await clearFb();
+    });
+
+    test('GEMINI_FALLBACK_TEXT_MODELS applies while no list is saved', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash';
+        const fb = (await getFb()).body.data.fallbacks;
+        assert.equal(fb.source, 'environment');
+        assert.deepEqual(fb.models, ['gemini-3.5-flash']);
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo' };
+        const res = await generate();
+        assert.equal(res.body.data.model, 'gemini-3.5-flash');
+    });
+
+    test('saved list: 429 respects Google\'s delay, then the next saved model', async () => {
+        await saveFb(['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']);
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo' };
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.model, 'gemini-3.1-flash-lite');
+        assert.deepEqual(posted(), ['gemini-3.6-flash', 'gemini-3.1-flash-lite'], 'quota is not retried');
+        const until = textModels.coolingUntil('gemini-3.6-flash');
+        assert.ok(until - Date.now() > 30000 && until - Date.now() <= 37000, 'rests for the delay Google gave');
+        await clearFb();
+    });
+
+    test('saved list: 500/503 retries first, then the next saved model', async () => {
+        await saveFb(['gemini-3.1-flash-lite']);
+        for (const code of [500, 503]) {
+            textModels._cooldowns.clear();
+            gemini.calls = [];
+            gemini.modelErrors = { 'gemini-3.6-flash': code };
+            const res = await generate();
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.body.data.model, 'gemini-3.1-flash-lite');
+            assert.deepEqual(posted(), ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'], `${code}: three attempts, then fallback`);
+        }
+        await clearFb();
+    });
+
+    test('saved list: 400/401/403/404 never fall back', async () => {
+        await saveFb(['gemini-3.1-flash-lite']);
+        for (const code of [400, 401, 403, 404]) {
+            gemini.calls = [];
+            gemini.modelErrors = { 'gemini-3.6-flash': code };
+            const res = await generate();
+            assert.notEqual(res.status, 200, String(code));
+            assert.deepEqual(posted(), ['gemini-3.6-flash'], `${code}: the fallback is never tried`);
+        }
+        await clearFb();
+    });
+
+    test('Test Connection checks only the primary model, not the fallbacks', async () => {
+        await saveFb(['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']);
+        const res = await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
+        assert.equal(res.body.data.result.ok, true, res.text);
+        assert.deepEqual(posted(), ['gemini-3.6-flash']);
+        assert.ok(!res.text.includes(AQ_KEY));
+        await clearFb();
+    });
+
+    test('fallback responses never carry a key', async () => {
+        await saveFb(['gemini-3.1-flash-lite']);
+        for (const res of [await getFb(), await clearFb()]) {
+            assert.ok(!VALID_KEYS.some((k) => res.text.includes(k)));
+            assert.ok(!/encryptedKey|keyHint/.test(res.text));
+        }
     });
 });
 

@@ -39,6 +39,22 @@ const testConnection = asyncHandler(async (req, res) => {
     return sendSuccess(res, result.ok ? 'Connection successful' : 'Connection failed', { result });
 });
 
+// Free fallback text models. Responses carry model names only.
+const getFallbacks = asyncHandler(async (req, res) => {
+    const fallbacks = await geminiConfig.fallbackStatus();
+    return sendSuccess(res, 'Gemini fallback models fetched', { fallbacks });
+});
+
+const saveFallbacks = asyncHandler(async (req, res) => {
+    const fallbacks = await geminiConfig.saveFallbacks(req.body.models, req.user._id);
+    return sendSuccess(res, 'Gemini fallback models saved', { fallbacks });
+});
+
+const clearFallbacks = asyncHandler(async (req, res) => {
+    const fallbacks = await geminiConfig.clearFallbacks(req.user._id);
+    return sendSuccess(res, 'Gemini fallback models cleared', { fallbacks });
+});
+
 // ── Pexels API configuration (Super Admin) ────────────────────────────────────
 // Same pattern as Gemini: responses come from pexelsConfig.publicStatus(),
 // which carries the key's last four characters at most.
@@ -183,6 +199,7 @@ const saveDraft = asyncHandler(async (req, res) => {
 
 module.exports = {
     getConfig, saveConfig, removeKey, testConnection,
+    getFallbacks, saveFallbacks, clearFallbacks,
     getPexelsConfig, savePexelsKey, removePexelsKey, testPexelsConnection,
     getAvailability, generateBlog, generateImage, saveDraft,
     bulkTemplate, bulkParse, bulkValidate

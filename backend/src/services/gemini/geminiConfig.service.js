@@ -6,6 +6,8 @@ const textModels = require('./textModels');
 const pexels = require('../images/pexels.service');
 const pexelsConfig = require('../images/pexelsConfig.service');
 const logger = require('../../utils/logger');
+const { AppError } = require('../../middleware/errorHandler');
+const HTTP_STATUS = require('../../constants/httpStatus');
 
 // Gemini configuration: where the key comes from, which models are used, and
 // the last connection test.
@@ -32,11 +34,19 @@ const resolveApiKey = async () => {
     return doc?.encryptedKey ? decrypt(doc.encryptedKey) : null;
 };
 
-const effectiveModels = (doc) => ({
-    textModel: doc?.textModel || env.GEMINI_TEXT_MODEL,
-    imageModel: doc?.imageModel || env.GEMINI_IMAGE_MODEL,
-    imageGenerationEnabled: doc ? doc.imageGenerationEnabled !== false : true
-});
+// Free fallbacks tried after the text model: the list saved on the API page,
+// else GEMINI_FALLBACK_TEXT_MODELS, else none (textModels.resolveFallbacks).
+const effectiveModels = (doc) => {
+    const textModel = doc?.textModel || env.GEMINI_TEXT_MODEL;
+    const fallbacks = textModels.resolveFallbacks(doc?.fallbackTextModels);
+    return {
+        textModel,
+        imageModel: doc?.imageModel || env.GEMINI_IMAGE_MODEL,
+        imageGenerationEnabled: doc ? doc.imageGenerationEnabled !== false : true,
+        textFallbacks: textModels.candidateModels(textModel, fallbacks.models).slice(1),
+        fallbackSource: fallbacks.source
+    };
+};
 
 const publicStatus = async () => {
     const doc = await load(true);
@@ -62,8 +72,6 @@ const publicStatus = async () => {
         keyHint,
         keyReadable,
         ...models,
-        // Free fallbacks tried after the API-page model (GEMINI_FALLBACK_TEXT_MODELS).
-        textFallbacks: textModels.candidateModels(models.textModel).slice(1),
         // Featured images come from Pexels; only whether a key is set is shown.
         imageProvider: { name: 'pexels', configured: await pexelsConfig.isConfigured() },
         defaults: { textModel: env.GEMINI_TEXT_MODEL, imageModel: env.GEMINI_IMAGE_MODEL },
@@ -75,6 +83,16 @@ const publicStatus = async () => {
 // Only fields present in `input` change. An empty or absent apiKey keeps the
 // stored key, so updating a model name never requires re-entering the key.
 const saveConfig = async (input, userId) => {
+    // The primary model may not also be one of the saved fallbacks.
+    if (input.textModel !== undefined) {
+        const saved = (await load())?.fallbackTextModels || [];
+        const primary = (input.textModel || env.GEMINI_TEXT_MODEL).toLowerCase();
+        if (saved.some((m) => m.toLowerCase() === primary)) {
+            throw new AppError('Validation failed', HTTP_STATUS.BAD_REQUEST, [
+                { field: 'textModel', message: 'This model is in the free fallback list. Remove it there first, or choose another text model.' }
+            ]);
+        }
+    }
     const update = { updatedBy: userId || null };
     if (input.textModel !== undefined) update.textModel = input.textModel;
     if (input.imageModel !== undefined) update.imageModel = input.imageModel;
@@ -103,6 +121,44 @@ const removeKey = async (userId) => {
     );
     logger.info('Gemini API key removed', { by: String(userId || '') });
     return publicStatus();
+};
+
+// ── Free fallback models ───────────────────────────────────────────────────────
+// Model names only: nothing here reads, returns or changes the API key.
+
+const fallbackStatus = async () => {
+    const models = effectiveModels(await load());
+    return {
+        models: models.textFallbacks,
+        source: models.fallbackSource,
+        primary: models.textModel,
+        // What GEMINI_FALLBACK_TEXT_MODELS would give, shown while none are saved.
+        environmentModels: textModels.candidateModels(models.textModel, textModels.resolveFallbacks(null).models).slice(1),
+        maxModels: textModels.MAX_FALLBACKS
+    };
+};
+
+const saveFallbacks = async (input, userId) => {
+    const primary = effectiveModels(await load()).textModel;
+    const { models, errors } = textModels.validateFallbackList(input, primary);
+    if (errors) throw new AppError('Validation failed', HTTP_STATUS.BAD_REQUEST, errors);
+    await IntegrationSetting.findOneAndUpdate(
+        { provider: PROVIDER },
+        { $set: { fallbackTextModels: models, updatedBy: userId || null }, $setOnInsert: { provider: PROVIDER } },
+        { upsert: true, runValidators: true }
+    );
+    logger.info('Gemini fallback models updated', { by: String(userId || ''), models });
+    return fallbackStatus();
+};
+
+// Removes the saved list; GEMINI_FALLBACK_TEXT_MODELS (if set) applies again.
+const clearFallbacks = async (userId) => {
+    await IntegrationSetting.updateOne(
+        { provider: PROVIDER },
+        { $unset: { fallbackTextModels: 1 }, $set: { updatedBy: userId || null } }
+    );
+    logger.info('Gemini fallback models cleared', { by: String(userId || '') });
+    return fallbackStatus();
 };
 
 // Checks the key against the API-page text model with a real, minimal
@@ -174,4 +230,7 @@ const getRuntimeConfig = async () => {
     return { apiKey: await resolveApiKey(), ...effectiveModels(doc) };
 };
 
-module.exports = { publicStatus, saveConfig, removeKey, testConnection, availability, getRuntimeConfig };
+module.exports = {
+    publicStatus, saveConfig, removeKey, testConnection, availability, getRuntimeConfig,
+    fallbackStatus, saveFallbacks, clearFallbacks
+};

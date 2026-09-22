@@ -63,6 +63,8 @@ const env = {
     // Free text models to fall back to, in order, when the API-page model is
     // out of quota (429) or overloaded (500/503 after retries). Comma
     // separated. Empty means no fallback. Never includes image/media models.
+    // A list saved on the API page takes precedence; this applies only while
+    // none is saved there.
     GEMINI_FALLBACK_TEXT_MODELS: process.env.GEMINI_FALLBACK_TEXT_MODELS || '',
     // How long a model is skipped after a quota error when Google gives no
     // retry delay, and after an overload that retries could not fix.

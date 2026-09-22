@@ -32,6 +32,10 @@ const integrationSettingSchema = new mongoose.Schema({
     textModel: { type: String, trim: true, default: '', maxlength: 100 },
     imageModel: { type: String, trim: true, default: '', maxlength: 100 },
     imageGenerationEnabled: { type: Boolean, default: true },
+    // Gemini: free text models tried after textModel on quota or overload
+    // errors. Unset (no default) means none saved here, so the server
+    // environment's GEMINI_FALLBACK_TEXT_MODELS applies.
+    fallbackTextModels: { type: [{ type: String, trim: true, maxlength: 100 }], default: undefined },
     lastTest: {
         _id: false,
         at: { type: Date, default: null },
