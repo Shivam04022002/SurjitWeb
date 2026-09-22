@@ -86,6 +86,7 @@ const fakeGemini = async (url, init = {}) => {
     const headers = new Headers(init.headers || {});
     gemini.calls.push({
         url: String(url),
+        method: init.method || 'GET',
         key: headers.get('x-goog-api-key'),
         authorization: headers.get('authorization'),
         body: init.body ? JSON.parse(init.body) : null
@@ -131,6 +132,28 @@ const fakeGemini = async (url, init = {}) => {
                 message: `Generative Language API has not been used in project 123 before or it is disabled. (${key})`,
                 status: 'PERMISSION_DENIED',
                 details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'SERVICE_DISABLED' }]
+            }
+        });
+    }
+    // Replays of what production's Google answered on 2026-09-22: a model that
+    // still looks up fine (200) but refuses generation for new users (404),
+    // and an image model refused on quota (429). Both echo the key so the
+    // tests prove it is scrubbed.
+    if (gemini.mode === 'retired' && init.method === 'POST') {
+        return jsonResponse(404, {
+            error: {
+                code: 404,
+                message: `This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features and improvements. (${key})`,
+                status: 'NOT_FOUND'
+            }
+        });
+    }
+    if (gemini.mode === 'quota' && init.method === 'POST') {
+        return jsonResponse(429, {
+            error: {
+                code: 429,
+                message: `You exceeded your current quota, please check your plan and billing details. (${key})`,
+                status: 'RESOURCE_EXHAUSTED'
             }
         });
     }
@@ -231,6 +254,17 @@ describe('Gemini API configuration', () => {
         assert.equal(res.status, 200);
         assert.equal(res.body.data.config.configured, false);
         assert.equal(res.body.data.config.source, 'none');
+        // With nothing configured, the built-in defaults apply.
+        assert.equal(res.body.data.config.textModel, 'gemini-3.6-flash');
+        assert.equal(res.body.data.config.defaults.textModel, 'gemini-3.6-flash');
+        assert.equal(res.body.data.config.imageModel, 'gemini-2.5-flash-image');
+    });
+
+    test('an explicitly configured model is kept; the default does not overwrite it', async () => {
+        await configure({ textModel: 'gemini-2.5-flash' });
+        const cfg = (await call('GET', '/v1/gemini/config', { token: tokens.super })).body.data.config;
+        assert.equal(cfg.textModel, 'gemini-2.5-flash');
+        assert.equal(cfg.defaults.textModel, 'gemini-3.6-flash');
     });
 
     test('saves the key encrypted and returns only its last four characters', async () => {
@@ -330,7 +364,7 @@ describe('Gemini connection test', () => {
         gemini.mode = 'modelMissing';
         const res = await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
         assert.equal(res.body.data.result.ok, false);
-        assert.match(res.body.data.result.message, /model was not found/);
+        assert.match(res.body.data.result.message, /Text model \(gemini-2\.5-flash\): The Gemini model "gemini-2\.5-flash" is not available for generation \(Google: HTTP 404\)/);
     });
 });
 
@@ -362,13 +396,14 @@ describe('Google key formats (AQ. and AIza)', () => {
             assert.ok(!c.url.includes('?'), 'no query string');
             assert.ok(!c.url.includes(AQ_KEY) && !c.url.includes('key='));
         }
-        assert.equal(gemini.calls[0].url, `${BASE_URL}/models/gemini-2.5-flash`);
+        assert.equal(gemini.calls[0].url, `${BASE_URL}/models/gemini-2.5-flash:generateContent`);
+        assert.equal(gemini.calls[1].url, `${BASE_URL}/models/gemini-2.5-flash-image`);
     });
 
     test('Google\'s success response is reported as connected, naming the models', async () => {
         const { result } = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data;
         assert.equal(result.ok, true);
-        assert.match(result.message, /^Connected\. Text model: gemini-2\.5-flash · Image model: gemini-2\.5-flash-image$/);
+        assert.match(result.message, /^Connected\. Text model: gemini-2\.5-flash \(generation verified\) · Image model: gemini-2\.5-flash-image \(found\)$/);
         const cfg = (await call('GET', '/v1/gemini/config', { token: tokens.super })).body.data.config;
         assert.equal(cfg.lastTest.ok, true);
     });
@@ -387,7 +422,7 @@ describe('Google key formats (AQ. and AIza)', () => {
         assert.equal(result.ok, false);
         assert.equal(result.failedCheck, 'Text model');
         assert.equal(gemini.calls.length, 1, 'image model not requested after a failed text check');
-        assert.equal(gemini.calls[0].url, `${BASE_URL}/models/gemini-2.5-flash`);
+        assert.equal(gemini.calls[0].url, `${BASE_URL}/models/gemini-2.5-flash:generateContent`);
     });
 
     test('Google 401 is reported as an invalid key, safely, without the key', async () => {
@@ -447,6 +482,97 @@ describe('Google key formats (AQ. and AIza)', () => {
             assert.equal(res.status, 400, JSON.stringify(bad));
             assert.ok(!res.text.includes(AQ_KEY.slice(20)));
         }
+    });
+});
+
+// ── Model used for generation ──────────────────────────────────────────────────
+// Production, 2026-09-22: Test Connection passed (it only looked the model up)
+// while generation failed, because Google refuses generateContent on
+// gemini-2.5-flash for new users yet still returns it from a lookup.
+describe('Model used for generation', () => {
+    after(async () => { await configure(); });
+
+    const posts = () => gemini.calls.filter((c) => c.method === 'POST');
+
+    test('generation uses the configured gemini-2.5-flash at the exact path', async () => {
+        await configure({ apiKey: AQ_KEY, textModel: 'gemini-2.5-flash' });
+        gemini.calls = [];
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        const [req] = posts();
+        assert.equal(req.method, 'POST');
+        assert.equal(req.url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
+        assert.strictEqual(req.key, AQ_KEY);
+        assert.equal(req.authorization, null);
+        assert.equal(res.body.data.model, 'gemini-2.5-flash');
+    });
+
+    test('the model path is never doubled, missing or decorated', async () => {
+        await generate();
+        const url = posts().at(-1).url;
+        assert.equal((url.match(/models\//g) || []).length, 1, 'exactly one "models/"');
+        assert.ok(!url.includes('models/models'));
+        assert.ok(url.endsWith('/models/gemini-2.5-flash:generateContent'));
+        assert.ok(!url.includes('?'));
+    });
+
+    test('Test Connection and generation call the same method, path and model', async () => {
+        await configure({ apiKey: AQ_KEY, textModel: 'gemini-3.6-flash' });
+        gemini.calls = [];
+        await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
+        const testCall = gemini.calls[0];
+        gemini.calls = [];
+        await generate();
+        const genCall = posts()[0];
+        assert.equal(testCall.method, 'POST');
+        assert.equal(testCall.url, `${BASE_URL}/models/gemini-3.6-flash:generateContent`);
+        assert.equal(genCall.url, testCall.url, 'same endpoint as generation');
+        assert.equal(genCall.key, testCall.key);
+        assert.equal(testCall.body.generationConfig.maxOutputTokens, 16, 'the connection check is a minimal request');
+    });
+
+    test('the configured model wins over the environment default', async () => {
+        const original = env.GEMINI_TEXT_MODEL;
+        env.GEMINI_TEXT_MODEL = 'stale-default-model';
+        try {
+            await configure({ apiKey: AQ_KEY, textModel: 'gemini-3.6-flash' });
+            gemini.calls = [];
+            await generate();
+            assert.ok(posts()[0].url.includes('/models/gemini-3.6-flash:generateContent'));
+        } finally {
+            env.GEMINI_TEXT_MODEL = original;
+        }
+    });
+
+    test('a model retired for new users now fails Test Connection, with Google\'s words', async () => {
+        await configure({ apiKey: AQ_KEY, textModel: 'gemini-2.5-flash' });
+        gemini.mode = 'retired';
+        const res = await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
+        const { result } = res.body.data;
+        assert.equal(result.ok, false, 'a lookup-only check would have passed here');
+        assert.equal(result.failedCheck, 'Text model');
+        assert.match(result.message, /Text model \(gemini-2\.5-flash\): The Gemini model "gemini-2\.5-flash" is not available for generation \(Google: NOT_FOUND\)/);
+        assert.match(result.message, /no longer available to new users/);
+        assert.match(result.message, /models\/gemini-3\.6-flash/);
+        assert.ok(!res.text.includes(AQ_KEY));
+    });
+
+    test('generation with a retired model reports Google\'s reason accurately', async () => {
+        gemini.mode = 'retired';
+        const res = await generate();
+        assert.equal(res.status, 422);
+        assert.match(res.body.message, /^The Gemini model "gemini-2\.5-flash" is not available for generation \(Google: NOT_FOUND\)\. Google says: "This model models\/gemini-2\.5-flash is no longer available to new users\./);
+        assert.match(res.body.message, /Change the model on the API page\.$/);
+        assert.ok(!res.text.includes(AQ_KEY), 'the key echoed by Google is scrubbed');
+        assert.match(res.body.message, /\[redacted\]/);
+    });
+
+    test('an image quota refusal says quota, not rate limit, and names the model', async () => {
+        gemini.mode = 'quota';
+        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: { title: 'T', summary: 'S' } });
+        assert.equal(res.status, 429);
+        assert.match(res.body.message, /^Gemini quota exceeded for "gemini-2\.5-flash-image" \(Google: RESOURCE_EXHAUSTED\)\. Google says: "You exceeded your current quota, please check your plan and billing details/);
+        assert.ok(!res.text.includes(AQ_KEY));
     });
 });
 
@@ -570,9 +696,9 @@ describe('Blog generation', () => {
 describe('Gemini failure handling', () => {
     const cases = [
         ['invalidKey', 422, /API key is not valid/],
-        ['rateLimited', 429, /quota or rate limit/],
+        ['rateLimited', 429, /rate limit reached/],
         ['serverError', 502, /temporarily unavailable/],
-        ['modelMissing', 422, /model was not found/],
+        ['modelMissing', 422, /model "gemini-2\.5-flash" is not available for generation/],
         ['blocked', 422, /safety policy/],
         ['malformed', 502, /malformed response/],
         ['thin', 502, /incomplete blog/]

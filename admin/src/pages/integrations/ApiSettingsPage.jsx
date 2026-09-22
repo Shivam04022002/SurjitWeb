@@ -204,7 +204,7 @@ const ApiSettingsPage = () => {
                   label="Text model" fullWidth value={textModel}
                   onChange={(e) => { setTextModel(e.target.value); setErrors((x) => ({ ...x, textModel: '' })) }}
                   error={!!errors.textModel}
-                  helperText={errors.textModel || `Default: ${config?.defaults?.textModel || 'gemini-2.5-flash'}`}
+                  helperText={errors.textModel || `Default: ${config?.defaults?.textModel || 'gemini-3.6-flash'}`}
                 />
                 <TextField
                   label="Image model" fullWidth value={imageModel}

@@ -47,10 +47,16 @@ const reasonOf = (body) => {
     return info && /^[A-Z_]{3,64}$/.test(info.reason) ? info.reason : '';
 };
 
-const upstreamError = (status, body, apiKey) => {
+// Google's explanation is passed on, scrubbed of the key: for a model or quota
+// problem it is the only place that says what to do (for example which model
+// replaces a retired one), and a generic message hides that.
+const upstreamError = (status, body, apiKey, model) => {
     const detail = scrub(body?.error?.message, apiKey);
     const reason = reasonOf(body);
-    const code = reason ? ` (Google: ${reason})` : ` (HTTP ${status})`;
+    const googleStatus = /^[A-Z_]{3,40}$/.test(body?.error?.status || '') ? body.error.status : '';
+    const code = ` (Google: ${reason || googleStatus || `HTTP ${status}`})`;
+    const says = detail ? ` Google says: "${detail}"` : '';
+    const named = model ? `"${model}" ` : '';
 
     // 400 API_KEY_INVALID is Google's answer to a key it does not recognise;
     // 401 UNAUTHENTICATED is the same verdict from the auth layer.
@@ -65,11 +71,23 @@ const upstreamError = (status, body, apiKey) => {
                 : '';
         return new AppError(`Google refused this key for the Gemini API${code}.${hint}`, HTTP_STATUS.UNPROCESSABLE_ENTITY);
     }
+    // A 404 covers a mistyped model name and also a real model this key may no
+    // longer use (Google retires models for new users while still listing
+    // them), so Google's own words decide which it is.
     if (status === 404) {
-        return new AppError('The configured Gemini model was not found. Check the model name on the API page.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
+        return new AppError(
+            `The Gemini model ${named}is not available for generation${code}.${says} Change the model on the API page.`,
+            HTTP_STATUS.UNPROCESSABLE_ENTITY
+        );
     }
     if (status === 429) {
-        return new AppError('Gemini quota or rate limit reached. Please wait and try again.', HTTP_STATUS.TOO_MANY_REQUESTS);
+        const quota = reason === 'RATE_LIMIT_EXCEEDED' ? false : /quota|billing|RESOURCE_EXHAUSTED/i.test(`${googleStatus} ${detail}`);
+        return new AppError(
+            quota
+                ? `Gemini quota exceeded for ${model ? `"${model}"` : 'this model'}${code}.${says}`
+                : `Gemini rate limit reached${code}. Please wait and try again.`,
+            HTTP_STATUS.TOO_MANY_REQUESTS
+        );
     }
     if (status >= 500) {
         return new AppError('Gemini is temporarily unavailable. Please try again shortly.', HTTP_STATUS.BAD_GATEWAY);
@@ -77,7 +95,7 @@ const upstreamError = (status, body, apiKey) => {
     return new AppError(`Gemini rejected the request${detail ? `: ${detail}` : '.'}`, HTTP_STATUS.BAD_GATEWAY);
 };
 
-const request = async (apiKey, path, { method = 'GET', body, timeoutMs = env.GEMINI_TIMEOUT_MS } = {}) => {
+const request = async (apiKey, path, { method = 'GET', body, timeoutMs = env.GEMINI_TIMEOUT_MS, model } = {}) => {
     if (!apiKey) {
         throw new AppError('Gemini is not configured. Add an API key on the API page.', HTTP_STATUS.SERVICE_UNAVAILABLE);
     }
@@ -109,20 +127,29 @@ const request = async (apiKey, path, { method = 'GET', body, timeoutMs = env.GEM
         json = null;
     }
 
-    if (!res.ok) throw upstreamError(res.status, json, apiKey);
+    if (!res.ok) throw upstreamError(res.status, json, apiKey, model);
     return json || {};
 };
 
-// Confirms the key works and the model exists, without spending tokens.
+// Looks the model up without spending tokens. A successful lookup does NOT
+// prove the key may generate with it: Google keeps retired models listed.
 const getModel = (apiKey, model) => {
     assertModel(model);
-    return request(apiKey, `/models/${model}`, { timeoutMs: 15000 });
+    return request(apiKey, `/models/${model}`, { timeoutMs: 15000, model });
 };
 
-const generateContent = (apiKey, model, body) => {
+const generateContent = (apiKey, model, body, { timeoutMs } = {}) => {
     assertModel(model);
-    return request(apiKey, `/models/${model}:generateContent`, { method: 'POST', body });
+    return request(apiKey, `/models/${model}:generateContent`, { method: 'POST', body, model, ...(timeoutMs ? { timeoutMs } : {}) });
 };
+
+// The smallest real generation request: the same method and path blog
+// generation uses, a few output tokens, so Test Connection proves the key can
+// actually generate with the model rather than merely see it.
+const probeGeneration = (apiKey, model) => generateContent(apiKey, model, {
+    contents: [{ role: 'user', parts: [{ text: 'Reply with the single word OK.' }] }],
+    generationConfig: { maxOutputTokens: 16, temperature: 0 }
+}, { timeoutMs: 20000 });
 
 // A response Gemini blocked or cut short has no usable content; say why.
 const assertUsable = (json) => {
@@ -179,4 +206,4 @@ const generateImage = async (apiKey, model, { prompt }) => {
     return { mimeType: part.inlineData.mimeType || 'image/png', data: part.inlineData.data };
 };
 
-module.exports = { getModel, generateJson, generateImage, scrub, BASE_URL, MODEL_RX };
+module.exports = { getModel, probeGeneration, generateJson, generateImage, scrub, BASE_URL, MODEL_RX };

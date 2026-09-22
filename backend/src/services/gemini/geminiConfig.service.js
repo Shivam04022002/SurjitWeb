@@ -98,10 +98,12 @@ const removeKey = async (userId) => {
     return publicStatus();
 };
 
-// Checks the key against each configured model without generating anything
-// (a model lookup spends no tokens). The text model is checked first; the
-// image model only once the key has authenticated, so a bad key fails on one
-// request and the message says which check failed. A candidate key (typed but
+// Checks the key against the configured models. The text model gets a real,
+// minimal generation request — the same call blog generation makes — because
+// a model lookup alone passes for models Google has retired for new users.
+// The image model is only looked up (generating an image costs quota), and
+// only once the text check has passed, so a bad key fails on one request and
+// the message says which check failed. A candidate key (typed but
 // not yet saved) can be tested; only a test of the saved configuration is
 // recorded.
 const testConnection = async ({ apiKey: candidate } = {}) => {
@@ -109,8 +111,10 @@ const testConnection = async ({ apiKey: candidate } = {}) => {
     const models = effectiveModels(doc);
     const apiKey = candidate || await resolveApiKey();
 
-    const checks = [{ label: 'Text model', model: models.textModel }];
-    if (models.imageGenerationEnabled) checks.push({ label: 'Image model', model: models.imageModel });
+    const checks = [{ label: 'Text model', model: models.textModel, run: gemini.probeGeneration, verified: 'generation verified' }];
+    if (models.imageGenerationEnabled) {
+        checks.push({ label: 'Image model', model: models.imageModel, run: gemini.getModel, verified: 'found' });
+    }
 
     let result;
     if (!apiKey) {
@@ -120,7 +124,7 @@ const testConnection = async ({ apiKey: candidate } = {}) => {
         let failure = null;
         for (const c of checks) {
             try {
-                await gemini.getModel(apiKey, c.model);
+                await c.run(apiKey, c.model);
                 passed.push(c);
             } catch (err) {
                 failure = { check: c, message: gemini.scrub(err.message, apiKey) };
@@ -129,7 +133,7 @@ const testConnection = async ({ apiKey: candidate } = {}) => {
         }
         result = failure
             ? { ok: false, message: `${failure.check.label} (${failure.check.model}): ${failure.message}`, failedCheck: failure.check.label }
-            : { ok: true, message: `Connected. ${passed.map((c) => `${c.label}: ${c.model}`).join(' · ')}` };
+            : { ok: true, message: `Connected. ${passed.map((c) => `${c.label}: ${c.model} (${c.verified})`).join(' · ')}` };
     }
 
     if (!candidate && doc) {

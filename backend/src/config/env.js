@@ -51,7 +51,7 @@ const env = {
     // page) and stored encrypted; GEMINI_API_KEY, when set, takes precedence
     // and the CMS then shows it as managed by the server environment.
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-    GEMINI_TEXT_MODEL: process.env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash',
+    GEMINI_TEXT_MODEL: process.env.GEMINI_TEXT_MODEL || 'gemini-3.6-flash',
     GEMINI_IMAGE_MODEL: process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
     // Kept under nginx's default 60s proxy timeout so a slow model surfaces as
     // a clear error rather than a gateway timeout.
