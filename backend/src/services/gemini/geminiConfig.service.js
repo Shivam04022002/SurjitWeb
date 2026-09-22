@@ -4,6 +4,7 @@ const { encrypt, decrypt } = require('../../utils/secretBox');
 const gemini = require('./geminiClient');
 const textModels = require('./textModels');
 const pexels = require('../images/pexels.service');
+const pexelsConfig = require('../images/pexelsConfig.service');
 const logger = require('../../utils/logger');
 
 // Gemini configuration: where the key comes from, which models are used, and
@@ -64,7 +65,7 @@ const publicStatus = async () => {
         // Free fallbacks tried after the API-page model (GEMINI_FALLBACK_TEXT_MODELS).
         textFallbacks: textModels.candidateModels(models.textModel).slice(1),
         // Featured images come from Pexels; only whether a key is set is shown.
-        imageProvider: { name: 'pexels', configured: pexels.isConfigured() },
+        imageProvider: { name: 'pexels', configured: await pexelsConfig.isConfigured() },
         defaults: { textModel: env.GEMINI_TEXT_MODEL, imageModel: env.GEMINI_IMAGE_MODEL },
         lastTest: doc?.lastTest?.at ? doc.lastTest : null,
         updatedAt: doc?.updatedAt || null
@@ -118,10 +119,11 @@ const testConnection = async ({ apiKey: candidate } = {}) => {
 
     const checks = [{ label: 'Text model', model: models.textModel, run: (key) => gemini.probeGeneration(key, models.textModel), verified: 'generation verified' }];
     const notes = [];
-    if (models.imageGenerationEnabled && pexels.isConfigured()) {
-        checks.push({ label: 'Images', model: 'Pexels', run: () => pexels.verify(), verified: 'search verified' });
+    const pexelsKey = models.imageGenerationEnabled ? await pexelsConfig.resolveApiKey() : null;
+    if (pexelsKey) {
+        checks.push({ label: 'Images', model: 'Pexels', run: () => pexels.verify(pexelsKey), verified: 'search verified' });
     } else if (models.imageGenerationEnabled) {
-        notes.push('Images: Pexels is not configured (PEXELS_API_KEY) — featured images must be uploaded.');
+        notes.push('Images: Pexels is not configured (add a Pexels key on the API page) — featured images must be uploaded.');
     }
 
     let result;
@@ -135,7 +137,7 @@ const testConnection = async ({ apiKey: candidate } = {}) => {
                 await c.run(apiKey);
                 passed.push(c);
             } catch (err) {
-                failure = { check: c, message: gemini.scrub(err.message, apiKey) };
+                failure = { check: c, message: gemini.scrub(gemini.scrub(err.message, apiKey), pexelsKey) };
                 break;
             }
         }

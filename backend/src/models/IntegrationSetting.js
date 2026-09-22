@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
 
-const PROVIDERS = ['gemini'];
+const PROVIDERS = ['gemini', 'pexels'];
 
 // Server-side configuration for a third-party API the CMS calls. One document
-// per provider.
+// per provider. The model and image fields are Gemini's; a Pexels document
+// uses only the key, its hint and the last test.
 //
 // The API key is stored only as AES-256-GCM ciphertext (utils/secretBox) and
 // is excluded from every query by default (`select: false`), so a document

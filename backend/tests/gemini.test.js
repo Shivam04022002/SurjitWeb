@@ -39,14 +39,18 @@ const { BASE_URL } = require('../src/services/gemini/geminiClient');
 const geminiBlog = require('../src/services/gemini/geminiBlog.service');
 const textModels = require('../src/services/gemini/textModels');
 const pexels = require('../src/services/images/pexels.service');
+const pexelsConfig = require('../src/services/images/pexelsConfig.service');
 const PEXELS_KEY = process.env.PEXELS_API_KEY;
+// Shaped like a real Pexels key (56 letters and digits); saved on the API page.
+const PEXELS_DB_KEY = 'PxDbKey8f3a91c07e2b44d6a5f0c9e1b7d3a2f6e8c4b0a1d9e7f5WXYZ';
+const PEXELS_OTHER_KEY = 'PxOtherKey2c4e6a8b0d1f3a5c7e9b2d4f6a8c0e1b3d5f7a9c2e4ABCD';
 
 const API_KEY = 'AIzaSyTESTKEY_abcdefghijklmnopqrstuv1234';
 const OTHER_KEY = 'AIzaSyOTHERKEY_zyxwvutsrqponmlkjihgf9876';
 // Shaped like a current Google AI Studio "AQ." key: a period after the prefix,
 // and further periods, underscores and hyphens in the body.
 const AQ_KEY = 'AQ.Ab8RN6LqZ-3xT_9vKp2mW.hY7cD4eF1gJ0kS5uV8wXzQ-_tR2';
-const VALID_KEYS = [API_KEY, OTHER_KEY, AQ_KEY];
+const VALID_KEYS = [API_KEY, OTHER_KEY, AQ_KEY, PEXELS_KEY, PEXELS_DB_KEY, PEXELS_OTHER_KEY];
 
 // ── Output capture: proves the key never reaches a log line ────────────────────
 const captured = [];
@@ -220,7 +224,7 @@ const fakeGemini = async (url, init = {}) => {
 };
 
 // ── Fake Pexels ───────────────────────────────────────────────────────────────
-const pexelsFake = { mode: 'ok', searches: [], downloads: [], redirects: [] };
+const pexelsFake = { mode: 'ok', searches: [], downloads: [], redirects: [], validKeys: [] };
 const PHOTOS = [
     { id: 101, width: 800, height: 1200, url: 'https://www.pexels.com/photo/portrait-101/', photographer: 'Pat Portrait', photographer_url: 'https://www.pexels.com/@pat', alt: 'Kirana shop owner portrait', src: { landscape: 'https://images.pexels.com/photos/101/p.jpeg' } },
     { id: 102, width: 4000, height: 2600, url: 'https://www.pexels.com/photo/grocery-store-102/', photographer: 'Asha Rao', photographer_url: 'https://www.pexels.com/@asha-rao', alt: 'Shopkeeper arranging shelves in a grocery store', src: { landscape: 'https://images.pexels.com/photos/102/landscape.jpeg' } },
@@ -236,7 +240,7 @@ const fakePexels = async (url, init = {}) => {
     const headers = new Headers(init.headers || {});
     pexelsFake.redirects.push(init.redirect);
     pexelsFake.searches.push({ query: u.searchParams.get('query'), orientation: u.searchParams.get('orientation'), size: u.searchParams.get('size'), auth: headers.get('authorization') });
-    if (headers.get('authorization') !== PEXELS_KEY || pexelsFake.mode === '401') return jsonResponse(401, { error: 'Unauthorized' });
+    if (!pexelsFake.validKeys.includes(headers.get('authorization')) || pexelsFake.mode === '401') return jsonResponse(401, { error: 'Unauthorized' });
     if (pexelsFake.mode === '429') {
         return jsonResponse(429, { error: 'Rate limit exceeded' }, { 'X-Ratelimit-Reset': String(Math.floor(Date.now() / 1000) + 600) });
     }
@@ -310,7 +314,9 @@ after(async () => {
     global.fetch = realFetch;
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+    await IntegrationSetting.deleteOne({ provider: 'pexels' });
+    pexelsFake.validKeys = [PEXELS_KEY, PEXELS_DB_KEY];
     gemini.mode = 'ok';
     gemini.delayMs = 0;
     gemini.category = 'Business Loans';
@@ -1261,7 +1267,7 @@ describe('Featured image generation (Pexels)', () => {
         env.PEXELS_API_KEY = '';
         const res = await findImage();
         assert.equal(res.status, 422);
-        assert.match(res.body.message, /need a Pexels API key \(PEXELS_API_KEY\).*Upload an image instead/);
+        assert.match(res.body.message, /need a Pexels API key \(add one on the API page\). Upload an image instead/);
         assert.equal(pexelsFake.searches.length, 0);
         assert.equal(gemini.calls.length, 0, 'no Gemini image model instead');
 
@@ -1271,7 +1277,7 @@ describe('Featured image generation (Pexels)', () => {
         assert.equal(gen.body.data.imageGenerationEnabled, false);
         const test = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data.result;
         assert.equal(test.ok, true, 'a missing image provider does not fail the connection test');
-        assert.match(test.message, /Pexels is not configured \(PEXELS_API_KEY\) — featured images must be uploaded/);
+        assert.match(test.message, /Pexels is not configured \(add a Pexels key on the API page\) — featured images must be uploaded/);
     });
 
     test('searches are not limited to 24 MP photos, and no redirect is ever followed', async () => {
@@ -1926,6 +1932,168 @@ describe('Excel bulk plan', () => {
 });
 
 // ── Global key-exposure check (runs last) ──────────────────────────────────────
+// ── Pexels API key on the API page ────────────────────────────────────────────
+describe('Pexels API configuration', () => {
+    const getCfg = () => call('GET', '/v1/gemini/pexels/config', { token: tokens.super });
+    const saveKey = (apiKey, token = tokens.super) => call('PUT', '/v1/gemini/pexels/config', { token, body: { apiKey } });
+    const testConn = (body = {}) => call('POST', '/v1/gemini/pexels/config/test', { token: tokens.super, body });
+
+    test('no key anywhere: Not configured, and Test Connection says so without calling Pexels', async () => {
+        env.PEXELS_API_KEY = '';
+        const cfg = (await getCfg()).body.data.config;
+        assert.equal(cfg.configured, false);
+        assert.equal(cfg.source, 'none');
+        assert.equal(cfg.keyHint, '');
+        const result = (await testConn()).body.data.result;
+        assert.equal(result.ok, false);
+        assert.equal(result.configured, false);
+        assert.match(result.message, /^Not configured/);
+        assert.equal(pexelsFake.searches.length, 0);
+    });
+
+    test('a saved key is stored encrypted and only its last four characters are returned', async () => {
+        const res = await saveKey(`  ${PEXELS_DB_KEY}  `);
+        assert.equal(res.status, 200, res.text);
+        const cfg = res.body.data.config;
+        assert.equal(cfg.configured, true);
+        assert.equal(cfg.source, 'database');
+        assert.equal(cfg.keyHint, 'WXYZ');
+        assert.ok(!res.text.includes(PEXELS_DB_KEY));
+        assert.ok(!(await getCfg()).text.includes(PEXELS_DB_KEY));
+
+        const doc = await IntegrationSetting.findOne({ provider: 'pexels' }).select('+encryptedKey').lean();
+        assert.ok(doc.encryptedKey.data && doc.encryptedKey.iv && doc.encryptedKey.tag, 'AES-GCM box');
+        assert.ok(!JSON.stringify(doc).includes(PEXELS_DB_KEY), 'no plaintext in the document');
+        assert.equal(decrypt(doc.encryptedKey), PEXELS_DB_KEY, 'surrounding whitespace trimmed');
+        const plain = await IntegrationSetting.findOne({ provider: 'pexels' }).lean();
+        assert.equal(plain.encryptedKey, undefined, 'never selected by default');
+    });
+
+    test('the Gemini configuration is untouched by the Pexels key', async () => {
+        await configure();
+        const before = await IntegrationSetting.findOne({ provider: 'gemini' }).select('+encryptedKey').lean();
+        await saveKey(PEXELS_DB_KEY);
+        await call('DELETE', '/v1/gemini/pexels/config/key', { token: tokens.super });
+        const after = await IntegrationSetting.findOne({ provider: 'gemini' }).select('+encryptedKey').lean();
+        assert.deepEqual(after, before);
+    });
+
+    test('the saved key is used for searches before PEXELS_API_KEY', async () => {
+        await saveKey(PEXELS_DB_KEY);
+        assert.equal(await pexelsConfig.resolveApiKey(), PEXELS_DB_KEY);
+        await configure();
+        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: { title: 'Growing a kirana store', imagePrompt: 'grocery store shopkeeper shelves' } });
+        assert.equal(res.status, 200, res.text);
+        assert.ok(pexelsFake.searches.length > 0);
+        assert.ok(pexelsFake.searches.every((x) => x.auth === PEXELS_DB_KEY), 'the API-page key, only in the Authorization header');
+        assert.ok(!res.text.includes(PEXELS_DB_KEY));
+    });
+
+    test('PEXELS_API_KEY still works while no key is saved', async () => {
+        const cfg = (await getCfg()).body.data.config;
+        assert.equal(cfg.configured, true);
+        assert.equal(cfg.source, 'environment');
+        assert.equal(cfg.keyHint, PEXELS_KEY.slice(-4));
+        assert.equal(cfg.environmentKey, true);
+        assert.equal(await pexelsConfig.resolveApiKey(), PEXELS_KEY);
+        const result = (await testConn()).body.data.result;
+        assert.equal(result.ok, true, result.message);
+        assert.equal(pexelsFake.searches[0].auth, PEXELS_KEY);
+    });
+
+    test('Test Connection: a working key is Connected, and the result is recorded', async () => {
+        await saveKey(PEXELS_DB_KEY);
+        const res = await testConn();
+        const { result } = res.body.data;
+        assert.equal(result.ok, true);
+        assert.equal(result.message, 'Connected. Pexels search verified.');
+        assert.equal(pexelsFake.searches.length, 1);
+        assert.equal(pexelsFake.searches[0].auth, PEXELS_DB_KEY);
+        assert.equal((await getCfg()).body.data.config.lastTest.ok, true);
+        assert.ok(!res.text.includes(PEXELS_DB_KEY));
+    });
+
+    test('Test Connection never answers from the search cache', async () => {
+        await saveKey(PEXELS_DB_KEY);
+        await testConn();
+        await testConn();
+        assert.equal(pexelsFake.searches.length, 2, 'each test is a live request');
+    });
+
+    test('Test Connection: an invalid or revoked key fails clearly, without the key', async () => {
+        await saveKey(PEXELS_OTHER_KEY);
+        const res = await testConn();
+        const { result } = res.body.data;
+        assert.equal(result.ok, false);
+        assert.equal(result.configured, true);
+        assert.match(result.message, /Pexels rejected the API key/);
+        assert.ok(!res.text.includes(PEXELS_OTHER_KEY));
+        assert.equal((await getCfg()).body.data.config.lastTest.ok, false);
+    });
+
+    test('a typed key can be tested before saving, and nothing is stored', async () => {
+        const res = await testConn({ apiKey: PEXELS_DB_KEY });
+        assert.equal(res.body.data.result.ok, true);
+        assert.equal(res.body.data.result.candidate, true);
+        assert.equal(pexelsFake.searches[0].auth, PEXELS_DB_KEY);
+        assert.equal(await IntegrationSetting.countDocuments({ provider: 'pexels' }), 0);
+    });
+
+    test('removing the key clears it; the environment key (if any) takes over', async () => {
+        await saveKey(PEXELS_DB_KEY);
+        const res = await call('DELETE', '/v1/gemini/pexels/config/key', { token: tokens.super });
+        assert.equal(res.status, 200);
+        assert.equal(res.body.data.config.source, 'environment');
+        const doc = await IntegrationSetting.findOne({ provider: 'pexels' }).select('+encryptedKey').lean();
+        assert.equal(doc.encryptedKey, null);
+        assert.equal(doc.keyHint, '');
+
+        env.PEXELS_API_KEY = '';
+        assert.equal((await getCfg()).body.data.config.configured, false);
+        await configure();
+        const avail = (await call('GET', '/v1/gemini/availability', { token: tokens.super })).body.data.availability;
+        assert.equal(avail.imageGenerationEnabled, false, 'images must be uploaded');
+    });
+
+    test('an empty or malformed key is refused without echoing it', async () => {
+        assert.equal((await saveKey('')).status, 400);
+        const bad = 'short key <script>';
+        const res = await saveKey(bad);
+        assert.equal(res.status, 400);
+        assert.ok(!res.text.includes(bad));
+        assert.equal(await IntegrationSetting.countDocuments({ provider: 'pexels' }), 0);
+    });
+
+    test('Pexels configuration is Super Admin only', async () => {
+        for (const role of ['editor', 'content']) {
+            assert.equal((await call('GET', '/v1/gemini/pexels/config', { token: tokens[role] })).status, 403);
+            assert.equal((await saveKey(PEXELS_DB_KEY, tokens[role])).status, 403);
+            assert.equal((await call('POST', '/v1/gemini/pexels/config/test', { token: tokens[role], body: {} })).status, 403);
+            assert.equal((await call('DELETE', '/v1/gemini/pexels/config/key', { token: tokens[role] })).status, 403);
+        }
+        assert.equal((await call('GET', '/v1/gemini/pexels/config', {})).status, 401);
+        assert.equal(await IntegrationSetting.countDocuments({ provider: 'pexels' }), 0);
+    });
+
+    test('a saved key that no longer decrypts is reported, and not used', async () => {
+        await saveKey(PEXELS_DB_KEY);
+        await IntegrationSetting.updateOne({ provider: 'pexels' }, { $set: { 'encryptedKey.tag': Buffer.alloc(16).toString('base64') } });
+        env.PEXELS_API_KEY = '';
+        const cfg = (await getCfg()).body.data.config;
+        assert.equal(cfg.configured, false);
+        assert.equal(cfg.keyReadable, false);
+    });
+
+    test('the Gemini Test Connection checks images with the API-page Pexels key', async () => {
+        await configure();
+        await saveKey(PEXELS_DB_KEY);
+        const result = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data.result;
+        assert.equal(result.ok, true, result.message);
+        assert.match(result.message, /Images: Pexels \(search verified\)/);
+        assert.equal(pexelsFake.searches.at(-1).auth, PEXELS_DB_KEY);
+    });
+});
+
 describe('API key exposure', () => {
     test('no API response ever contained a raw key', () => {
         for (const text of responses) {

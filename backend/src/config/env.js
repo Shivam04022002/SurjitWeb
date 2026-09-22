@@ -69,8 +69,9 @@ const env = {
     GEMINI_QUOTA_COOLDOWN_MS: parseInt(process.env.GEMINI_QUOTA_COOLDOWN_MS || '60000', 10),
     GEMINI_OVERLOAD_COOLDOWN_MS: parseInt(process.env.GEMINI_OVERLOAD_COOLDOWN_MS || '30000', 10),
 
-    // Free featured images from Pexels (https://www.pexels.com/api/). When
-    // unset, automatic images are off and admins upload images themselves.
+    // Free featured images from Pexels (https://www.pexels.com/api/). The key
+    // is normally saved on the API page (stored encrypted); this is used only
+    // while none is saved there. With neither, admins upload images themselves.
     PEXELS_API_KEY: process.env.PEXELS_API_KEY || '',
     GEMINI_RATE_LIMIT_WINDOW_MS: parseInt(process.env.GEMINI_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
     GEMINI_RATE_LIMIT_MAX: parseInt(process.env.GEMINI_RATE_LIMIT_MAX || '40', 10),

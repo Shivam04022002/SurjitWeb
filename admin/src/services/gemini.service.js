@@ -30,6 +30,30 @@ const testConnection = async (apiKey) => {
   return response.data
 }
 
+// ── Pexels API key (Super Admin) ───────────────────────────────────────────────
+// Same rules as the Gemini key: sent only when saved or tested, and only its
+// last four characters ever come back.
+
+const getPexelsConfig = async () => {
+  const response = await api.get(`${BASE}/pexels/config`)
+  return response.data
+}
+
+const savePexelsKey = async (apiKey) => {
+  const response = await api.put(`${BASE}/pexels/config`, { apiKey })
+  return response.data
+}
+
+const removePexelsKey = async () => {
+  const response = await api.delete(`${BASE}/pexels/config/key`)
+  return response.data
+}
+
+const testPexelsConnection = async (apiKey) => {
+  const response = await api.post(`${BASE}/pexels/config/test`, apiKey ? { apiKey } : {})
+  return response.data
+}
+
 // ── Blog generation (Super Admin, Editor) ──────────────────────────────────────
 
 const getAvailability = async () => {
@@ -91,6 +115,10 @@ export const geminiService = {
   saveConfig,
   removeKey,
   testConnection,
+  getPexelsConfig,
+  savePexelsKey,
+  removePexelsKey,
+  testPexelsConnection,
   getAvailability,
   generateBlog,
   generateImage,

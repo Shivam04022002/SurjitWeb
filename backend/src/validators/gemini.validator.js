@@ -37,6 +37,14 @@ const saveConfigValidation = [
 
 const testConnectionValidation = [apiKeyRule()];
 
+// Pexels keys follow the same rule. Saving needs a key; a test may try a
+// typed key or, without one, the key in use.
+const savePexelsKeyValidation = [
+    body('apiKey').exists({ checkFalsy: true }).withMessage('Enter a Pexels API key').bail(),
+    apiKeyRule()
+];
+const testPexelsValidation = [apiKeyRule()];
+
 // The admin's create date: a real calendar day, not before 2000 and not more
 // than a year ahead.
 const createDateRule = () => body('createDate')
@@ -120,6 +128,8 @@ const saveDraftValidation = [
 module.exports = {
     saveConfigValidation,
     testConnectionValidation,
+    savePexelsKeyValidation,
+    testPexelsValidation,
     generateBlogValidation,
     generateImageValidation,
     validateBulkRowsValidation,

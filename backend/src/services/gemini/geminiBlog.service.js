@@ -8,6 +8,7 @@ const geminiConfig = require('./geminiConfig.service');
 const gemini = require('./geminiClient');
 const textModels = require('./textModels');
 const pexels = require('../images/pexels.service');
+const pexelsConfig = require('../images/pexelsConfig.service');
 const env = require('../../config/env');
 const zoned = require('../../utils/zonedDate');
 const { sanitizeGenerated, sanitizeEdited, plainText, wordCount } = require('../../utils/sanitizeBlogHtml');
@@ -264,7 +265,7 @@ const generateBlog = ({ topic, createDate, category, tags, seoKeywords, rowKey }
             createDate,
             model,
             // Automatic images need the API-page toggle and a Pexels key.
-            imageGenerationEnabled: config.imageGenerationEnabled && pexels.isConfigured()
+            imageGenerationEnabled: config.imageGenerationEnabled && await pexelsConfig.isConfigured()
         };
     });
 
@@ -359,7 +360,8 @@ const generateImage = ({ title, summary, topic, imagePrompt, excludePhotoIds = [
         if (!config.imageGenerationEnabled) {
             throw new AppError('Automatic featured images are turned off on the API page. Upload an image instead.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
         }
-        return pexels.findImage({ title, topic: topic || summary, imagePrompt, excludeIds: excludePhotoIds });
+        const apiKey = await pexelsConfig.resolveApiKey();
+        return pexels.findImage({ title, topic: topic || summary, imagePrompt, excludeIds: excludePhotoIds, apiKey });
     });
 
 // ── Draft save ────────────────────────────────────────────────────────────────

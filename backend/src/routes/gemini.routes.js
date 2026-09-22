@@ -14,6 +14,8 @@ const geminiController = require('../controllers/gemini.controller');
 const {
     saveConfigValidation,
     testConnectionValidation,
+    savePexelsKeyValidation,
+    testPexelsValidation,
     generateBlogValidation,
     generateImageValidation,
     validateBulkRowsValidation,
@@ -57,6 +59,12 @@ router.get('/config', superAdminOnly, geminiController.getConfig);
 router.put('/config', superAdminOnly, saveConfigValidation, validate, geminiController.saveConfig);
 router.delete('/config/key', superAdminOnly, geminiController.removeKey);
 router.post('/config/test', superAdminOnly, geminiLimiter, testConnectionValidation, validate, geminiController.testConnection);
+
+// Pexels (featured images): the same Super Admin rule as the Gemini key.
+router.get('/pexels/config', superAdminOnly, geminiController.getPexelsConfig);
+router.put('/pexels/config', superAdminOnly, savePexelsKeyValidation, validate, geminiController.savePexelsKey);
+router.delete('/pexels/config/key', superAdminOnly, geminiController.removePexelsKey);
+router.post('/pexels/config/test', superAdminOnly, geminiLimiter, testPexelsValidation, validate, geminiController.testPexelsConnection);
 
 // ── Blog generation ───────────────────────────────────────────────────────────
 router.get('/availability', canGenerate, geminiController.getAvailability);

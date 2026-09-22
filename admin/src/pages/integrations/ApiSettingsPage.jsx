@@ -10,6 +10,7 @@ import { geminiService } from '../../services/gemini.service'
 import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
+import PexelsSettingsCard from './PexelsSettingsCard'
 
 const SOURCE_LABELS = {
   environment: 'Server environment (GEMINI_API_KEY)',
@@ -65,6 +66,11 @@ const ApiSettingsPage = () => {
       .catch((err) => setLoadError(err?.response?.data?.message || 'Could not load the API configuration.'))
       .finally(() => setLoading(false))
   }, [isSuperAdmin])
+
+  // The Pexels card changes whether featured images can be found automatically.
+  const refreshConfig = useCallback(() => {
+    geminiService.getConfig().then((res) => setConfig(res.data.config)).catch(() => {})
+  }, [])
 
   const fieldErrors = (err) => Object.fromEntries((err?.response?.data?.errors || []).map((e) => [e.field, e.message]))
 
@@ -147,7 +153,7 @@ const ApiSettingsPage = () => {
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>API</Typography>
         <Typography variant="body2" color="text.secondary">
-          Connect Google Gemini to generate blog drafts under Gemini Blogs
+          Connect Google Gemini to generate blog drafts under Gemini Blogs, and Pexels for free featured images
         </Typography>
       </Box>
 
@@ -280,7 +286,7 @@ const ApiSettingsPage = () => {
                   ? 'Uploaded manually'
                   : config?.imageProvider?.configured
                     ? 'Found automatically on Pexels (free)'
-                    : 'Pexels not configured (PEXELS_API_KEY) — uploaded manually'}
+                    : 'Pexels not configured — uploaded manually'}
               </Typography>
             </StatusRow>
             <Divider sx={{ my: 1 }} />
@@ -303,6 +309,10 @@ const ApiSettingsPage = () => {
               <Typography variant="body2">{formatDateTime(config?.updatedAt)}</Typography>
             </StatusRow>
           </Paper>
+        </Grid>
+
+        <Grid item xs={12}>
+          <PexelsSettingsCard showToast={showToast} onChanged={refreshConfig} />
         </Grid>
       </Grid>
 

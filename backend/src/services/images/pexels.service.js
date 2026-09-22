@@ -1,4 +1,3 @@
-const env = require('../../config/env');
 const logger = require('../../utils/logger');
 const { AppError } = require('../../middleware/errorHandler');
 const HTTP_STATUS = require('../../constants/httpStatus');
@@ -15,6 +14,9 @@ const HTTP_STATUS = require('../../constants/httpStatus');
 // Identical searches are answered from a cache; after a 429 no request is
 // sent until Pexels' own reset time has passed. The limit is waited out, never
 // worked around. The key goes only in the Authorization header Pexels expects.
+//
+// The key is passed in by the caller (pexelsConfig.resolveApiKey: the key
+// saved on the API page, else PEXELS_API_KEY); this module never stores it.
 
 const SEARCH_URL = 'https://api.pexels.com/v1/search';
 const IMAGE_HOST = 'images.pexels.com';
@@ -32,8 +34,6 @@ const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const cache = new Map();   // query -> { at, photos }
 const recent = [];         // ids of photos handed out lately, to vary images
 const state = { blockedUntil: 0 };
-
-const isConfigured = () => !!env.PEXELS_API_KEY;
 
 const STOPWORDS = new Set(('a an and are as at be by for from how in into is it its of on or that the this to with your you '
     + 'what why when which who can will should do does our we us about vs versus guide tips ways simple best top new '
@@ -72,7 +72,7 @@ const withTimeout = async (url, init, ms) => {
     }
 };
 
-const search = async (query, { fresh = false } = {}) => {
+const search = async (query, apiKey, { fresh = false } = {}) => {
     const cached = cache.get(query);
     if (!fresh && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.photos;
     if (state.blockedUntil > Date.now()) throw rateLimited();
@@ -80,7 +80,7 @@ const search = async (query, { fresh = false } = {}) => {
     const url = `${SEARCH_URL}?${new URLSearchParams({ query, orientation: 'landscape', per_page: String(PER_PAGE) })}`;
     let res;
     try {
-        res = await withTimeout(url, { headers: { Authorization: env.PEXELS_API_KEY } }, TIMEOUT_MS);
+        res = await withTimeout(url, { headers: { Authorization: apiKey } }, TIMEOUT_MS);
     } catch (err) {
         throw new AppError(err.name === 'AbortError'
             ? 'Pexels took too long to respond. Upload an image, or try again.'
@@ -95,7 +95,7 @@ const search = async (query, { fresh = false } = {}) => {
         throw rateLimited();
     }
     if (res.status === 401 || res.status === 403) {
-        throw new AppError('Pexels rejected the API key (PEXELS_API_KEY). Upload an image instead.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
+        throw new AppError('Pexels rejected the API key. Check the Pexels key on the API page, or upload an image instead.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
     }
     if (res.status >= 500) {
         throw new AppError(`Pexels is temporarily unavailable (HTTP ${res.status}). Upload an image, or try again shortly.`, HTTP_STATUS.BAD_GATEWAY);
@@ -161,9 +161,9 @@ const download = async (photo) => {
     return { mimeType, data: buffer.toString('base64'), size: buffer.length };
 };
 
-const findImage = async ({ title, topic, imagePrompt, excludeIds = [] }) => {
-    if (!isConfigured()) {
-        throw new AppError('Automatic featured images need a Pexels API key (PEXELS_API_KEY) on the server. Upload an image instead.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
+const findImage = async ({ title, topic, imagePrompt, excludeIds = [], apiKey }) => {
+    if (!apiKey) {
+        throw new AppError('Automatic featured images need a Pexels API key (add one on the API page). Upload an image instead.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
     }
     const queries = buildQueries({ imagePrompt, title, topic });
     if (!queries.length) {
@@ -174,7 +174,7 @@ const findImage = async ({ title, topic, imagePrompt, excludeIds = [] }) => {
     let chosen = null;
     let usedQuery = '';
     for (const q of queries) {
-        chosen = pick(await search(q), q, exclude);
+        chosen = pick(await search(q, apiKey), q, exclude);
         if (chosen) { usedQuery = q; break; }
     }
     if (!chosen) {
@@ -202,14 +202,15 @@ const findImage = async ({ title, topic, imagePrompt, excludeIds = [] }) => {
 
 // For Test Connection: proves the key works now, with one small search that
 // bypasses the cache (a cached answer could hide a revoked key).
-const verify = async () => {
-    if (!isConfigured()) return { configured: false };
-    await search('office desk', { fresh: true });
+const verify = async (apiKey) => {
+    if (!apiKey) return { configured: false };
+    await search('office desk', apiKey, { fresh: true });
     return { configured: true };
 };
 
 module.exports = {
-    isConfigured, findImage, verify, buildQueries,
+    findImage, verify, buildQueries,
+    clearRateLimit: () => { state.blockedUntil = 0; },
     _reset: () => { cache.clear(); recent.length = 0; state.blockedUntil = 0; },
     SEARCH_URL, IMAGE_HOST
 };

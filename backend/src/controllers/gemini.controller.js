@@ -1,5 +1,6 @@
 const geminiConfig = require('../services/gemini/geminiConfig.service');
 const geminiBlog = require('../services/gemini/geminiBlog.service');
+const pexelsConfig = require('../services/images/pexelsConfig.service');
 const bulkPlan = require('../services/gemini/bulkPlan.service');
 const { normaliseBody, collectFiles } = require('./blog/blogs.controller');
 const { sendSuccess } = require('../utils/response');
@@ -35,6 +36,30 @@ const removeKey = asyncHandler(async (req, res) => {
 
 const testConnection = asyncHandler(async (req, res) => {
     const result = await geminiConfig.testConnection({ apiKey: req.body.apiKey || undefined });
+    return sendSuccess(res, result.ok ? 'Connection successful' : 'Connection failed', { result });
+});
+
+// ── Pexels API configuration (Super Admin) ────────────────────────────────────
+// Same pattern as Gemini: responses come from pexelsConfig.publicStatus(),
+// which carries the key's last four characters at most.
+
+const getPexelsConfig = asyncHandler(async (req, res) => {
+    const config = await pexelsConfig.publicStatus();
+    return sendSuccess(res, 'Pexels configuration fetched', { config });
+});
+
+const savePexelsKey = asyncHandler(async (req, res) => {
+    const config = await pexelsConfig.saveKey(req.body.apiKey, req.user._id);
+    return sendSuccess(res, 'Pexels API key saved', { config });
+});
+
+const removePexelsKey = asyncHandler(async (req, res) => {
+    const config = await pexelsConfig.removeKey(req.user._id);
+    return sendSuccess(res, 'Pexels API key removed', { config });
+});
+
+const testPexelsConnection = asyncHandler(async (req, res) => {
+    const result = await pexelsConfig.testConnection({ apiKey: req.body.apiKey || undefined });
     return sendSuccess(res, result.ok ? 'Connection successful' : 'Connection failed', { result });
 });
 
@@ -158,6 +183,7 @@ const saveDraft = asyncHandler(async (req, res) => {
 
 module.exports = {
     getConfig, saveConfig, removeKey, testConnection,
+    getPexelsConfig, savePexelsKey, removePexelsKey, testPexelsConnection,
     getAvailability, generateBlog, generateImage, saveDraft,
     bulkTemplate, bulkParse, bulkValidate
 };
