@@ -63,7 +63,7 @@ const RowEditDialog = ({ row, categories, imagesOn, onSave, onClose, title = 'Ed
           </TextField>
           <FormControlLabel
             control={<Switch checked={!!generateImage} onChange={(e) => setGenerateImage(e.target.checked)} />}
-            label={imagesOn ? 'Generate featured image' : 'Generate featured image (turned off on the API page)'}
+            label={imagesOn ? 'Find a featured image (free, Pexels)' : 'Find a featured image (unavailable — upload in Review)'}
           />
           {fromFile('generateImage') && (
             <Alert severity="info">In the file: "{fromFile('generateImage')}". Choose Yes or No above.</Alert>

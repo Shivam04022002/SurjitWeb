@@ -14,6 +14,8 @@ process.env.CORS_ORIGIN = 'http://localhost:5174';
 process.env.GEMINI_RATE_LIMIT_MAX = '1000';
 // Retries back off for milliseconds, not seconds, so the suite stays fast.
 process.env.GEMINI_RETRY_BASE_MS = '5';
+process.env.PEXELS_API_KEY = 'pexels-test-key-0123456789abcdef';
+process.env.GEMINI_FALLBACK_TEXT_MODELS = '';
 process.env.AWS_S3_BUCKET_NAME = '';
 process.env.AWS_ACCESS_KEY_ID = '';
 delete process.env.GEMINI_API_KEY;
@@ -35,6 +37,9 @@ const { generateAccessToken } = require('../src/utils/token');
 const { decrypt } = require('../src/utils/secretBox');
 const { BASE_URL } = require('../src/services/gemini/geminiClient');
 const geminiBlog = require('../src/services/gemini/geminiBlog.service');
+const textModels = require('../src/services/gemini/textModels');
+const pexels = require('../src/services/images/pexels.service');
+const PEXELS_KEY = process.env.PEXELS_API_KEY;
 
 const API_KEY = 'AIzaSyTESTKEY_abcdefghijklmnopqrstuv1234';
 const OTHER_KEY = 'AIzaSyOTHERKEY_zyxwvutsrqponmlkjihgf9876';
@@ -55,7 +60,7 @@ for (const level of ['log', 'info', 'warn', 'error']) {
 
 // ── Fake Gemini ────────────────────────────────────────────────────────────────
 const realFetch = global.fetch;
-const gemini = { mode: 'ok', delayMs: 0, calls: [], category: 'Business Loans', image: true, sequence: [] };
+const gemini = { mode: 'ok', delayMs: 0, calls: [], category: 'Business Loans', image: true, sequence: [], modelErrors: {} };
 
 const words = (n) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
 
@@ -139,6 +144,11 @@ const fakeGemini = async (url, init = {}) => {
             }
         });
     }
+    // Persistent failures for one model (text fallback tests).
+    const modelInUrl = (/\/models\/([^:/?]+):generateContent/.exec(String(url)) || [])[1];
+    if (init.method === 'POST' && modelInUrl && gemini.modelErrors[modelInUrl]) {
+        return googleError(gemini.modelErrors[modelInUrl], key);
+    }
     // A per-test script of responses: each POST takes the next entry; 'ok'
     // (or an empty script) falls through to the normal fake behaviour.
     if (gemini.sequence.length && init.method === 'POST') {
@@ -209,7 +219,38 @@ const fakeGemini = async (url, init = {}) => {
     return jsonResponse(200, { candidates: [{ content: { parts: [{ text }] }, finishReason: 'STOP' }] });
 };
 
-global.fetch = (url, init) => (String(url).startsWith(BASE_URL) ? fakeGemini(url, init) : realFetch(url, init));
+// ── Fake Pexels ───────────────────────────────────────────────────────────────
+const pexelsFake = { mode: 'ok', searches: [], downloads: [], redirects: [] };
+const PHOTOS = [
+    { id: 101, width: 800, height: 1200, url: 'https://www.pexels.com/photo/portrait-101/', photographer: 'Pat Portrait', photographer_url: 'https://www.pexels.com/@pat', alt: 'Kirana shop owner portrait', src: { landscape: 'https://images.pexels.com/photos/101/p.jpeg' } },
+    { id: 102, width: 4000, height: 2600, url: 'https://www.pexels.com/photo/grocery-store-102/', photographer: 'Asha Rao', photographer_url: 'https://www.pexels.com/@asha-rao', alt: 'Shopkeeper arranging shelves in a grocery store', src: { landscape: 'https://images.pexels.com/photos/102/landscape.jpeg' } },
+    { id: 103, width: 5000, height: 3000, url: 'https://www.pexels.com/photo/street-103/', photographer: 'Vik Mehta', photographer_url: 'https://www.pexels.com/@vik', alt: 'Busy city street at dusk', src: { landscape: 'https://images.pexels.com/photos/103/landscape.jpeg' } }
+];
+const fakePexels = async (url, init = {}) => {
+    const u = new URL(String(url));
+    if (u.hostname === 'images.pexels.com') {
+        pexelsFake.downloads.push(u.pathname);
+        pexelsFake.redirects.push(init.redirect);
+        return new Response(Buffer.from(PNG_1PX, 'base64'), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+    }
+    const headers = new Headers(init.headers || {});
+    pexelsFake.redirects.push(init.redirect);
+    pexelsFake.searches.push({ query: u.searchParams.get('query'), orientation: u.searchParams.get('orientation'), size: u.searchParams.get('size'), auth: headers.get('authorization') });
+    if (headers.get('authorization') !== PEXELS_KEY || pexelsFake.mode === '401') return jsonResponse(401, { error: 'Unauthorized' });
+    if (pexelsFake.mode === '429') {
+        return jsonResponse(429, { error: 'Rate limit exceeded' }, { 'X-Ratelimit-Reset': String(Math.floor(Date.now() / 1000) + 600) });
+    }
+    if (pexelsFake.mode === '500') return jsonResponse(503, { error: 'Service unavailable' });
+    const photos = pexelsFake.mode === 'none' ? [] : pexelsFake.mode === 'portraitOnly' ? [PHOTOS[0]] : PHOTOS;
+    return jsonResponse(200, { page: 1, per_page: 15, photos, total_results: photos.length });
+};
+
+global.fetch = (url, init) => {
+    const u = String(url);
+    if (u.startsWith(BASE_URL)) return fakeGemini(url, init);
+    if (u.startsWith('https://api.pexels.com/') || u.startsWith('https://images.pexels.com/')) return fakePexels(url, init);
+    return realFetch(url, init);
+};
 
 // ── HTTP helpers ───────────────────────────────────────────────────────────────
 let mongo;
@@ -275,6 +316,15 @@ beforeEach(() => {
     gemini.category = 'Business Loans';
     gemini.image = true;
     gemini.sequence = [];
+    gemini.modelErrors = {};
+    textModels._cooldowns.clear();
+    pexels._reset();
+    pexelsFake.mode = 'ok';
+    pexelsFake.searches = [];
+    pexelsFake.downloads = [];
+    pexelsFake.redirects = [];
+    env.PEXELS_API_KEY = PEXELS_KEY;
+    env.GEMINI_FALLBACK_TEXT_MODELS = '';
     gemini.calls = [];
     env.GEMINI_API_KEY = '';
     env.GEMINI_TIMEOUT_MS = 55000;
@@ -334,6 +384,24 @@ describe('Gemini API configuration', () => {
         assert.equal(res.status, 400);
         assert.ok(!res.text.includes(bad));
         assert.deepEqual(res.body.errors.map((e) => e.field).sort(), ['apiKey', 'textModel']);
+    });
+
+    test('an image, audio or video model cannot be chosen as the text model', async () => {
+        for (const textModel of ['gemini-2.5-flash-image', 'imagen-4.0-generate-001', 'veo-3.0-generate-001', 'gemini-2.5-flash-preview-tts']) {
+            const res = await call('PUT', '/v1/gemini/config', { token: tokens.super, body: { textModel } });
+            assert.equal(res.status, 400, textModel);
+            assert.deepEqual(res.body.errors.map((e) => e.field), ['textModel']);
+        }
+        assert.equal((await IntegrationSetting.findOne({ provider: 'gemini' }).lean()).textModel, 'gemini-2.5-flash', 'setting unchanged');
+    });
+
+    test('a stored media model is refused at generation time, and Gemini is not called', async () => {
+        await IntegrationSetting.updateOne({ provider: 'gemini' }, { $set: { textModel: 'gemini-2.5-flash-image' } });
+        const res = await generate();
+        assert.equal(res.status, 422);
+        assert.match(res.body.message, /is an image, audio or video model\. Choose a Gemini text model/);
+        assert.equal(gemini.calls.length, 0);
+        await configure();
     });
 
     test('a server environment key takes precedence and is reported as such', async () => {
@@ -430,13 +498,15 @@ describe('Google key formats (AQ. and AIza)', () => {
             assert.ok(!c.url.includes(AQ_KEY) && !c.url.includes('key='));
         }
         assert.equal(gemini.calls[0].url, `${BASE_URL}/models/gemini-2.5-flash:generateContent`);
-        assert.equal(gemini.calls[1].url, `${BASE_URL}/models/gemini-2.5-flash-image`);
+        assert.equal(gemini.calls.length, 1, 'no Gemini image model is contacted');
+        assert.equal(pexelsFake.searches.length, 1, 'images are checked with one Pexels search');
+        assert.equal(pexelsFake.searches[0].auth, PEXELS_KEY);
     });
 
     test('Google\'s success response is reported as connected, naming the models', async () => {
         const { result } = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data;
         assert.equal(result.ok, true);
-        assert.match(result.message, /^Connected\. Text model: gemini-2\.5-flash \(generation verified\) · Image model: gemini-2\.5-flash-image \(found\)$/);
+        assert.match(result.message, /^Connected\. Text model: gemini-2\.5-flash \(generation verified\) · Images: Pexels \(search verified\)$/);
         const cfg = (await call('GET', '/v1/gemini/config', { token: tokens.super })).body.data.config;
         assert.equal(cfg.lastTest.ok, true);
     });
@@ -455,6 +525,7 @@ describe('Google key formats (AQ. and AIza)', () => {
         assert.equal(result.ok, false);
         assert.equal(result.failedCheck, 'Text model');
         assert.equal(gemini.calls.length, 1, 'image model not requested after a failed text check');
+        assert.equal(pexelsFake.searches.length, 0, 'images are not checked after a failed text check');
         assert.equal(gemini.calls[0].url, `${BASE_URL}/models/gemini-2.5-flash:generateContent`);
     });
 
@@ -600,11 +671,11 @@ describe('Model used for generation', () => {
         assert.match(res.body.message, /\[redacted\]/);
     });
 
-    test('an image quota refusal says quota, not rate limit, and names the model', async () => {
+    test('a text quota refusal says quota, not rate limit, and names the model', async () => {
         gemini.mode = 'quota';
-        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: { title: 'T', summary: 'S' } });
+        const res = await generate();
         assert.equal(res.status, 429);
-        assert.match(res.body.message, /^Gemini quota exceeded for "gemini-2\.5-flash-image" \(Google: RESOURCE_EXHAUSTED\)\. Google says: "You exceeded your current quota, please check your plan and billing details/);
+        assert.match(res.body.message, /^Gemini quota exceeded for "gemini-2\.5-flash" \(Google: RESOURCE_EXHAUSTED\)\. Google says: "You exceeded your current quota, please check your plan and billing details/);
         assert.ok(!res.text.includes(AQ_KEY));
     });
 });
@@ -726,12 +797,12 @@ describe('Transient Google failures and retries', () => {
         });
     }
 
-    test('image generation retries a 503 once and returns one image', async () => {
+    test('images never go through Gemini, so Gemini retries never apply to them', async () => {
         gemini.sequence = [503];
-        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: { title: 'T', summary: 'S' } });
+        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: { title: 'Growing a grocery store', summary: 'A guide' } });
         assert.equal(res.status, 200, res.text);
-        assert.equal(posts().length, 2);
-        assert.equal(res.body.data.image.data, PNG_1PX);
+        assert.equal(posts().length, 0);
+        gemini.sequence = [];
     });
 
     test('Test Connection rides out a single 503', async () => {
@@ -765,6 +836,181 @@ describe('Transient Google failures and retries', () => {
     });
 });
 
+// ── Free text model fallback ───────────────────────────────────────────────────
+describe('Free text model fallback', () => {
+    before(async () => { await configure({ apiKey: AQ_KEY, textModel: 'gemini-3.6-flash' }); });
+    after(async () => { await configure(); });
+
+    const posted = () => gemini.calls.filter((c) => c.method === 'POST').map((c) => (/\/models\/([^:]+):/.exec(c.url) || [])[1]);
+
+    test('429 on the API-page model: the next free model writes the blog', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash,gemini-flash-lite-latest';
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo' };
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.model, 'gemini-3.5-flash');
+        assert.deepEqual(posted(), ['gemini-3.6-flash', 'gemini-3.5-flash'], 'quota is not retried, the fallback is tried once');
+        assert.match(res.body.data.warnings.join(' '), /Written with the free fallback model gemini-3\.5-flash because gemini-3\.6-flash was unavailable \(quota exceeded\)/);
+        assert.ok(!res.text.includes(AQ_KEY));
+    });
+
+    test('a model out of quota rests for Google\'s retry delay and is skipped meanwhile', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash';
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo' };
+        await generate();
+        const until = textModels.coolingUntil('gemini-3.6-flash');
+        assert.ok(until - Date.now() > 30000 && until - Date.now() <= 37000, 'rests about 37s, as Google asked');
+        gemini.calls = [];
+        gemini.modelErrors = {};
+        const res = await generate();
+        assert.equal(res.status, 200);
+        assert.deepEqual(posted(), ['gemini-3.5-flash'], 'the resting model is not called at all');
+    });
+
+    test('repeated 503: retries first, then the next free model', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash';
+        gemini.modelErrors = { 'gemini-3.6-flash': 503 };
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.model, 'gemini-3.5-flash');
+        assert.deepEqual(posted(), ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'], 'three attempts, then fallback');
+        assert.match(res.body.data.warnings.join(' '), /unavailable \(overloaded\)/);
+        assert.ok(textModels.coolingUntil('gemini-3.6-flash') > Date.now());
+    });
+
+    for (const code of [400, 401, 403, 404]) {
+        test(`${code} does not fall back`, async () => {
+            env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash';
+            gemini.modelErrors = { 'gemini-3.6-flash': code };
+            const res = await generate();
+            assert.notEqual(res.status, 200);
+            assert.deepEqual(posted(), ['gemini-3.6-flash'], 'the fallback is never tried');
+            assert.equal(textModels.coolingUntil('gemini-3.6-flash'), 0, 'a permanent error does not rest the model');
+        });
+    }
+
+    test('without configured fallbacks, a 429 is reported as before', async () => {
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo' };
+        const res = await generate();
+        assert.equal(res.status, 429);
+        assert.deepEqual(posted(), ['gemini-3.6-flash']);
+        assert.match(res.body.message, /Gemini quota exceeded for "gemini-3\.6-flash"/);
+    });
+
+    test('when every model fails, the last error is reported', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash';
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo', 'gemini-3.5-flash': '429-header' };
+        const res = await generate();
+        assert.equal(res.status, 429);
+        assert.deepEqual(posted(), ['gemini-3.6-flash', 'gemini-3.5-flash']);
+        assert.match(res.body.message, /No other configured free model could take over\./);
+    });
+
+    test('when every model is resting, nothing is called', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash';
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo', 'gemini-3.5-flash': '429-header' };
+        await generate();
+        gemini.calls = [];
+        const res = await generate();
+        assert.equal(res.status, 429);
+        assert.equal(posted().length, 0, 'resting models are not called');
+        assert.match(res.body.message, /All configured Gemini text models are resting after quota or overload errors \(gemini-3\.6-flash, gemini-3\.5-flash\)\. Try again in about \d+s\./);
+    });
+
+    test('an admin retry still reaches a model resting for overload when it is the only option', async () => {
+        gemini.modelErrors = { 'gemini-3.6-flash': 503 };
+        assert.equal((await generate()).status, 502);
+        assert.ok(textModels.coolingUntil('gemini-3.6-flash') > Date.now(), 'resting after the overload');
+        gemini.calls = [];
+        gemini.modelErrors = {};
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.deepEqual(posted(), ['gemini-3.6-flash'], 'tried again although resting');
+    });
+
+    test('a model resting for quota is not called before Google\'s delay, even alone', async () => {
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo' };
+        assert.equal((await generate()).status, 429);
+        gemini.calls = [];
+        gemini.modelErrors = {};
+        const res = await generate();
+        assert.equal(res.status, 429);
+        assert.equal(posted().length, 0, 'no request while the quota delay runs');
+        assert.match(res.body.message, /resting after quota or overload errors \(gemini-3\.6-flash\)\. Try again in about 3\ds\./);
+    });
+
+    test('the first model is always tried, even with little time budget', async () => {
+        env.GEMINI_TIMEOUT_MS = 3000;
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.deepEqual(posted(), ['gemini-3.6-flash']);
+    });
+
+    test('image and audio models in the fallback list are skipped', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.1-flash-image,gemini-2.5-flash-preview-tts,gemini-flash-lite-latest';
+        gemini.modelErrors = { 'gemini-3.6-flash': '429-retryinfo' };
+        const res = await generate();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.model, 'gemini-flash-lite-latest');
+        assert.deepEqual(posted(), ['gemini-3.6-flash', 'gemini-flash-lite-latest']);
+    });
+
+    test('the fallback list is reported to the admin, without keys', async () => {
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.5-flash,gemini-3.1-flash-image';
+        const res = await call('GET', '/v1/gemini/config', { token: tokens.super });
+        assert.deepEqual(res.body.data.config.textFallbacks, ['gemini-3.5-flash']);
+        assert.deepEqual(res.body.data.config.imageProvider, { name: 'pexels', configured: true });
+        assert.ok(!res.text.includes(PEXELS_KEY) && !res.text.includes(AQ_KEY));
+    });
+});
+
+// ── Pexels credit stored with the draft ────────────────────────────────────────
+describe('Pexels photo credit on drafts', () => {
+    const creditForm = (credit, { withImage = true, slug = 'pexels-credit-draft' } = {}) => {
+        const form = new FormData();
+        const fields = {
+            title: 'Pexels credit draft', slug, summary: 'S', content: '<p>Body</p>', author: 'Surjit Finance',
+            category: '', tags: 'a', 'seo.metaTitle': 'T', 'seo.metaDescription': 'D', 'seo.metaKeywords': 'k',
+            createDate: '2026-10-20', ...Object.fromEntries(Object.entries(credit).map(([k, v]) => [`imageCredit.${k}`, v]))
+        };
+        for (const [k, v] of Object.entries(fields)) form.append(k, v);
+        if (withImage) form.append('featuredImage', new Blob([Buffer.from(PNG_1PX, 'base64')], { type: 'image/jpeg' }), 'pexels-102.jpg');
+        return form;
+    };
+    const credit = { source: 'pexels', photoId: '102', photoUrl: 'https://www.pexels.com/photo/grocery-store-102/', photographer: 'Asha Rao', photographerUrl: 'https://www.pexels.com/@asha-rao' };
+
+    test('the credit is stored with the uploaded featured image', async () => {
+        const res = await call('POST', '/v1/gemini/blogs/drafts', { token: tokens.super, form: creditForm(credit) });
+        assert.equal(res.status, 201, res.text);
+        uploadedFiles.push(res.body.data.blog.featuredImage.fileName);
+        const db = await Blog.findById(res.body.data.blog._id).lean();
+        assert.deepEqual(db.featuredImage.credit, credit);
+        assert.equal(db.status, 'draft');
+    });
+
+    test('credit links must point at pexels.com', async () => {
+        const filesBefore = blogUploads();
+        const bad = await call('POST', '/v1/gemini/blogs/drafts', {
+            token: tokens.super,
+            form: creditForm({ ...credit, photoUrl: 'https://evil.example/x', photographer: '<script>' }, { slug: 'pexels-bad-credit' })
+        });
+        assert.equal(bad.status, 400);
+        const fields = bad.body.errors.map((e) => e.field);
+        assert.ok(fields.includes('imageCredit.photoUrl') && fields.includes('imageCredit.photographer'));
+        assert.equal(await Blog.countDocuments({ slug: 'pexels-bad-credit' }), 0);
+        assert.deepEqual(blogUploads(), filesBefore, 'the refused upload was removed');
+    });
+
+    test('a credit without an image is ignored; other blogs carry no credit', async () => {
+        const res = await call('POST', '/v1/gemini/blogs/drafts', { token: tokens.super, form: creditForm(credit, { withImage: false, slug: 'pexels-no-image' }) });
+        assert.equal(res.status, 201, res.text);
+        const db = await Blog.findById(res.body.data.blog._id).lean();
+        assert.equal(db.featuredImage?.credit, undefined);
+        const others = await Blog.find({ slug: { $nin: ['pexels-credit-draft'] } }).lean();
+        assert.ok(others.every((b) => b.featuredImage?.credit === undefined), 'no credit appears on existing blogs');
+    });
+});
+
 // ── Authentication / RBAC ──────────────────────────────────────────────────────
 describe('Authentication and RBAC', () => {
     test('requires a signed-in admin', async () => {
@@ -793,7 +1039,9 @@ describe('Authentication and RBAC', () => {
         const res = await call('GET', '/v1/gemini/availability', { token: tokens.editor });
         assert.equal(res.status, 200);
         const { availability } = res.body.data;
-        assert.deepEqual(Object.keys(availability).sort(), ['configured', 'imageGenerationEnabled', 'imageModel', 'limits', 'textModel']);
+        assert.deepEqual(Object.keys(availability).sort(), ['configured', 'imageGenerationEnabled', 'imageProvider', 'limits', 'textFallbacks', 'textModel']);
+        assert.deepEqual(availability.imageProvider, { name: 'pexels', configured: true });
+        assert.ok(!res.text.includes(PEXELS_KEY), 'the Pexels key is never sent to the browser');
         assert.deepEqual(Object.keys(availability.limits).sort(), ['maxParallel', 'requestsPerWindow', 'windowMinutes']);
     });
 });
@@ -944,32 +1192,141 @@ describe('Duplicate-request prevention', () => {
 });
 
 // ── Featured image ─────────────────────────────────────────────────────────────
-describe('Featured image generation', () => {
-    const imageBody = { title: 'Kirana growth', summary: 'A guide', imagePrompt: 'A bright shop' };
+describe('Featured image generation (Pexels)', () => {
+    const imageBody = { title: 'How to grow your grocery store', summary: 'A guide', imagePrompt: 'Shopkeeper arranging shelves in a grocery store' };
+    const findImage = (body = imageBody) => call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body });
 
-    test('returns a generated image as base64, without storing it', async () => {
-        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: imageBody });
-        assert.equal(res.status, 200);
-        assert.equal(res.body.data.image.mimeType, 'image/png');
-        assert.equal(res.body.data.image.data, PNG_1PX);
-        const req = gemini.calls.at(-1);
-        assert.deepEqual(req.body.generationConfig.responseModalities, ['IMAGE']);
-        assert.match(req.body.contents[0].parts[0].text, /no text, letters/);
+    test('finds a relevant landscape photo, downloaded, with the photographer credit', async () => {
+        const res = await findImage();
+        assert.equal(res.status, 200, res.text);
+        const { image } = res.body.data;
+        assert.equal(image.source, 'pexels');
+        assert.equal(image.mimeType, 'image/jpeg');
+        assert.equal(image.data, PNG_1PX, 'the photo itself is returned for the review screen');
+        assert.deepEqual(image.credit, {
+            source: 'pexels', photoId: '102', photoUrl: 'https://www.pexels.com/photo/grocery-store-102/',
+            photographer: 'Asha Rao', photographerUrl: 'https://www.pexels.com/@asha-rao',
+            alt: 'Shopkeeper arranging shelves in a grocery store'
+        });
+        assert.equal(pexelsFake.searches[0].orientation, 'landscape');
+        assert.equal(pexelsFake.searches[0].auth, PEXELS_KEY, 'key only in the Authorization header');
+        assert.deepEqual(pexelsFake.downloads, ['/photos/102/landscape.jpeg']);
+        assert.ok(!res.text.includes(PEXELS_KEY));
     });
 
-    test('a model that returns no image fails clearly (no fake URL)', async () => {
-        gemini.image = false;
-        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: imageBody });
+    test('portrait photos are never chosen for a featured image', async () => {
+        pexelsFake.mode = 'portraitOnly';
+        const res = await findImage();
+        assert.equal(res.status, 422);
+        assert.match(res.body.message, /no suitable landscape photo/);
+        assert.equal(pexelsFake.downloads.length, 0);
+    });
+
+    test('no results: a clear message and no fabricated image', async () => {
+        pexelsFake.mode = 'none';
+        const res = await findImage();
+        assert.equal(res.status, 422);
+        assert.match(res.body.message, /^Pexels has no suitable landscape photo for this topic\. Upload an image instead\.$/);
+        assert.equal(res.body.data, undefined, 'no image, no URL');
+        assert.equal(pexelsFake.searches.length, 2, 'the scene, then the title — no more');
+    });
+
+    test('Pexels 429: waits out Pexels\' reset time instead of calling again', async () => {
+        pexelsFake.mode = '429';
+        const first = await findImage();
+        assert.equal(first.status, 429);
+        assert.match(first.body.message, /Pexels rate limit reached\. Automatic images resume in about 10 min/);
+        const searchesAfterFirst = pexelsFake.searches.length;
+        const second = await findImage({ ...imageBody, title: 'A different title', imagePrompt: 'Something else entirely' });
+        assert.equal(second.status, 429);
+        assert.equal(pexelsFake.searches.length, searchesAfterFirst, 'no request while Pexels asked us to wait');
+    });
+
+    test('Pexels 5xx: non-fatal message, upload instead', async () => {
+        pexelsFake.mode = '500';
+        const res = await findImage();
         assert.equal(res.status, 502);
-        assert.match(res.body.message, /did not return an image/);
+        assert.match(res.body.message, /Pexels is temporarily unavailable \(HTTP 503\)\. Upload an image, or try again shortly\./);
+    });
+
+    test('a rejected Pexels key is reported without the key', async () => {
+        pexelsFake.mode = '401';
+        const res = await findImage();
+        assert.equal(res.status, 422);
+        assert.match(res.body.message, /Pexels rejected the API key/);
+        assert.ok(!res.text.includes(PEXELS_KEY));
+    });
+
+    test('missing PEXELS_API_KEY: images fall back to manual upload, nothing is called', async () => {
+        env.PEXELS_API_KEY = '';
+        const res = await findImage();
+        assert.equal(res.status, 422);
+        assert.match(res.body.message, /need a Pexels API key \(PEXELS_API_KEY\).*Upload an image instead/);
+        assert.equal(pexelsFake.searches.length, 0);
+        assert.equal(gemini.calls.length, 0, 'no Gemini image model instead');
+
+        const avail = (await call('GET', '/v1/gemini/availability', { token: tokens.super })).body.data.availability;
+        assert.equal(avail.imageGenerationEnabled, false, 'the CMS is told images must be uploaded');
+        const gen = await generate();
+        assert.equal(gen.body.data.imageGenerationEnabled, false);
+        const test = (await call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} })).body.data.result;
+        assert.equal(test.ok, true, 'a missing image provider does not fail the connection test');
+        assert.match(test.message, /Pexels is not configured \(PEXELS_API_KEY\) — featured images must be uploaded/);
+    });
+
+    test('searches are not limited to 24 MP photos, and no redirect is ever followed', async () => {
+        const res = await findImage();
+        assert.equal(res.status, 200, res.text);
+        assert.equal(pexelsFake.searches[0].size, null, 'size=large would drop most usable photos');
+        assert.ok(pexelsFake.redirects.length >= 2);
+        assert.ok(pexelsFake.redirects.every((r) => r === 'error'), 'search and download refuse redirects');
+    });
+
+    test('Test Connection checks the Pexels key live, not from the search cache', async () => {
+        const testConn = () => call('POST', '/v1/gemini/config/test', { token: tokens.super, body: {} });
+        assert.equal((await testConn()).body.data.result.ok, true);
+        pexelsFake.mode = '401';
+        const result = (await testConn()).body.data.result;
+        assert.equal(result.ok, false, 'a revoked key is caught even though the same search was cached');
+        assert.match(JSON.stringify(result), /Pexels rejected the API key/);
+        assert.ok(!JSON.stringify(result).includes(PEXELS_KEY));
+    });
+
+    test('identical searches are answered from the cache', async () => {
+        await findImage();
+        await findImage();
+        assert.equal(pexelsFake.searches.length, 1, 'one search for two identical requests');
+        assert.equal(pexelsFake.downloads.length, 2);
+    });
+
+    test('"find another" skips photos already offered', async () => {
+        const res = await findImage({ ...imageBody, excludePhotoIds: ['102'] });
+        assert.equal(res.status, 200);
+        assert.equal(res.body.data.image.credit.photoId, '103');
+        assert.equal((await findImage({ ...imageBody, excludePhotoIds: ['bad id'] })).status, 400);
     });
 
     test('image generation can be switched off, pointing the admin to upload', async () => {
         await configure({ imageGenerationEnabled: false });
-        const res = await call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: imageBody });
+        const res = await findImage();
         assert.equal(res.status, 422);
-        assert.match(res.body.message, /Upload an image instead/);
+        assert.match(res.body.message, /turned off on the API page\. Upload an image instead/);
+        assert.equal(pexelsFake.searches.length, 0);
         await configure();
+    });
+
+    test('a paid Gemini image model is never selected automatically', async () => {
+        await configure({ imageModel: 'gemini-2.5-flash-image' });
+        env.GEMINI_FALLBACK_TEXT_MODELS = 'gemini-3.1-flash-image,imagen-4.0-generate-001,gemini-2.5-flash-preview-tts';
+        gemini.calls = [];
+        await findImage();
+        env.PEXELS_API_KEY = '';
+        await findImage();
+        gemini.modelErrors = { 'gemini-2.5-flash': 429 };
+        await generate();
+        const touched = gemini.calls.map((c) => c.url).join(' ');
+        assert.doesNotMatch(touched, /image|imagen|tts/, 'no image, imagen or audio model was ever called');
+        assert.equal(textModels.candidateModels('gemini-2.5-flash').length, 1, 'image/audio models are not valid text fallbacks');
     });
 });
 
@@ -1157,7 +1514,7 @@ describe('Row generation (bulk rows)', () => {
 
     test('row images run side by side too', async () => {
         gemini.delayMs = 200;
-        const body = (k) => ({ title: 'T', summary: 'S', imagePrompt: 'P', rowKey: k });
+        const body = (k) => ({ title: 'Growing a grocery store', summary: 'A guide', imagePrompt: 'Shopkeeper arranging shelves', rowKey: k });
         const [a, b] = await Promise.all([
             call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: body('img_a_123456') }),
             call('POST', '/v1/gemini/blogs/image', { token: tokens.super, body: body('img_b_123456') })

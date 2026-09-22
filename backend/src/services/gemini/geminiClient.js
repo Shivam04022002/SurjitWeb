@@ -67,7 +67,7 @@ const retryDelayOf = (body, headers) => {
 // Google's explanation is passed on, scrubbed of the key: for a model, quota
 // or overload problem it is the only place that says what to do (which model
 // replaces a retired one, when a quota resets), and a generic message hides it.
-const upstreamError = (status, body, apiKey, model, { retryAfter = null, attempts = 1 } = {}) => {
+const describeUpstream = (status, body, apiKey, model, { retryAfter = null, attempts = 1 } = {}) => {
     const detail = scrub(body?.error?.message, apiKey);
     const reason = reasonOf(body);
     const googleStatus = /^[A-Z_]{3,40}$/.test(body?.error?.status || '') ? body.error.status : '';
@@ -117,6 +117,21 @@ const upstreamError = (status, body, apiKey, model, { retryAfter = null, attempt
         );
     }
     return new AppError(`Gemini rejected the request${detail ? `: ${detail}` : '.'}`, HTTP_STATUS.BAD_GATEWAY);
+};
+
+// The admin-facing error, plus machine-readable facts about Google's answer
+// (never the key or the body) so callers decide on fallback by status, not by
+// parsing message text.
+const upstreamError = (status, body, apiKey, model, opts = {}) => {
+    const err = describeUpstream(status, body, apiKey, model, opts);
+    err.upstream = {
+        status,
+        googleStatus: /^[A-Z_]{3,40}$/.test(body?.error?.status || '') ? body.error.status : '',
+        retryAfter: opts.retryAfter ?? null,
+        attempts: opts.attempts || 1,
+        model: model || ''
+    };
+    return err;
 };
 
 // Transient upstream failures — Google overloaded (503) or erroring (500) —
@@ -236,7 +251,9 @@ const assertUsable = (json) => {
 };
 
 // Structured JSON generation against a response schema.
-const generateJson = async (apiKey, model, { prompt, schema, temperature = 0.7 }) => {
+// `timeoutMs` is the time left in the caller's overall budget, so trying
+// another model after a failure still ends inside the nginx proxy timeout.
+const generateJson = async (apiKey, model, { prompt, schema, temperature = 0.7, timeoutMs }) => {
     const json = await generateContent(apiKey, model, {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
@@ -244,7 +261,7 @@ const generateJson = async (apiKey, model, { prompt, schema, temperature = 0.7 }
             responseMimeType: 'application/json',
             responseSchema: schema
         }
-    });
+    }, { timeoutMs });
     const candidate = assertUsable(json);
     if (candidate.finishReason === 'MAX_TOKENS') {
         throw new AppError('Gemini stopped before finishing the blog. Try a narrower topic.', HTTP_STATUS.BAD_GATEWAY);
@@ -257,21 +274,7 @@ const generateJson = async (apiKey, model, { prompt, schema, temperature = 0.7 }
     }
 };
 
-// Image generation. Returns { mimeType, data } with base64 data, or throws.
-const generateImage = async (apiKey, model, { prompt }) => {
-    const json = await generateContent(apiKey, model, {
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-            responseModalities: ['IMAGE'],
-            imageConfig: { aspectRatio: '16:9' }
-        }
-    });
-    const candidate = assertUsable(json);
-    const part = (candidate.content?.parts || []).find((p) => p.inlineData?.data);
-    if (!part) {
-        throw new AppError('The configured Gemini image model did not return an image.', HTTP_STATUS.BAD_GATEWAY);
-    }
-    return { mimeType: part.inlineData.mimeType || 'image/png', data: part.inlineData.data };
-};
+// There is deliberately no image generation here: Gemini image models are
+// paid on this account, and featured images come from Pexels instead.
 
-module.exports = { getModel, probeGeneration, generateJson, generateImage, scrub, BASE_URL, MODEL_RX, MAX_RETRIES };
+module.exports = { getModel, probeGeneration, generateJson, scrub, BASE_URL, MODEL_RX, MAX_RETRIES };

@@ -83,6 +83,17 @@ export const buildDraftFormData = (form, createDate, featuredFile, extras = {}) 
   fd.append('createDate', createDate)
   if (extras.planMonth) fd.append('planMonth', extras.planMonth)
   if (extras.idempotencyKey) fd.append('idempotencyKey', extras.idempotencyKey)
-  if (featuredFile) fd.append('featuredImage', featuredFile)
+  if (featuredFile) {
+    fd.append('featuredImage', featuredFile)
+    // The photographer credit travels with the Pexels photo it belongs to.
+    const c = extras.imageCredit
+    if (c?.source === 'pexels') {
+      fd.append('imageCredit.source', 'pexels')
+      fd.append('imageCredit.photoId', c.photoId || '')
+      fd.append('imageCredit.photoUrl', c.photoUrl || '')
+      fd.append('imageCredit.photographer', c.photographer || '')
+      fd.append('imageCredit.photographerUrl', c.photographerUrl || '')
+    }
+  }
   return fd
 }

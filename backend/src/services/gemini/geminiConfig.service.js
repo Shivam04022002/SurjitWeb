@@ -2,6 +2,8 @@ const IntegrationSetting = require('../../models/IntegrationSetting');
 const env = require('../../config/env');
 const { encrypt, decrypt } = require('../../utils/secretBox');
 const gemini = require('./geminiClient');
+const textModels = require('./textModels');
+const pexels = require('../images/pexels.service');
 const logger = require('../../utils/logger');
 
 // Gemini configuration: where the key comes from, which models are used, and
@@ -59,6 +61,10 @@ const publicStatus = async () => {
         keyHint,
         keyReadable,
         ...models,
+        // Free fallbacks tried after the API-page model (GEMINI_FALLBACK_TEXT_MODELS).
+        textFallbacks: textModels.candidateModels(models.textModel).slice(1),
+        // Featured images come from Pexels; only whether a key is set is shown.
+        imageProvider: { name: 'pexels', configured: pexels.isConfigured() },
         defaults: { textModel: env.GEMINI_TEXT_MODEL, imageModel: env.GEMINI_IMAGE_MODEL },
         lastTest: doc?.lastTest?.at ? doc.lastTest : null,
         updatedAt: doc?.updatedAt || null
@@ -98,22 +104,24 @@ const removeKey = async (userId) => {
     return publicStatus();
 };
 
-// Checks the key against the configured models. The text model gets a real,
-// minimal generation request — the same call blog generation makes — because
-// a model lookup alone passes for models Google has retired for new users.
-// The image model is only looked up (generating an image costs quota), and
-// only once the text check has passed, so a bad key fails on one request and
-// the message says which check failed. A candidate key (typed but
-// not yet saved) can be tested; only a test of the saved configuration is
-// recorded.
+// Checks the key against the API-page text model with a real, minimal
+// generation request — the same call blog generation makes — because a model
+// lookup alone passes for models Google has retired for new users. Then, if
+// automatic images are on, one small Pexels search proves that key; a missing
+// Pexels key is reported but is not a failure (images can be uploaded). No
+// Gemini image model is ever called. A candidate key (typed but not yet saved)
+// can be tested; only a test of the saved configuration is recorded.
 const testConnection = async ({ apiKey: candidate } = {}) => {
     const doc = await load();
     const models = effectiveModels(doc);
     const apiKey = candidate || await resolveApiKey();
 
-    const checks = [{ label: 'Text model', model: models.textModel, run: gemini.probeGeneration, verified: 'generation verified' }];
-    if (models.imageGenerationEnabled) {
-        checks.push({ label: 'Image model', model: models.imageModel, run: gemini.getModel, verified: 'found' });
+    const checks = [{ label: 'Text model', model: models.textModel, run: (key) => gemini.probeGeneration(key, models.textModel), verified: 'generation verified' }];
+    const notes = [];
+    if (models.imageGenerationEnabled && pexels.isConfigured()) {
+        checks.push({ label: 'Images', model: 'Pexels', run: () => pexels.verify(), verified: 'search verified' });
+    } else if (models.imageGenerationEnabled) {
+        notes.push('Images: Pexels is not configured (PEXELS_API_KEY) — featured images must be uploaded.');
     }
 
     let result;
@@ -124,7 +132,7 @@ const testConnection = async ({ apiKey: candidate } = {}) => {
         let failure = null;
         for (const c of checks) {
             try {
-                await c.run(apiKey, c.model);
+                await c.run(apiKey);
                 passed.push(c);
             } catch (err) {
                 failure = { check: c, message: gemini.scrub(err.message, apiKey) };
@@ -133,7 +141,7 @@ const testConnection = async ({ apiKey: candidate } = {}) => {
         }
         result = failure
             ? { ok: false, message: `${failure.check.label} (${failure.check.model}): ${failure.message}`, failedCheck: failure.check.label }
-            : { ok: true, message: `Connected. ${passed.map((c) => `${c.label}: ${c.model} (${c.verified})`).join(' · ')}` };
+            : { ok: true, message: [`Connected. ${passed.map((c) => `${c.label}: ${c.model} (${c.verified})`).join(' · ')}`, ...notes].join(' ') };
     }
 
     if (!candidate && doc) {
@@ -150,9 +158,12 @@ const availability = async () => {
     const s = await publicStatus();
     return {
         configured: s.configured,
-        imageGenerationEnabled: s.imageGenerationEnabled,
+        // True only when automatic images can actually run: toggle on and a
+        // Pexels key set. Otherwise the CMS asks for an uploaded image.
+        imageGenerationEnabled: s.imageGenerationEnabled && s.imageProvider.configured,
         textModel: s.textModel,
-        imageModel: s.imageModel
+        textFallbacks: s.textFallbacks,
+        imageProvider: s.imageProvider
     };
 };
 

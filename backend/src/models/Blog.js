@@ -34,7 +34,22 @@ const blogSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Content is required']
     },
-    featuredImage: imageSubDoc,
+    featuredImage: {
+        ...imageSubDoc,
+        // Set only for a free stock photo (Pexels), so the CMS can show the
+        // photographer credit. Absent on every other image — no default, so
+        // existing blogs are unchanged.
+        credit: {
+            type: new mongoose.Schema({
+                source: { type: String, enum: ['pexels'], required: true },
+                photoId: { type: String, maxlength: 40, default: '' },
+                photoUrl: { type: String, maxlength: 300, default: '' },
+                photographer: { type: String, maxlength: 120, default: '' },
+                photographerUrl: { type: String, maxlength: 300, default: '' }
+            }, { _id: false }),
+            default: undefined
+        }
+    },
     category: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'BlogCategory',

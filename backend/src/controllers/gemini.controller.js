@@ -6,6 +6,8 @@ const { sendSuccess } = require('../utils/response');
 const HTTP_STATUS = require('../constants/httpStatus');
 const env = require('../config/env');
 const asyncHandler = require('../utils/asyncHandler');
+const { AppError } = require('../middleware/errorHandler');
+const { deleteUploadedFile } = require('../services/upload.service');
 
 // ── API configuration (Super Admin) ────────────────────────────────────────────
 // Every response here is built by geminiConfig.publicStatus(), which carries
@@ -63,13 +65,46 @@ const generateBlog = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Blog generated', result);
 });
 
+// A free stock photo from Pexels for the blog (never a Gemini image model).
 const generateImage = asyncHandler(async (req, res) => {
-    const image = await geminiBlog.generateImage(
-        { title: req.body.title, summary: req.body.summary, imagePrompt: req.body.imagePrompt, rowKey: req.body.rowKey || undefined },
-        req.user._id
-    );
-    return sendSuccess(res, 'Featured image generated', { image });
+    const image = await geminiBlog.generateImage({
+        title: req.body.title,
+        summary: req.body.summary,
+        topic: req.body.topic,
+        imagePrompt: req.body.imagePrompt,
+        excludePhotoIds: req.body.excludePhotoIds || [],
+        rowKey: req.body.rowKey || undefined
+    }, req.user._id);
+    return sendSuccess(res, 'Featured image found', { image });
 });
+
+// Multipart sends the credit flattened (imageCredit.photographer, …) — keys
+// with a dot, which express-validator would read as nested paths, so the
+// credit is checked here. Only Pexels credits with pexels.com links are
+// accepted; anything else is refused rather than stored.
+const PEXELS_LINK = /^https:\/\/www\.pexels\.com\/[\x21-\x7E]{0,280}$/;
+const creditFrom = (body) => {
+    const pick = (k) => (typeof body[`imageCredit.${k}`] === 'string' ? body[`imageCredit.${k}`].trim() : '');
+    const source = pick('source');
+    if (!source) return null;
+    const credit = {
+        source,
+        photoId: pick('photoId'),
+        photoUrl: pick('photoUrl'),
+        photographer: pick('photographer'),
+        photographerUrl: pick('photographerUrl')
+    };
+    const errors = [];
+    if (source !== 'pexels') errors.push({ field: 'imageCredit.source', message: 'Image credit source must be pexels' });
+    if (credit.photoId && !/^\d{1,20}$/.test(credit.photoId)) errors.push({ field: 'imageCredit.photoId', message: 'Image credit photo id is invalid' });
+    if (!PEXELS_LINK.test(credit.photoUrl)) errors.push({ field: 'imageCredit.photoUrl', message: 'Image credit photo URL must be a pexels.com link' });
+    if (!PEXELS_LINK.test(credit.photographerUrl)) errors.push({ field: 'imageCredit.photographerUrl', message: 'Photographer URL must be a pexels.com link' });
+    if (!credit.photographer || credit.photographer.length > 120 || /[<>]/.test(credit.photographer)) {
+        errors.push({ field: 'imageCredit.photographer', message: 'Photographer name is missing or invalid' });
+    }
+    if (errors.length) throw new AppError('Validation failed', HTTP_STATUS.BAD_REQUEST, errors);
+    return credit;
+};
 
 // ── Excel monthly plan (Super Admin, Editor) ──────────────────────────────────
 // Planning only: nothing here calls Gemini or writes to the database, and the
@@ -99,10 +134,21 @@ const bulkValidate = asyncHandler(async (req, res) => {
 // CMS builds it the same way; the service forces the status to draft. A
 // repeated idempotency key answers 200 with the draft already saved.
 const saveDraft = asyncHandler(async (req, res) => {
-    const { idempotencyKey, planMonth: _month, ...body } = req.body;
+    const { idempotencyKey, planMonth: _month, ...rest } = req.body;
+    const body = Object.fromEntries(Object.entries(rest).filter(([k]) => !k.startsWith('imageCredit.')));
+    const files = collectFiles(req);
+    let imageCredit;
+    try {
+        imageCredit = creditFrom(req.body);
+    } catch (err) {
+        // The upload middleware has already stored the image; a refused
+        // request must not leave it behind.
+        await Promise.all(Object.values(files).filter((f) => f && f.fileName).map((f) => deleteUploadedFile(f.fileName)));
+        throw err;
+    }
     const { blog, duplicate } = await geminiBlog.saveDraft(
-        { ...normaliseBody(body), createDate: req.body.createDate },
-        collectFiles(req),
+        { ...normaliseBody(body), createDate: req.body.createDate, imageCredit },
+        files,
         { userId: req.user._id, idempotencyKey }
     );
     return duplicate

@@ -55,6 +55,10 @@ export const newRow = ({
   genWarnings: [],
   image: { status: 'idle', preview: '', error: '', key: 0 },
   file: null,
+  // Set when the featured image is a Pexels photo: shown as "Photo by …" and
+  // saved with the image.
+  imageCredit: null,
+  offeredPhotoIds: [],
   saveKey: null,
   savedBlog: null
 })
@@ -113,6 +117,7 @@ export const editPlan = (row, { date, topic, category, generateImage }) => ({
   errors: [],
   form: null,
   file: null,
+  imageCredit: null,
   saveKey: null,
   image: { status: 'idle', preview: '', error: '', key: row.image.key + 1 }
 })

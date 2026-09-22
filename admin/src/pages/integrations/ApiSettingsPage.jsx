@@ -211,16 +211,16 @@ const ApiSettingsPage = () => {
                   onChange={(e) => { setImageModel(e.target.value); setErrors((x) => ({ ...x, imageModel: '' })) }}
                   disabled={!imageEnabled}
                   error={!!errors.imageModel}
-                  helperText={errors.imageModel || `Default: ${config?.defaults?.imageModel || 'gemini-2.5-flash-image'}`}
+                  helperText={errors.imageModel || 'Not used: featured images come from Pexels (free), never a Gemini image model.'}
                 />
               </Stack>
 
               <FormControlLabel
                 control={<Switch checked={imageEnabled} onChange={(e) => setImageEnabled(e.target.checked)} />}
-                label="Generate featured images with Gemini"
+                label="Find featured images automatically (free, from Pexels)"
               />
               <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
-                When off, or when the image model cannot generate images, admins upload the featured image themselves.
+                When off, or when Pexels is not configured or finds nothing, admins upload the featured image themselves. No Gemini image model is used.
               </Typography>
 
               {testResult && (
@@ -269,9 +269,18 @@ const ApiSettingsPage = () => {
               </Typography>
             </StatusRow>
             <StatusRow label="Text model"><Typography variant="body2">{config?.textModel}</Typography></StatusRow>
+            <StatusRow label="Free fallbacks">
+              <Typography variant="body2" color={config?.textFallbacks?.length ? 'text.primary' : 'text.secondary'}>
+                {config?.textFallbacks?.length ? config.textFallbacks.join(', ') : 'None (GEMINI_FALLBACK_TEXT_MODELS)'}
+              </Typography>
+            </StatusRow>
             <StatusRow label="Featured images">
               <Typography variant="body2">
-                {config?.imageGenerationEnabled ? `Generated with ${config.imageModel}` : 'Uploaded manually'}
+                {!config?.imageGenerationEnabled
+                  ? 'Uploaded manually'
+                  : config?.imageProvider?.configured
+                    ? 'Found automatically on Pexels (free)'
+                    : 'Pexels not configured (PEXELS_API_KEY) — uploaded manually'}
               </Typography>
             </StatusRow>
             <Divider sx={{ my: 1 }} />

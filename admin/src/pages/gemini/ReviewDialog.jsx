@@ -56,8 +56,11 @@ const ReviewDialog = ({ queue, row, categories, onDelete, onClose, showToast }) 
           imageEnabled={imagesOn}
           // An uploaded file gets a local preview so the list and a reopened
           // review show it; it is still sent only when the draft is saved.
+          imageCredit={row.imageCredit}
+          // An uploaded image replaces the Pexels photo and its credit.
           onImageFile={(file) => queue.patch(row.id, (r) => ({
             file,
+            imageCredit: null,
             image: { ...r.image, preview: file ? URL.createObjectURL(file) : '', status: file ? 'uploaded' : 'idle', error: '' }
           }))}
           onGenerateImage={() => queue.generateImage(row.id)}

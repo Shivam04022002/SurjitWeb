@@ -125,16 +125,25 @@ export const useBlogQueue = ({ availability, showToast }) => {
     patch(id, (r) => ({ image: { ...r.image, status: 'generating', error: '' } }))
     try {
       const res = await geminiService.generateImage({
-        title: row.form.title, summary: row.form.summary, imagePrompt: row.imagePrompt, rowKey: row.id
+        title: row.form.title,
+        summary: row.form.summary,
+        topic: row.topic,
+        imagePrompt: row.imagePrompt,
+        // Photos already offered for this blog are skipped ("find another").
+        excludePhotoIds: row.offeredPhotoIds,
+        rowKey: row.id
       })
-      const { data, mimeType } = res.data.image
+      const { data, mimeType, credit } = res.data.image
       patch(id, (r) => ({
         file: base64ToFile(data, mimeType),
+        imageCredit: credit || null,
+        offeredPhotoIds: credit?.photoId ? [...new Set([...r.offeredPhotoIds, credit.photoId])] : r.offeredPhotoIds,
         image: { status: 'ready', preview: `data:${mimeType};base64,${data}`, error: '', key: r.image.key + 1 }
       }))
     } catch (err) {
-      patch(id, (r) => ({ image: { ...r.image, status: 'failed', error: errorMessage(err, 'The featured image could not be generated.') } }))
-      onRateLimit(err)
+      // Non-fatal: the blog stays generated and the admin can upload an image.
+      // An image-provider limit does not pause text generation for other rows.
+      patch(id, (r) => ({ image: { ...r.image, status: 'failed', error: errorMessage(err, 'No featured image could be found.') } }))
     }
   }, [patch])
 
@@ -162,6 +171,7 @@ export const useBlogQueue = ({ availability, showToast }) => {
         // A new version of the blog is a new save request.
         saveKey: newKey('save'),
         file: null,
+        imageCredit: null,
         image: {
           status: wantImage ? 'idle' : row.generateImage ? 'off' : 'skipped',
           preview: '', error: '', key: r.image.key + 1
@@ -212,7 +222,10 @@ export const useBlogQueue = ({ availability, showToast }) => {
     }
     patch(id, { status: 'saving', error: '' })
     try {
-      const res = await geminiService.saveDraft(buildDraftFormData(row.form, row.date, row.file, { idempotencyKey: row.saveKey }))
+      const res = await geminiService.saveDraft(buildDraftFormData(row.form, row.date, row.file, {
+        idempotencyKey: row.saveKey,
+        imageCredit: row.imageCredit
+      }))
       patch(id, { status: 'saved', savedBlog: res.data.blog, error: '' })
     } catch (err) {
       const fields = (err?.response?.data?.errors || []).map((e) => e.message)

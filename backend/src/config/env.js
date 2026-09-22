@@ -60,6 +60,18 @@ const env = {
     // long before the first retry and twice that before the second. Retries
     // share the GEMINI_TIMEOUT_MS budget.
     GEMINI_RETRY_BASE_MS: parseInt(process.env.GEMINI_RETRY_BASE_MS || '1000', 10),
+    // Free text models to fall back to, in order, when the API-page model is
+    // out of quota (429) or overloaded (500/503 after retries). Comma
+    // separated. Empty means no fallback. Never includes image/media models.
+    GEMINI_FALLBACK_TEXT_MODELS: process.env.GEMINI_FALLBACK_TEXT_MODELS || '',
+    // How long a model is skipped after a quota error when Google gives no
+    // retry delay, and after an overload that retries could not fix.
+    GEMINI_QUOTA_COOLDOWN_MS: parseInt(process.env.GEMINI_QUOTA_COOLDOWN_MS || '60000', 10),
+    GEMINI_OVERLOAD_COOLDOWN_MS: parseInt(process.env.GEMINI_OVERLOAD_COOLDOWN_MS || '30000', 10),
+
+    // Free featured images from Pexels (https://www.pexels.com/api/). When
+    // unset, automatic images are off and admins upload images themselves.
+    PEXELS_API_KEY: process.env.PEXELS_API_KEY || '',
     GEMINI_RATE_LIMIT_WINDOW_MS: parseInt(process.env.GEMINI_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
     GEMINI_RATE_LIMIT_MAX: parseInt(process.env.GEMINI_RATE_LIMIT_MAX || '40', 10),
     // Encrypts integration secrets at rest. Falls back to a key derived from

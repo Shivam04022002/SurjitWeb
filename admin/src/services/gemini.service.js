@@ -37,13 +37,19 @@ const getAvailability = async () => {
   return response.data
 }
 
-const generateBlog = async ({ topic, createDate }) => {
-  const response = await api.post(`${BASE}/blogs/generate`, { topic, createDate })
+// `category` (an active category id) and `rowKey` come from the generation
+// list: the row key lets two rows generate side by side, since the server
+// refuses a second request with the same key while the first is running.
+const generateBlog = async ({ topic, createDate, category, tags, seoKeywords, rowKey }) => {
+  const response = await api.post(`${BASE}/blogs/generate`, { topic, createDate, category, tags, seoKeywords, rowKey })
   return response.data
 }
 
-const generateImage = async ({ title, summary, imagePrompt }) => {
-  const response = await api.post(`${BASE}/blogs/image`, { title, summary, imagePrompt })
+// A free featured photo from Pexels, with its photographer credit. The
+// server never uses a Gemini image model. `excludePhotoIds` skips photos
+// already offered for this blog ("find another image").
+const generateImage = async ({ title, summary, topic, imagePrompt, excludePhotoIds, rowKey }) => {
+  const response = await api.post(`${BASE}/blogs/image`, { title, summary, topic, imagePrompt, excludePhotoIds, rowKey })
   return response.data
 }
 

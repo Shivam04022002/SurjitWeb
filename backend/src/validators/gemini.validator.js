@@ -1,6 +1,7 @@
 const { body } = require('express-validator');
 const { createBlogValidation } = require('./blog/blogs.validator');
 const { MODEL_RX } = require('../services/gemini/geminiClient');
+const { NOT_A_FREE_TEXT_MODEL } = require('../services/gemini/textModels');
 const zoned = require('../utils/zonedDate');
 
 // Google issues keys in more than one format: classic "AIza…" keys and the
@@ -26,7 +27,10 @@ const modelRule = (field) => body(field)
 
 const saveConfigValidation = [
     apiKeyRule(),
-    modelRule('textModel'),
+    // Blogs are written by a text model; an image, video or audio model is
+    // never accepted here (featured images come from Pexels, not Gemini).
+    modelRule('textModel')
+        .custom((v) => !v || !NOT_A_FREE_TEXT_MODEL.test(v)).withMessage('textModel must be a Gemini text model, not an image, audio or video model'),
     modelRule('imageModel'),
     body('imageGenerationEnabled').optional().isBoolean().withMessage('imageGenerationEnabled must be true or false').toBoolean()
 ];
@@ -78,6 +82,12 @@ const generateImageValidation = [
         .isLength({ max: 1000 }).withMessage('Summary must not exceed 1000 characters'),
     body('imagePrompt').optional().isString().trim()
         .isLength({ max: 1000 }).withMessage('Image description must not exceed 1000 characters'),
+    body('topic').optional().isString().trim()
+        .isLength({ max: 200 }).withMessage('Topic must not exceed 200 characters'),
+    // Photos already offered for this blog, so "find another" skips them.
+    body('excludePhotoIds').optional().isArray({ max: 50 }).withMessage('excludePhotoIds must be a short list')
+        .bail()
+        .custom((ids) => ids.every((id) => /^\d{1,20}$/.test(String(id)))).withMessage('excludePhotoIds must be Pexels photo ids'),
     clientKeyRule('rowKey')
 ];
 
