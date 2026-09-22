@@ -52,7 +52,8 @@ const env = {
     // and the CMS then shows it as managed by the server environment.
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
     GEMINI_TEXT_MODEL: process.env.GEMINI_TEXT_MODEL || 'gemini-3.6-flash',
-    GEMINI_IMAGE_MODEL: process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
+    // Featured images (paid: needs Gemini API billing). Nano Banana 2.
+    GEMINI_IMAGE_MODEL: process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
     // Kept under nginx's default 60s proxy timeout so a slow model surfaces as
     // a clear error rather than a gateway timeout.
     GEMINI_TIMEOUT_MS: parseInt(process.env.GEMINI_TIMEOUT_MS || '55000', 10),

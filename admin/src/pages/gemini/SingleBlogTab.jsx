@@ -180,7 +180,7 @@ const SingleBlogTab = ({ availability, categories, showToast }) => {
           <Box sx={{ mt: 2 }}>
             <LinearProgress />
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Generating… Gemini is writing the blog{withImage && imagesOn ? ', then a featured photo is found on Pexels' : ''}. This usually takes 20–60 seconds.
+              Generating… Gemini is writing the blog{withImage && imagesOn ? ', then an AI featured image is made for it (Nano Banana 2)' : ''}. This usually takes 30–90 seconds.
             </Typography>
           </Box>
         )}

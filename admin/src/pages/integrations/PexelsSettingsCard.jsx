@@ -116,9 +116,9 @@ const PexelsSettingsCard = ({ showToast, onChanged }) => {
         <Typography variant="subtitle1" fontWeight={600}>Pexels API</Typography>
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Pexels supplies free stock photos for automatic blog featured images, credited to the photographer.
+        Optional fallback: if the AI featured image cannot be generated, a free Pexels stock photo (credited to the photographer, with the Surjit Finance logo added) is used instead.
         Get a free key at <Link href="https://www.pexels.com/api/" target="_blank" rel="noopener noreferrer">pexels.com/api</Link>.
-        Without a key, admins upload featured images themselves.
+        Without a key, an AI image that fails simply means the admin uploads one.
       </Typography>
 
       {loadError && <Alert severity="error" sx={{ mb: 2 }}>{loadError}</Alert>}

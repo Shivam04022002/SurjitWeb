@@ -24,9 +24,9 @@ const ImageCell = ({ row, imagesOn }) => {
     return <Tooltip title="No image — add one in Review"><ImageOutlined color="disabled" fontSize="small" /></Tooltip>
   }
   if (row.generateImage === null) return <Typography variant="caption" color="error">{row.input.generateImage || '—'}</Typography>
-  if (!row.generateImage) return <Tooltip title="No featured image will be looked for"><Typography variant="caption" color="text.secondary">No</Typography></Tooltip>
+  if (!row.generateImage) return <Tooltip title="No featured image will be generated"><Typography variant="caption" color="text.secondary">No</Typography></Tooltip>
   return (
-    <Tooltip title={imagesOn ? 'A free featured image will be found on Pexels' : 'Automatic images are unavailable — upload one in Review'}>
+    <Tooltip title={imagesOn ? 'An AI featured image will be generated for this article (Nano Banana 2)' : 'Automatic images are unavailable — upload one in Review'}>
       <Typography variant="caption" color={imagesOn ? 'text.primary' : 'text.disabled'}>
         Yes{row.imageDefaulted ? ' (default)' : ''}
       </Typography>

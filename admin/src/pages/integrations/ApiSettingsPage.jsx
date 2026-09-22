@@ -47,6 +47,7 @@ const ApiSettingsPage = () => {
   const [textModel, setTextModel] = useState('')
   const [imageModel, setImageModel] = useState('')
   const [imageEnabled, setImageEnabled] = useState(true)
+  const [pexelsFallback, setPexelsFallback] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState(null)
@@ -65,6 +66,7 @@ const ApiSettingsPage = () => {
     setTextModel(c.textModel || '')
     setImageModel(c.imageModel || '')
     setImageEnabled(c.imageGenerationEnabled !== false)
+    setPexelsFallback(c.pexelsFallbackEnabled !== false)
     // Only a list saved here is editable; an environment list is shown in
     // the status panel, never copied into the field.
     setFallbackText(c.fallbackSource === 'saved' ? formatModelList(c.textFallbacks) : '')
@@ -91,7 +93,12 @@ const ApiSettingsPage = () => {
     setSaving(true)
     setErrors({})
     try {
-      const payload = { textModel: textModel.trim(), imageModel: imageModel.trim(), imageGenerationEnabled: imageEnabled }
+      const payload = {
+        textModel: textModel.trim(),
+        imageModel: imageModel.trim(),
+        imageGenerationEnabled: imageEnabled,
+        pexelsFallbackEnabled: pexelsFallback
+      }
       if (apiKey.trim()) payload.apiKey = apiKey.trim()
       const res = await geminiService.saveConfig(payload)
       applyConfig(res.data.config)
@@ -196,7 +203,7 @@ const ApiSettingsPage = () => {
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>API</Typography>
         <Typography variant="body2" color="text.secondary">
-          Connect Google Gemini to generate blog drafts under Gemini Blogs, and Pexels for free featured images
+          Connect Google Gemini to generate blog drafts and their featured images under Gemini Blogs, with Pexels as an optional image fallback
         </Typography>
       </Box>
 
@@ -260,7 +267,7 @@ const ApiSettingsPage = () => {
                   onChange={(e) => { setImageModel(e.target.value); setErrors((x) => ({ ...x, imageModel: '' })) }}
                   disabled={!imageEnabled}
                   error={!!errors.imageModel}
-                  helperText={errors.imageModel || 'Not used: featured images come from Pexels (free), never a Gemini image model.'}
+                  helperText={errors.imageModel || `Featured images only — separate from the text model. Default: ${config?.defaults?.imageModel || 'gemini-3.1-flash-image'} (Nano Banana 2).`}
                 />
               </Stack>
 
@@ -301,10 +308,18 @@ const ApiSettingsPage = () => {
 
               <FormControlLabel
                 control={<Switch checked={imageEnabled} onChange={(e) => setImageEnabled(e.target.checked)} />}
-                label="Find featured images automatically (free, from Pexels)"
+                label="Generate featured images automatically (AI — Nano Banana 2)"
               />
               <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
-                When off, or when Pexels is not configured or finds nothing, admins upload the featured image themselves. No Gemini image model is used.
+                Each blog gets an image made for its content, with the Surjit Finance logo added to the image. When off, admins upload the featured image themselves.
+              </Typography>
+              <Alert severity="info" sx={{ py: 0 }}>AI-generated featured images require Gemini API billing.</Alert>
+              <FormControlLabel
+                control={<Switch checked={pexelsFallback} onChange={(e) => setPexelsFallback(e.target.checked)} disabled={!imageEnabled} />}
+                label="Use a Pexels photo if AI image generation fails"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
+                Needs a Pexels key (below). The photo also gets the logo and is labelled as a Pexels image in Review. Manual upload is always available.
               </Typography>
 
               {testResult && (
@@ -364,12 +379,22 @@ const ApiSettingsPage = () => {
               ) : <Typography variant="body2" color="text.secondary">None</Typography>}
             </StatusRow>
             <StatusRow label="Featured images">
-              <Typography variant="body2">
-                {!config?.imageGenerationEnabled
-                  ? 'Uploaded manually'
-                  : config?.imageProvider?.configured
-                    ? 'Found automatically on Pexels (free)'
-                    : 'Pexels not configured — uploaded manually'}
+              {!config?.imageGenerationEnabled
+                ? <Typography variant="body2">Uploaded manually</Typography>
+                : (
+                  <Stack spacing={0.25}>
+                    <Typography variant="body2">AI Generated — {config?.imageProvider?.displayName || config?.imageModel}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{config?.imageModel}</Typography>
+                  </Stack>
+                )}
+            </StatusRow>
+            <StatusRow label="Pexels fallback">
+              <Typography variant="body2" color={config?.imageProvider?.pexelsFallback?.enabled ? 'text.primary' : 'text.secondary'}>
+                {!config?.imageGenerationEnabled || !config?.imageProvider?.pexelsFallback?.enabled
+                  ? 'Off'
+                  : config.imageProvider.pexelsFallback.configured
+                    ? 'On — used only if AI image generation fails'
+                    : 'On, but no Pexels key — upload if AI image generation fails'}
               </Typography>
             </StatusRow>
             <Divider sx={{ my: 1 }} />

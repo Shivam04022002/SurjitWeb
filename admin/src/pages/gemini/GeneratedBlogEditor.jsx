@@ -3,11 +3,11 @@ import {
   Box, Typography, TextField, Button, Grid, Paper, Stack, MenuItem, Alert,
   CircularProgress, Chip, Divider, FormHelperText
 } from '@mui/material'
-import { ImageOutlined } from '@mui/icons-material'
+import { ImageOutlined, AutoAwesome } from '@mui/icons-material'
 import { Link } from '@mui/material'
 import RichTextEditor from '../../components/RichTextEditor'
 import ImageUpload from '../../components/ImageUpload'
-import { SITE_URL, slugify, formatDay } from './geminiBlogUtils'
+import { SITE_URL, slugify, formatDay, imageSourceOf } from './geminiBlogUtils'
 
 // The editable preview of a generated blog, shared by the Single Blog and
 // Bulk Upload flows. Every field is editable; nothing here saves — the
@@ -33,9 +33,13 @@ const GeneratedBlogEditor = ({
   onImageFile,
   onGenerateImage,
   imageCredit = null,
+  imageMeta = null,
+  imageNotice = '',
   disabled = false,
   showToast
 }) => {
+  // Where the featured image came from; its logo is already in the pixels.
+  const source = imageSourceOf({ hasFile: hasImageFile, imageMeta })
   // The slug follows the title until the admin edits it by hand.
   const [slugTouched, setSlugTouched] = useState(false)
 
@@ -119,7 +123,7 @@ const GeneratedBlogEditor = ({
             {image.status === 'generating' && (
               <Stack alignItems="center" spacing={1} sx={{ py: 4, border: 1, borderColor: 'divider', borderRadius: 1, borderStyle: 'dashed' }}>
                 <CircularProgress size={28} />
-                <Typography variant="body2" color="text.secondary">Generating image…</Typography>
+                <Typography variant="body2" color="text.secondary">Generating an image for this article…</Typography>
               </Stack>
             )}
             {image.status !== 'generating' && (
@@ -131,6 +135,20 @@ const GeneratedBlogEditor = ({
                 onChange={onImageFile}
               />
             )}
+            {source && (
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                <Chip
+                  size="small"
+                  color={source.kind === 'gemini' ? 'primary' : 'default'}
+                  icon={source.kind === 'gemini' ? <AutoAwesome /> : undefined}
+                  label={source.label}
+                />
+                {source.detail && <Typography variant="caption" color="text.secondary">{source.detail}</Typography>}
+              </Stack>
+            )}
+            {imageNotice && source?.kind === 'pexels' && (
+              <Alert severity="info" sx={{ mt: 1 }}>{imageNotice}</Alert>
+            )}
             {imageCredit?.source === 'pexels' && hasImageFile && (
               <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
                 Photo by{' '}
@@ -141,7 +159,10 @@ const GeneratedBlogEditor = ({
             )}
             {image.status === 'ready' && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                A free Pexels photo, saved to the media store only when you save the draft.
+                {source?.kind === 'gemini'
+                  ? 'Made for this article, with the Surjit Finance logo already in the image.'
+                  : 'A Pexels photo, with the Surjit Finance logo already in the image.'}
+                {' '}Saved to the media store only when you save the draft.
               </Typography>
             )}
             {image.status === 'failed' && (
@@ -151,12 +172,12 @@ const GeneratedBlogEditor = ({
             )}
             {image.status === 'skipped' && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                No image was requested for this blog. Upload one above, or find one.
+                No image was requested for this blog. Upload one above, or generate one.
               </Typography>
             )}
             {image.status === 'off' && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                Automatic images are unavailable (turned off, or no Pexels key). Upload a featured image above.
+                Automatic featured images are turned off on the API page. Upload a featured image above.
               </Typography>
             )}
             {imageEnabled && image.status !== 'generating' && onGenerateImage && (
@@ -165,7 +186,7 @@ const GeneratedBlogEditor = ({
                 onClick={onGenerateImage}
                 disabled={disabled || !form.title.trim()}
               >
-                {image.status === 'ready' ? 'Find Another Image' : 'Find Image'}
+                {image.status === 'ready' ? 'Find Another Image' : 'Generate Image'}
               </Button>
             )}
             {!hasImageFile && image.status !== 'generating' && (

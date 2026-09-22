@@ -9,6 +9,7 @@ const env = require('../config/env');
 const asyncHandler = require('../utils/asyncHandler');
 const { AppError } = require('../middleware/errorHandler');
 const { deleteUploadedFile } = require('../services/upload.service');
+const { isUsableImageModel } = require('../services/gemini/imageModels');
 
 // ── API configuration (Super Admin) ────────────────────────────────────────────
 // Every response here is built by geminiConfig.publicStatus(), which carries
@@ -24,7 +25,8 @@ const saveConfig = asyncHandler(async (req, res) => {
         apiKey: req.body.apiKey || undefined,
         textModel: req.body.textModel,
         imageModel: req.body.imageModel,
-        imageGenerationEnabled: req.body.imageGenerationEnabled
+        imageGenerationEnabled: req.body.imageGenerationEnabled,
+        pexelsFallbackEnabled: req.body.pexelsFallbackEnabled
     }, req.user._id);
     return sendSuccess(res, 'Gemini configuration saved', { config });
 });
@@ -106,12 +108,17 @@ const generateBlog = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Blog generated', result);
 });
 
-// A free stock photo from Pexels for the blog (never a Gemini image model).
+// An AI featured image made for this article, with the Surjit Finance logo
+// (or, when that fails and it is allowed, a branded Pexels photo).
 const generateImage = asyncHandler(async (req, res) => {
     const image = await geminiBlog.generateImage({
         title: req.body.title,
         summary: req.body.summary,
         topic: req.body.topic,
+        content: req.body.content,
+        category: req.body.category || undefined,
+        tags: req.body.tags || [],
+        variation: req.body.variation || 0,
         imagePrompt: req.body.imagePrompt,
         excludePhotoIds: req.body.excludePhotoIds || [],
         rowKey: req.body.rowKey || undefined
@@ -147,6 +154,22 @@ const creditFrom = (body) => {
     return credit;
 };
 
+// Where the featured image came from (imageMeta.provider, ...), flattened the
+// same way. Only the two automatic providers; a manual upload sends none.
+const metaFrom = (body) => {
+    const pick = (k) => (typeof body[`imageMeta.${k}`] === 'string' ? body[`imageMeta.${k}`].trim() : '');
+    const provider = pick('provider');
+    if (!provider) return null;
+    const errors = [];
+    if (!['gemini', 'pexels'].includes(provider)) errors.push({ field: 'imageMeta.provider', message: 'Image provider must be gemini or pexels' });
+    const model = pick('model');
+    if (provider === 'gemini' && !isUsableImageModel(model)) errors.push({ field: 'imageMeta.model', message: 'Image model must be a current Gemini image model' });
+    const branded = pick('branded');
+    if (branded && !['true', 'false'].includes(branded)) errors.push({ field: 'imageMeta.branded', message: 'branded must be true or false' });
+    if (errors.length) throw new AppError('Validation failed', HTTP_STATUS.BAD_REQUEST, errors);
+    return { provider, ...(provider === 'gemini' ? { model } : {}), ...(branded ? { branded: branded === 'true' } : {}) };
+};
+
 // ── Excel monthly plan (Super Admin, Editor) ──────────────────────────────────
 // Planning only: nothing here calls Gemini or writes to the database, and the
 // uploaded workbook is read from memory and discarded.
@@ -176,11 +199,13 @@ const bulkValidate = asyncHandler(async (req, res) => {
 // repeated idempotency key answers 200 with the draft already saved.
 const saveDraft = asyncHandler(async (req, res) => {
     const { idempotencyKey, planMonth: _month, ...rest } = req.body;
-    const body = Object.fromEntries(Object.entries(rest).filter(([k]) => !k.startsWith('imageCredit.')));
+    const body = Object.fromEntries(Object.entries(rest).filter(([k]) => !k.startsWith('imageCredit.') && !k.startsWith('imageMeta.')));
     const files = collectFiles(req);
     let imageCredit;
+    let imageMeta;
     try {
         imageCredit = creditFrom(req.body);
+        imageMeta = metaFrom(req.body);
     } catch (err) {
         // The upload middleware has already stored the image; a refused
         // request must not leave it behind.
@@ -188,7 +213,7 @@ const saveDraft = asyncHandler(async (req, res) => {
         throw err;
     }
     const { blog, duplicate } = await geminiBlog.saveDraft(
-        { ...normaliseBody(body), createDate: req.body.createDate, imageCredit },
+        { ...normaliseBody(body), createDate: req.body.createDate, imageCredit, imageMeta },
         files,
         { userId: req.user._id, idempotencyKey }
     );

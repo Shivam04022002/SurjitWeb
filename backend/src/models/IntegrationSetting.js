@@ -32,6 +32,9 @@ const integrationSettingSchema = new mongoose.Schema({
     textModel: { type: String, trim: true, default: '', maxlength: 100 },
     imageModel: { type: String, trim: true, default: '', maxlength: 100 },
     imageGenerationEnabled: { type: Boolean, default: true },
+    // Gemini: when AI image generation fails, use a Pexels photo (with the
+    // logo) if a Pexels key is set. Unset means on.
+    pexelsFallbackEnabled: { type: Boolean, default: undefined },
     // Gemini: free text models tried after textModel on quota or overload
     // errors. Unset (no default) means none saved here, so the server
     // environment's GEMINI_FALLBACK_TEXT_MODELS applies.

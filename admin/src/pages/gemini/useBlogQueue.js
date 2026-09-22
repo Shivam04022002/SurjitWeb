@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { geminiService } from '../../services/gemini.service'
 import {
-  errorMessage, base64ToFile, formFromGenerated, validateBlogForm, buildDraftFormData, newKey
+  errorMessage, base64ToFile, formFromGenerated, validateBlogForm, buildDraftFormData, newKey, splitList
 } from './geminiBlogUtils'
 import { PLAN_STAGE, planInputs, applyValidation, dedupeSlugs, hasUnsaved, editPlan } from './blogQueueModel'
 
@@ -124,26 +124,38 @@ export const useBlogQueue = ({ availability, showToast }) => {
     if (!row?.form || row.image.status === 'generating') return
     patch(id, (r) => ({ image: { ...r.image, status: 'generating', error: '' } }))
     try {
+      // The article itself goes along, so the image is made for this blog.
       const res = await geminiService.generateImage({
         title: row.form.title,
         summary: row.form.summary,
         topic: row.topic,
+        content: row.form.content,
+        category: row.category?.name,
+        tags: splitList(row.form.tags).slice(0, 20),
         imagePrompt: row.imagePrompt,
-        // Photos already offered for this blog are skipped ("find another").
+        // Each attempt asks for a different composition ("find another").
+        variation: row.imageAttempts,
+        // Pexels photos already offered for this blog are skipped.
         excludePhotoIds: row.offeredPhotoIds,
         rowKey: row.id
       })
-      const { data, mimeType, credit } = res.data.image
+      const { data, mimeType, credit, provider, model, modelName, branded, notice } = res.data.image
       patch(id, (r) => ({
         file: base64ToFile(data, mimeType),
-        imageCredit: credit || null,
+        imageCredit: provider === 'pexels' ? credit || null : null,
+        imageMeta: { provider, model, modelName, branded },
+        imageNotice: notice || '',
+        imageAttempts: r.imageAttempts + 1,
         offeredPhotoIds: credit?.photoId ? [...new Set([...r.offeredPhotoIds, credit.photoId])] : r.offeredPhotoIds,
         image: { status: 'ready', preview: `data:${mimeType};base64,${data}`, error: '', key: r.image.key + 1 }
       }))
     } catch (err) {
       // Non-fatal: the blog stays generated and the admin can upload an image.
       // An image-provider limit does not pause text generation for other rows.
-      patch(id, (r) => ({ image: { ...r.image, status: 'failed', error: errorMessage(err, 'No featured image could be found.') } }))
+      patch(id, (r) => ({
+        imageAttempts: r.imageAttempts + 1,
+        image: { ...r.image, status: 'failed', error: errorMessage(err, 'No featured image could be created.') }
+      }))
     }
   }, [patch])
 
@@ -172,6 +184,9 @@ export const useBlogQueue = ({ availability, showToast }) => {
         saveKey: newKey('save'),
         file: null,
         imageCredit: null,
+        imageMeta: null,
+        imageNotice: '',
+        imageAttempts: 0,
         image: {
           status: wantImage ? 'idle' : row.generateImage ? 'off' : 'skipped',
           preview: '', error: '', key: r.image.key + 1
@@ -224,7 +239,8 @@ export const useBlogQueue = ({ availability, showToast }) => {
     try {
       const res = await geminiService.saveDraft(buildDraftFormData(row.form, row.date, row.file, {
         idempotencyKey: row.saveKey,
-        imageCredit: row.imageCredit
+        imageCredit: row.imageCredit,
+        imageMeta: row.imageMeta
       }))
       patch(id, { status: 'saved', savedBlog: res.data.blog, error: '' })
     } catch (err) {

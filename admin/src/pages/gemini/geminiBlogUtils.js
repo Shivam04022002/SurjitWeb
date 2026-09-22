@@ -85,8 +85,16 @@ export const buildDraftFormData = (form, createDate, featuredFile, extras = {}) 
   if (extras.idempotencyKey) fd.append('idempotencyKey', extras.idempotencyKey)
   if (featuredFile) {
     fd.append('featuredImage', featuredFile)
+    // Where the image came from (AI or Pexels) is saved with it; a manual
+    // upload sends nothing.
+    const m = extras.imageMeta
+    if (m?.provider === 'gemini' || m?.provider === 'pexels') {
+      fd.append('imageMeta.provider', m.provider)
+      if (m.provider === 'gemini' && m.model) fd.append('imageMeta.model', m.model)
+      if (typeof m.branded === 'boolean') fd.append('imageMeta.branded', String(m.branded))
+    }
     // The photographer credit travels with the Pexels photo it belongs to.
-    const c = extras.imageCredit
+    const c = m?.provider === 'gemini' ? null : extras.imageCredit
     if (c?.source === 'pexels') {
       fd.append('imageCredit.source', 'pexels')
       fd.append('imageCredit.photoId', c.photoId || '')
@@ -96,4 +104,16 @@ export const buildDraftFormData = (form, createDate, featuredFile, extras = {}) 
     }
   }
   return fd
+}
+
+// What the Review screen says about the featured image: an AI image made for
+// the article, a Pexels photo (the fallback), or the admin's own upload.
+// The logo is already inside AI and Pexels images; nothing is overlaid.
+export const imageSourceOf = ({ hasFile, imageMeta }) => {
+  if (!hasFile) return null
+  if (imageMeta?.provider === 'gemini') {
+    return { kind: 'gemini', label: 'AI Generated', detail: imageMeta.modelName || imageMeta.model || '' }
+  }
+  if (imageMeta?.provider === 'pexels') return { kind: 'pexels', label: 'Featured image from Pexels', detail: '' }
+  return { kind: 'upload', label: 'Manual upload', detail: '' }
 }

@@ -87,11 +87,16 @@ const generateBlog = async ({ topic, createDate, category, tags, seoKeywords, ro
   return response.data
 }
 
-// A free featured photo from Pexels, with its photographer credit. The
-// server never uses a Gemini image model. `excludePhotoIds` skips photos
-// already offered for this blog ("find another image").
-const generateImage = async ({ title, summary, topic, imagePrompt, excludePhotoIds, rowKey }) => {
-  const response = await api.post(`${BASE}/blogs/image`, { title, summary, topic, imagePrompt, excludePhotoIds, rowKey })
+// A featured image made by the Gemini image model (Nano Banana 2) for this
+// article, returned with the Surjit Finance logo already in it — or, if that
+// fails and the API page allows it, a branded Pexels photo with its credit.
+// `content`, `category` and `tags` describe the article; `variation` asks for
+// a different composition ("find another image"); `excludePhotoIds` skips
+// Pexels photos already offered.
+const generateImage = async ({ title, summary, topic, content, category, tags, imagePrompt, variation, excludePhotoIds, rowKey }) => {
+  const response = await api.post(`${BASE}/blogs/image`, {
+    title, summary, topic, content, category, tags, imagePrompt, variation, excludePhotoIds, rowKey
+  })
   return response.data
 }
 

@@ -36,6 +36,12 @@ const blogSchema = new mongoose.Schema({
     },
     featuredImage: {
         ...imageSubDoc,
+        // Where a Gemini Blogs image came from. All optional with no default,
+        // so existing blogs and manual uploads are unchanged.
+        provider: { type: String, enum: ['gemini', 'pexels'], default: undefined },
+        model: { type: String, maxlength: 100, default: undefined },
+        generatedFor: { type: String, enum: ['article'], default: undefined },
+        branded: { type: Boolean, default: undefined },
         // Set only for a free stock photo (Pexels), so the CMS can show the
         // photographer credit. Absent on every other image — no default, so
         // existing blogs are unchanged.

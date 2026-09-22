@@ -58,6 +58,13 @@ export const newRow = ({
   // Set when the featured image is a Pexels photo: shown as "Photo by …" and
   // saved with the image.
   imageCredit: null,
+  // Where an automatic image came from ({ provider, model, modelName,
+  // branded }); null for a manual upload. Saved with the image.
+  imageMeta: null,
+  // Why a Pexels photo was used instead of an AI image, for Review.
+  imageNotice: '',
+  // Images made so far for this version, so "find another" varies the next.
+  imageAttempts: 0,
   offeredPhotoIds: [],
   saveKey: null,
   savedBlog: null
@@ -118,6 +125,9 @@ export const editPlan = (row, { date, topic, category, generateImage }) => ({
   form: null,
   file: null,
   imageCredit: null,
+  imageMeta: null,
+  imageNotice: '',
+  imageAttempts: 0,
   saveKey: null,
   image: { status: 'idle', preview: '', error: '', key: row.image.key + 1 }
 })

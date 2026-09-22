@@ -2,6 +2,7 @@ const { body } = require('express-validator');
 const { createBlogValidation } = require('./blog/blogs.validator');
 const { MODEL_RX } = require('../services/gemini/geminiClient');
 const { NOT_A_FREE_TEXT_MODEL } = require('../services/gemini/textModels');
+const { isUsableImageModel } = require('../services/gemini/imageModels');
 const zoned = require('../utils/zonedDate');
 
 // Google issues keys in more than one format: classic "AIza…" keys and the
@@ -31,8 +32,12 @@ const saveConfigValidation = [
     // never accepted here (featured images come from Pexels, not Gemini).
     modelRule('textModel')
         .custom((v) => !v || !NOT_A_FREE_TEXT_MODEL.test(v)).withMessage('textModel must be a Gemini text model, not an image, audio or video model'),
-    modelRule('imageModel'),
-    body('imageGenerationEnabled').optional().isBoolean().withMessage('imageGenerationEnabled must be true or false').toBoolean()
+    // Featured images: a current Gemini image model only (gemini-2.x image
+    // models and text models are refused). Empty means the default.
+    modelRule('imageModel')
+        .custom((v) => !v || isUsableImageModel(v)).withMessage('imageModel must be a current Gemini image model, such as gemini-3.1-flash-image'),
+    body('imageGenerationEnabled').optional().isBoolean().withMessage('imageGenerationEnabled must be true or false').toBoolean(),
+    body('pexelsFallbackEnabled').optional().isBoolean().withMessage('pexelsFallbackEnabled must be true or false').toBoolean()
 ];
 
 const testConnectionValidation = [apiKeyRule()];
@@ -99,6 +104,16 @@ const generateImageValidation = [
         .isLength({ max: 1000 }).withMessage('Image description must not exceed 1000 characters'),
     body('topic').optional().isString().trim()
         .isLength({ max: 200 }).withMessage('Topic must not exceed 200 characters'),
+    // The article itself, so the AI image shows what it is about.
+    body('content').optional().isString()
+        .isLength({ max: 300000 }).withMessage('Content is too long'),
+    body('category').optional({ values: 'null' }).isString().trim()
+        .isLength({ max: 100 }).withMessage('Category must not exceed 100 characters'),
+    body('tags').optional().isArray({ max: 20 }).withMessage('tags must be a short list')
+        .bail()
+        .custom((tags) => tags.every((t) => typeof t === 'string' && t.length <= 60)).withMessage('Each tag must be short text'),
+    // "Find another image": which attempt this is, for a different composition.
+    body('variation').optional().isInt({ min: 0, max: 100 }).withMessage('variation must be a small number').toInt(),
     // Photos already offered for this blog, so "find another" skips them.
     body('excludePhotoIds').optional().isArray({ max: 50 }).withMessage('excludePhotoIds must be a short list')
         .bail()

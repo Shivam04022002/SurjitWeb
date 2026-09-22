@@ -274,7 +274,36 @@ const generateJson = async (apiKey, model, { prompt, schema, temperature = 0.7, 
     }
 };
 
-// There is deliberately no image generation here: Gemini image models are
-// paid on this account, and featured images come from Pexels instead.
+// One featured image from a Gemini image model (Nano Banana 2 by default).
+// Paid: it needs Gemini API billing. Same key, header and error handling as
+// text; 500/503 are retried inside the budget like any call, but there is no
+// model fallback for images. Returns the image part Gemini produced — thought
+// (draft) images and text parts are skipped.
+const IMAGE_DECLINED = new Set(['SAFETY', 'IMAGE_SAFETY', 'PROHIBITED_CONTENT', 'IMAGE_PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII']);
 
-module.exports = { getModel, probeGeneration, generateJson, scrub, BASE_URL, MODEL_RX, MAX_RETRIES };
+const generateImage = async (apiKey, model, { prompt, timeoutMs }) => {
+    const json = await generateContent(apiKey, model, {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+            responseModalities: ['IMAGE'],
+            imageConfig: { aspectRatio: '16:9', imageSize: '1K' }
+        }
+    }, { timeoutMs });
+
+    if (json?.promptFeedback?.blockReason) {
+        throw new AppError('Gemini declined to create an image for this article under its safety policy. Try another image, or upload one.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
+    }
+    const candidate = json?.candidates?.[0];
+    if (candidate && IMAGE_DECLINED.has(candidate.finishReason)) {
+        throw new AppError('Gemini declined to create an image for this article under its safety policy. Try another image, or upload one.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
+    }
+    const part = (candidate?.content?.parts || [])
+        .filter((p) => !p.thought && p.inlineData?.data && /^image\//i.test(p.inlineData.mimeType || 'image/png'))
+        .pop();
+    if (!part) {
+        throw new AppError(`The Gemini image model "${model}" returned no image. Try again, or upload an image.`, HTTP_STATUS.BAD_GATEWAY);
+    }
+    return { mimeType: String(part.inlineData.mimeType || 'image/png').toLowerCase(), data: part.inlineData.data };
+};
+
+module.exports = { getModel, probeGeneration, generateJson, generateImage, scrub, BASE_URL, MODEL_RX, MAX_RETRIES };
