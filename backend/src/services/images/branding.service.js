@@ -11,7 +11,8 @@ const HTTP_STATUS = require('../../constants/httpStatus');
 // kept byte-for-byte in backend/src/assets/brand so the server never depends
 // on the frontend build. It is composited as-is — never redrawn, recoloured
 // or distorted — with its transparency, scaled to about 14% of the image
-// width, bottom-right, 4.5–5.5% in from the edges. The logo is dark, so over
+// width, top-right, the same small margin (3.5% of the width) from the top
+// and right edges. The logo is dark, so over
 // a dark or busy area it gets a soft white backing plate (the logo itself is
 // untouched).
 //
@@ -26,8 +27,8 @@ const MIN_HEIGHT = 300;
 const MAX_SIDE = 8192;
 const MIN_LANDSCAPE = 1.25;         // narrower images are centre-cropped to 16:9
 const LOGO_WIDTH_SHARE = 0.14;
-const PAD_X_SHARE = 0.045;
-const PAD_Y_SHARE = 0.055;
+// One margin, in pixels, for both the top and the right edge.
+const MARGIN_SHARE = 0.035;
 const PLATE_ALPHA = 0.88;
 const JPEG_QUALITY = 92;
 
@@ -221,17 +222,14 @@ const drawLogo = (img, mark, x, y) => {
     }
 };
 
-// Where the logo goes on an image of this size.
-const placement = (width, height) => {
+// Where the logo goes on an image this wide: top-right, the same margin from
+// the top and the right edge.
+const placement = (width) => {
     const l = logo();
     const w = Math.round(width * LOGO_WIDTH_SHARE);
     const h = Math.max(1, Math.round(w * l.height / l.width));
-    return {
-        width: w,
-        height: h,
-        x: width - Math.round(width * PAD_X_SHARE) - w,
-        y: height - Math.round(height * PAD_Y_SHARE) - h
-    };
+    const margin = Math.round(width * MARGIN_SHARE);
+    return { width: w, height: h, x: width - margin - w, y: margin };
 };
 
 // buffer (PNG or JPEG) → { buffer, mimeType: 'image/jpeg', width, height, logo }
@@ -260,4 +258,4 @@ const brandImage = (input, options = {}) => {
     };
 };
 
-module.exports = { brandImage, decode, placement, sniff, LOGO_PATH, OUTPUT_MAX_WIDTH, LOGO_WIDTH_SHARE };
+module.exports = { brandImage, decode, placement, sniff, LOGO_PATH, OUTPUT_MAX_WIDTH, LOGO_WIDTH_SHARE, MARGIN_SHARE };

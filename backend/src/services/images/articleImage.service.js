@@ -78,7 +78,7 @@ const buildImagePrompt = ({ title, topic, excerpt, content, category, keywords =
         ...facts,
         'ARTICLE>>>',
         'Subject: show the concrete things this article is about — the documents, processes, objects, places and activities it discusses — in a realistic Indian setting, so a reader recognises the topic at a glance.',
-        `Composition: ${COMPOSITIONS[n % COMPOSITIONS.length]}. Landscape 16:9, one clear focal subject, strong visual hierarchy, uncluttered background. Keep the bottom-right corner calm and free of important detail.`,
+        `Composition: ${COMPOSITIONS[n % COMPOSITIONS.length]}. Landscape 16:9, one clear focal subject, strong visual hierarchy, uncluttered background. Keep the top-right corner calm and free of important detail.`,
         n > 0 ? `This is alternative version ${n + 1}: use a clearly different composition, viewpoint and arrangement from earlier versions.` : '',
         'Style: professional financial-services editorial image — a realistic photograph or premium editorial illustration, clean corporate look, natural light, trustworthy and optimistic mood, suitable for a finance company website.',
         'People: do not make a portrait of a person the subject. Include people only when the article is about an activity they do, and then show them naturally engaged in it (hands at work, over-the-shoulder), not posing for the camera. No unrelated people or scenes.',
