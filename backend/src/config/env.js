@@ -78,6 +78,11 @@ const env = {
     PEXELS_API_KEY: process.env.PEXELS_API_KEY || '',
     GEMINI_RATE_LIMIT_WINDOW_MS: parseInt(process.env.GEMINI_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
     GEMINI_RATE_LIMIT_MAX: parseInt(process.env.GEMINI_RATE_LIMIT_MAX || '40', 10),
+    // Website analytics location: a local MaxMind GeoLite2 City database.
+    // Unset (or a missing file) simply means visits are recorded without a
+    // location. No visitor IP is ever stored or sent anywhere.
+    GEOIP_CITY_DB_PATH: process.env.GEOIP_CITY_DB_PATH || '',
+
     // Encrypts integration secrets at rest. Falls back to a key derived from
     // JWT_ACCESS_SECRET, so rotating that secret without setting this one
     // means stored integration keys must be re-entered.

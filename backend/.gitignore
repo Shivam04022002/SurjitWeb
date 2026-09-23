@@ -12,3 +12,6 @@ src/uploads/*
 !src/uploads/.gitkeep
 src/uploads/**/*
 !src/uploads/**/.gitkeep
+
+# GeoLite2 databases are licensed downloads, never committed (see .env.example)
+*.mmdb

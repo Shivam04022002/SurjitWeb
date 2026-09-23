@@ -3,6 +3,7 @@ const WebsiteEvent = require('../models/WebsiteEvent');
 const env = require('../config/env');
 const { EVENT_ACTIONS, CONTACT_ACTIONS } = require('../constants/analyticsEvents');
 const zoned = require('../utils/zonedDate');
+const geoip = require('./geoip.service');
 
 // Admin-selectable windows. Presets are an allowlist; a custom window is two
 // validated calendar days (see analytics.validator), capped in span, so a
@@ -17,6 +18,7 @@ const RANGES = {
 
 const MAX_CUSTOM_DAYS = 366;
 const TOP_PAGES_LIMIT = 10;
+const TOP_CITIES_LIMIT = 10;
 const RECENT_ACTIVITY_LIMIT = 15;
 
 const SOURCES = {
@@ -119,7 +121,7 @@ const topPagesPipeline = (match, skip, limit) => [
 // are dropped — they began in an earlier window and were counted there.
 const sessionsPipeline = (start, end) => [
     { $match: { viewedAt: { $gte: start, $lt: end } } },
-    { $project: { _id: 0, sessionId: 1, at: '$viewedAt', view: { $literal: 1 }, referrer: 1, deviceType: 1 } },
+    { $project: { _id: 0, sessionId: 1, at: '$viewedAt', view: { $literal: 1 }, referrer: 1, deviceType: 1, city: 1 } },
     {
         $unionWith: {
             coll: WebsiteEvent.collection.name,
@@ -140,7 +142,11 @@ const sessionsPipeline = (start, end) => [
             firstAt: { $min: '$at' },
             lastAt: { $max: '$at' },
             referrer: { $first: '$referrer' },
-            deviceType: { $first: '$deviceType' }
+            deviceType: { $first: '$deviceType' },
+            // The city of the session's first page view: visits recorded
+            // before location lookup existed, and addresses that cannot be
+            // placed, have none.
+            city: { $first: '$city' }
         }
     },
     { $match: { views: { $gt: 0 } } },
@@ -163,6 +169,11 @@ const sessionsPipeline = (start, end) => [
             ],
             byDevice: [
                 { $group: { _id: { $ifNull: ['$deviceType', 'unknown'] }, visitors: { $sum: 1 } } }
+            ],
+            byCity: [
+                { $match: { city: { $nin: [null, ''] } } },
+                { $group: { _id: '$city', visitors: { $sum: 1 } } },
+                { $sort: { visitors: -1, _id: 1 } }
             ]
         }
     }
@@ -224,6 +235,13 @@ const getOverview = async (params) => {
         if (bucket) bucket[classifySource(row._id.referrer)] += row.visitors;
     }
 
+    // ── Traffic by City ── visitors are distinct sessions, exactly as for
+    // devices. Sessions whose first page view carries no city (everything
+    // recorded before location lookup, and addresses that cannot be placed)
+    // are counted as unknown rather than guessed at.
+    const cityRows = facets.byCity || [];
+    const knownVisitors = cityRows.reduce((n, c) => n + c.visitors, 0);
+
     const deviceCounts = new Map((facets.byDevice || []).map((d) => [d._id, d.visitors]));
     const devices = Object.entries(DEVICES)
         .map(([key, label]) => ({ key, label, visitors: deviceCounts.get(key) || 0 }))
@@ -278,9 +296,17 @@ const getOverview = async (params) => {
         devices,
         actions,
         recentActivity,
-        // No location is collected (no IP is stored), so there is nothing to
-        // report here. Stated explicitly so the dashboard can say so.
-        location: { available: false }
+        // Coarse location only, and only for visits recorded since location
+        // lookup was configured. No address is stored or returned, ever.
+        location: {
+            available: knownVisitors > 0,
+            enabled: (await geoip.status()).available,
+            cities: cityRows.slice(0, TOP_CITIES_LIMIT).map((c) => ({ city: c._id, visitors: c.visitors })),
+            totalCities: cityRows.length,
+            knownVisitors,
+            unknownVisitors: Math.max(0, totals.sessions - knownVisitors),
+            visitors: totals.sessions
+        }
     };
 };
 
@@ -302,14 +328,18 @@ const getPages = async ({ page = 1, limit = 25, ...rangeParams }) => {
     };
 };
 
-// Public write path. Only these four values are taken from the request; the
-// timestamp is the server's, never the client's.
-const recordPageView = async ({ sessionId, path, referrer, deviceType, sessionStartedAt }) => {
+// Public write path. Only these values are taken from the request; the
+// timestamp is the server's, never the client's. `location` is the coarse
+// place the controller resolved (never an address), or nothing at all.
+const recordPageView = async ({ sessionId, path, referrer, deviceType, sessionStartedAt, location }) => {
     await WebsiteVisit.create({
         sessionId,
         path,
         referrer: referrer || '',
         deviceType: deviceType || 'unknown',
+        country: location?.country || null,
+        region: location?.region || null,
+        city: location?.city || null,
         sessionStartedAt: sessionStartedAt || new Date(),
         viewedAt: new Date()
     });

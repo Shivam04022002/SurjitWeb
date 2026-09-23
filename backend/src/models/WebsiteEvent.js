@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { EVENT_ACTION_KEYS } = require('../constants/analyticsEvents');
+const { RETENTION_SECONDS } = require('./WebsiteVisit');
 
 // One document per tracked user action (a CTA, phone, email or content click)
 // on the public website. The companion of WebsiteVisit, and just as anonymous:
@@ -38,8 +39,14 @@ const websiteEventSchema = new mongoose.Schema({
     timestamps: false
 });
 
-websiteEventSchema.index({ occurredAt: -1 });
+// Range queries, and the same 12-month expiry as page views: MongoDB removes
+// each event a year after it happened. The application deletes nothing.
+websiteEventSchema.index(
+    { occurredAt: 1 },
+    { expireAfterSeconds: RETENTION_SECONDS, name: 'occurredAt_ttl' }
+);
 websiteEventSchema.index({ action: 1, occurredAt: -1 });
 websiteEventSchema.index({ sessionId: 1, occurredAt: -1 });
 
 module.exports = mongoose.model('WebsiteEvent', websiteEventSchema);
+module.exports.RETENTION_SECONDS = RETENTION_SECONDS;

@@ -538,13 +538,41 @@ const AnalyticsPage = () => {
               />
             </Section>
 
-            <Section title="Traffic by City">
-              <Empty icon={LocationOff}>
-                Location analytics are not available yet.
-                <Typography component="span" variant="caption" sx={{ display: 'block', mt: 0.5 }}>
-                  Visitor IP addresses are not stored, so no location is recorded.
-                </Typography>
-              </Empty>
+            <Section
+              title="Traffic by City"
+              subtitle={data.location.available
+                ? `${nf.format(data.location.knownVisitors)} of ${nf.format(data.location.visitors)} visitors have a known city`
+                : 'Visitors by city'}
+            >
+              {data.location.available ? (
+                <>
+                  <BarList
+                    items={data.location.cities.map((c) => ({ key: c.city, label: c.city, value: c.visitors }))}
+                  />
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+                    {nf.format(data.location.unknownVisitors)} visitors have an unknown location
+                    {data.location.totalCities > data.location.cities.length
+                      && ` · showing the top ${data.location.cities.length} of ${nf.format(data.location.totalCities)} cities`}
+                  </Typography>
+                  {/* Required by the GeoLite2 licence wherever its data is shown. */}
+                  <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
+                    City data from{' '}
+                    <Link href="https://www.maxmind.com" target="_blank" rel="noopener noreferrer" underline="hover" color="inherit">
+                      GeoLite2 by MaxMind
+                    </Link>
+                    . Approximate, and never derived from a stored address.
+                  </Typography>
+                </>
+              ) : (
+                <Empty icon={LocationOff}>
+                  No city data available yet.
+                  <Typography component="span" variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                    {data.location.enabled
+                      ? 'Location is recorded for new visits only; earlier visits have none.'
+                      : 'Location data will appear for new visits once location tracking is set up on the server.'}
+                  </Typography>
+                </Empty>
+              )}
             </Section>
 
             <Section title="Recent Activity" subtitle="Latest anonymous page views and clicks">
