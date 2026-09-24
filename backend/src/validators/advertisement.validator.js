@@ -36,6 +36,15 @@ const sharedRules = (required) => {
         // stored address always comes from the upload middleware.
         body('imageUrl').not().exists()
             .withMessage('Upload the image file; an image URL cannot be set directly'),
+
+        // An `image` that reaches the parsed body was not sent as a file: the
+        // request was JSON, or the field carried something other than an
+        // upload. Multer moves a real file to req.file and leaves nothing
+        // here, so this can only be a caller that thinks it attached an image
+        // when it did not — refused, rather than saved as a success with no
+        // artwork.
+        body('image').not().exists()
+            .withMessage('Send the image as a file upload (multipart/form-data), not as a field'),
         body('imageFileName').not().exists()
             .withMessage('The image file name is set by the upload'),
 

@@ -613,6 +613,49 @@ describe('Advertisement image upload', () => {
         assert.doesNotMatch(ad.imageUrl, /another-bucket/);
     });
 
+    // The bug this guards against: a client that means to attach a file but
+    // sends JSON instead. It used to save the text fields and report success
+    // with no artwork, which is indistinguishable from a working upload.
+    test('an image sent as a JSON field is refused, not silently ignored', async () => {
+        const created = await create({ name: 'JSON image' });
+        const id = created.body.data.advertisement._id;
+
+        // What axios produces from a FormData when the request goes out as
+        // application/json: the File serialises to an empty object.
+        const res = await call('PUT', `${BASE}/${id}`, {
+            token: tokens.editor,
+            body: { name: 'JSON image', applyUrl: '/loan-application', image: {} }
+        });
+
+        assert.equal(res.status, 400, res.text);
+        assert.ok(res.body.errors.some((e) => e.field === 'image'), res.text);
+
+        const stored = await Advertisement.findById(id).lean();
+        assert.equal(stored.name, 'JSON image', 'the refused request changed nothing');
+        assert.equal(stored.imageUrl, '');
+    });
+
+    test('the same guard applies when creating', async () => {
+        const res = await call('POST', BASE, {
+            token: tokens.editor,
+            body: { name: 'Created with a JSON image', image: {} }
+        });
+
+        assert.equal(res.status, 400, res.text);
+        assert.ok(res.body.errors.some((e) => e.field === 'image'));
+        assert.equal(await Advertisement.countDocuments({ name: 'Created with a JSON image' }), 0);
+    });
+
+    test('a real multipart upload still reaches the record', async () => {
+        // The counterpart to the two above: the same field name, sent properly.
+        const res = await send('POST', BASE, form({ name: 'Multipart works', file: PNG_BYTES, filename: 'ad.png' }));
+        assert.equal(res.status, 201, res.text);
+        const ad = remember(res.body.data.advertisement);
+        assert.ok(ad.imageUrl, 'an image address was stored');
+        assert.ok(ad.imageFileName.startsWith('advertisements/'), ad.imageFileName);
+        assert.equal(storedFiles().filter((f) => f.includes(ad.imageFileName.split('/').pop())).length, 1, 'the file is in storage');
+    });
+
     test('uploading needs an authorised admin', async () => {
         const before = storedFiles().length;
         assert.equal((await send('POST', BASE, form({ file: PNG_BYTES }), null)).status, 401);

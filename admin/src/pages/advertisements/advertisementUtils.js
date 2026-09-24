@@ -76,6 +76,18 @@ export const buildAdvertisementPayload = (form) => {
   return fd
 }
 
+// The shared api client sends application/json by default, and axios takes
+// that header literally: handed a FormData with a JSON content type it
+// serialises the form to JSON, and a File becomes an empty object — the bytes
+// never leave the browser and the save still succeeds. So a multipart payload
+// says so explicitly, exactly as every other upload in this CMS does. Axios
+// replaces this value with the real boundary before sending.
+export const requestConfig = (payload) => (
+    typeof FormData !== 'undefined' && payload instanceof FormData
+        ? { headers: { 'Content-Type': 'multipart/form-data' } }
+        : undefined
+)
+
 export const formatBytes = (bytes) => {
   const n = Number(bytes)
   if (!n || n < 0) return ''

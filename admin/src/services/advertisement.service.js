@@ -1,11 +1,11 @@
 import api from './api'
+import { requestConfig } from '../pages/advertisements/advertisementUtils'
 
 const BASE = '/v1/advertisements'
 
-// Advertisements are managed only here, in the CMS: the public website does
-// not read them yet. Create and update send multipart when an image was
-// picked, so the file goes through the server's own upload middleware — the
-// browser never sets imageUrl or the storage key itself.
+// Create and update send multipart when an image was picked, so the file goes
+// through the server's own upload middleware — the browser never sets imageUrl
+// or the storage key itself.
 
 const getAllAdvertisements = async (params = {}) => {
   const response = await api.get(BASE, { params })
@@ -18,12 +18,12 @@ const getAdvertisementById = async (id) => {
 }
 
 const createAdvertisement = async (payload) => {
-  const response = await api.post(BASE, payload)
+  const response = await api.post(BASE, payload, requestConfig(payload))
   return response.data
 }
 
 const updateAdvertisement = async (id, payload) => {
-  const response = await api.put(`${BASE}/${id}`, payload)
+  const response = await api.put(`${BASE}/${id}`, payload, requestConfig(payload))
   return response.data
 }
 
