@@ -52,6 +52,7 @@ import {
   SupportAgent,
   Settings,
   AutoAwesome,
+  Campaign,
   Api
 } from '@mui/icons-material'
 import { useAuth } from '../hooks/useAuth'
@@ -117,6 +118,7 @@ const menuItems = [
   // `roles` hides an entry from roles the server would refuse anyway; entries
   // without it are shown to everyone, as before.
   { title: 'Gemini Blogs', icon: AutoAwesome, path: '/gemini-blogs', roles: [ROLES.SUPER_ADMIN, ROLES.EDITOR] },
+  { title: 'Advertisements', icon: Campaign, path: '/advertisements' },
   { title: 'Loan Applications', icon: RequestQuote, path: '/loan-applications' },
   { title: 'Website Analytics', icon: BarChart, path: '/analytics' },
   { title: 'Media', icon: PermMedia, path: '#' },

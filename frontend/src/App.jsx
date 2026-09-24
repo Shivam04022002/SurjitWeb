@@ -6,6 +6,7 @@ import ScrollToTop from './components/ScrollToTop';
 import PageViewTracker from './components/PageViewTracker';
 import ActionTracker from './components/ActionTracker';
 import PageLoader from './components/PageLoader';
+import AdvertisementPopup from './components/AdvertisementPopup';
 import './index.css';
 
 const Home = lazy(() => import('./pages/Home'));
@@ -70,6 +71,10 @@ function App() {
           </Suspense>
         </main>
         <Footer />
+        {/* Mounted once in the shell, so the advertisement is requested once
+            per visit rather than by each page. It renders nothing until a
+            usable advertisement arrives. */}
+        <AdvertisementPopup />
       </div>
     </Router>
   );

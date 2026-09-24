@@ -32,6 +32,7 @@ import LegalPagesPage from '../pages/legal/LegalPagesPage'
 import NodalOfficersPage from '../pages/nodalOfficers/NodalOfficersPage'
 import ApiSettingsPage from '../pages/integrations/ApiSettingsPage'
 import GeminiBlogsPage from '../pages/gemini/GeminiBlogsPage'
+import AdvertisementsPage from '../pages/advertisements/AdvertisementsPage'
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth()
@@ -111,6 +112,7 @@ const AppRoutes = () => {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="integrations/api" element={<ApiSettingsPage />} />
         <Route path="gemini-blogs" element={<GeminiBlogsPage />} />
+        <Route path="advertisements" element={<AdvertisementsPage />} />
       </Route>
     </Routes>
   )

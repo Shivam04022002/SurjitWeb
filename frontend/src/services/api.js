@@ -132,3 +132,8 @@ export const getLegalPage = (slug) => api.get(`/legal-pages/${slug}`).then(r => 
 // ── Nodal officers ─────────────────────────────────────────────────────────────
 // Published officers only, in display order. Backs the /nodal-officer page.
 export const getNodalOfficers = () => api.get('/nodal-officers').then(r => r.data.data.officers);
+
+// ── Advertisement ──────────────────────────────────────────────────────────────
+// The single published advertisement, or null when there is none. Optional
+// content: the caller treats a failure as "no advertisement".
+export const getAdvertisement = () => api.get('/advertisement').then(r => r.data?.data?.advertisement ?? null);

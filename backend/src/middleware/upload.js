@@ -13,6 +13,10 @@ const allowedFileTypes = {
     // Annual reports are PDF only — deliberately narrower than `documents`,
     // which also permits doc/docx.
     pdf: /pdf/,
+    // Advertisement artwork: photographic formats only. Deliberately narrower
+    // than `images` — an advertisement is a Canva export, and SVG (which can
+    // carry script) and GIF have no place in it.
+    adImages: /jpeg|jpg|png|webp/,
     // Gallery albums hold images and videos side by side.
     media: /jpeg|jpg|png|webp|gif|svg|mp4|webm|ogg|mov|quicktime/,
     all: /jpeg|jpg|png|webp|gif|svg|pdf|doc|docx/

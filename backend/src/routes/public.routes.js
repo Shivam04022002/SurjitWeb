@@ -22,6 +22,7 @@ const branchController = require('../controllers/branch.controller');
 const homepageStatController = require('../controllers/homepageStat.controller');
 const legalPageController = require('../controllers/legalPage.controller');
 const nodalOfficerController = require('../controllers/nodalOfficer.controller');
+const advertisementController = require('../controllers/advertisement.controller');
 const { createUpload } = require('../middleware/upload');
 const validate = require('../middleware/validate');
 const { reviewSubmissionLimiter, analyticsTrackLimiter } = require('../middleware/rateLimiters');
@@ -280,5 +281,10 @@ router.get('/legal-pages/:slug/download', legalPageController.downloadPage);
 // ── Nodal officers ─────────────────────────────────────────────────────────────
 // Published officers only, in display order. Backs the /nodal-officer page.
 router.get('/nodal-officers', nodalOfficerController.listPublicOfficers);
+
+// ── Advertisement ──────────────────────────────────────────────────────────────
+// The single published advertisement, or null. Read-only, and drafts are never
+// returned. Backs the popup on the public website.
+router.get('/advertisement', advertisementController.getPublicAdvertisement);
 
 module.exports = router;

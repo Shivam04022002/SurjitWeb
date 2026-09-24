@@ -1,0 +1,136 @@
+/* Advertisement popup. Follows the site's existing modal styling — a fixed
+   overlay with a centred white card — and its z-index scale: 1000 is the
+   navbar, 2000 the existing modals, so the advertisement sits one step above
+   both rather than at an arbitrary height. */
+.ad-popup-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    background: rgba(15, 15, 15, 0.55);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    overflow-y: auto;
+}
+
+.ad-popup {
+    position: relative;
+    width: 100%;
+    /* Never wider than the artwork needs on a large screen, and never wider
+       than the viewport on a small one. */
+    max-width: 480px;
+    max-height: calc(100vh - var(--space-8));
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+    /* A tall advertisement scrolls inside the popup rather than pushing the
+       Apply button off the screen. */
+    overflow-y: auto;
+}
+
+.ad-popup-head {
+    display: flex;
+    justify-content: flex-end;
+    /* The row is only as tall as the button, so it costs the artwork nothing
+       beyond the button itself. */
+    margin-bottom: calc(var(--space-2) * -1);
+}
+
+.ad-popup-close {
+    /* Comfortable touch target on a phone. */
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.ad-popup-close:hover {
+    background: var(--gray-200);
+    color: var(--gray-900);
+}
+
+.ad-popup-close:focus-visible {
+    outline: 3px solid var(--primary-600);
+    outline-offset: 2px;
+}
+
+.ad-popup-image-wrap {
+    /* The close button overlaps the top-right corner, so the artwork keeps a
+       rounded frame of its own and nothing important sits underneath it. */
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--gray-100);
+    display: flex;
+    justify-content: center;
+}
+
+.ad-popup-image {
+    display: block;
+    /* The artwork's own proportions decide the box: it shrinks to fit both the
+       popup's width and the space the viewport leaves, and is never stretched
+       or cropped to fill either one. */
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 70vh;
+    object-fit: contain;
+}
+
+.ad-popup-apply {
+    width: 100%;
+    /* The site's .btn keeps labels on one line; a long CMS button text wraps
+       here instead of widening the popup. */
+    white-space: normal;
+}
+
+.ad-popup-apply:focus-visible {
+    outline: 3px solid var(--primary-900);
+    outline-offset: 2px;
+}
+
+/* Phones: a small margin around the popup, and more room for the artwork now
+   that the viewport is the constraint rather than the card. */
+@media (max-width: 480px) {
+    .ad-popup-overlay {
+        padding: var(--space-3);
+    }
+
+    .ad-popup {
+        max-height: calc(100vh - var(--space-6));
+        border-radius: 16px;
+        padding: var(--space-3);
+        gap: var(--space-3);
+    }
+
+    .ad-popup-image {
+        max-height: 60vh;
+    }
+}
+
+/* Short landscape screens: keep the Apply button reachable without scrolling
+   the whole popup. */
+@media (max-height: 520px) {
+    .ad-popup-image {
+        max-height: 45vh;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ad-popup-close,
+    .ad-popup-apply {
+        transition: none;
+    }
+}

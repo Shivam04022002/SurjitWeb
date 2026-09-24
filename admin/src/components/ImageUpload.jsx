@@ -12,13 +12,22 @@ import { PhotoCamera, Close } from '@mui/icons-material'
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 const MAX_SIZE = 10 * 1024 * 1024
 
+const megabytes = (bytes) => Math.round((bytes / (1024 * 1024)) * 10) / 10
+
 const ImageUpload = ({
   label = 'Upload Image',
   currentImageUrl = '',
   onChange,
   error = '',
   name = 'image',
-  required = false
+  required = false,
+  // Some modules are stricter than the 10 MB default — an advertisement image,
+  // for one, is capped at 5 MB by the API it is posted to.
+  maxSize = MAX_SIZE,
+  hint = '',
+  // Off where the API has no way to clear a stored image, so the button does
+  // not promise something the save cannot carry out.
+  allowRemove = true
 }) => {
   const inputRef = useRef(null)
   const [preview, setPreview] = useState(currentImageUrl || '')
@@ -36,8 +45,8 @@ const ImageUpload = ({
       setLocalError('Only JPG, JPEG, PNG, WEBP files are allowed')
       return
     }
-    if (file.size > MAX_SIZE) {
-      setLocalError('File size must not exceed 10 MB')
+    if (file.size > maxSize) {
+      setLocalError(`File size must not exceed ${megabytes(maxSize)} MB`)
       return
     }
 
@@ -102,7 +111,7 @@ const ImageUpload = ({
             {preview ? 'Change' : 'Select'} Image
           </Button>
 
-          {preview && (
+          {preview && allowRemove && (
             <Button
               variant="text"
               size="small"
@@ -115,7 +124,7 @@ const ImageUpload = ({
           )}
 
           <Typography variant="caption" color="text.secondary">
-            JPG, PNG, WEBP · Max 10 MB
+            {hint || `JPG, PNG, WEBP · Max ${megabytes(maxSize)} MB`}
           </Typography>
         </Box>
       </Box>
