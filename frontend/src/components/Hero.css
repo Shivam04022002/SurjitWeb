@@ -321,13 +321,33 @@
 }
 
 @media (max-width: 768px) {
+    /* The hero is as tall as its content on a phone: a forced 100vh plus
+       desktop padding pushed the buttons off the first screen. */
     .hero {
-        padding: var(--space-20) 0 var(--space-12);
+        min-height: auto;
+        padding: var(--space-10) 0 var(--space-12);
+    }
+
+    .hero h1 {
+        font-size: clamp(1.75rem, 8vw, 2.25rem);
+        margin-bottom: var(--space-4);
+    }
+
+    .hero-badge {
+        margin-bottom: var(--space-4);
+    }
+
+    .hero-description {
+        font-size: 1rem;
+        line-height: 1.7;
+        margin-bottom: var(--space-6);
     }
 
     .hero-buttons {
         flex-direction: column;
         align-items: stretch;
+        gap: var(--space-3);
+        margin-bottom: var(--space-6);
     }
 
     .hero-features {
@@ -335,15 +355,52 @@
         gap: var(--space-3);
     }
 
+    /* The cards become a plain stack, so the visual is only as tall as they
+       are — the fixed height used to cut them off over the next section. */
+    .hero-visual {
+        height: auto;
+        margin-top: var(--space-8);
+    }
+
     .hero-card-stack {
         flex-direction: column;
         align-items: center;
+        height: auto;
+        gap: var(--space-3);
+    }
+
+    .hero-card {
+        width: calc(100% - 32px);
+        max-width: 360px;
+        padding: var(--space-4) var(--space-5);
+        /* Floating a stacked list just makes neighbours look like they touch. */
+        animation: none;
+    }
+
+    .card-icon {
+        font-size: 1.75rem;
+        margin-bottom: var(--space-2);
+    }
+
+    .hero-card h3 {
+        font-size: 1rem;
+    }
+
+    .hero-card p {
+        font-size: 0.8125rem;
+    }
+
+    /* Four stats as a 2x2 grid: wrapping flex items gave three or four rows
+       depending on the width. */
+    .hero-stats {
+        margin-top: var(--space-10);
     }
 
     .stats-card {
-        flex-wrap: wrap;
-        gap: var(--space-6);
-        padding: var(--space-6);
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-2);
+        padding: var(--space-5) var(--space-4);
     }
 
     .stat-divider {
@@ -351,10 +408,60 @@
     }
 
     .stat-item {
-        flex: 1 1 40%;
+        padding: var(--space-3) var(--space-2);
+        gap: var(--space-1);
     }
 
     .stat-number {
-        font-size: 2rem;
+        font-size: clamp(1.5rem, 7vw, 2rem);
+    }
+
+    .stat-label {
+        font-size: 0.6875rem;
+        letter-spacing: 0.04em;
+        text-align: center;
+    }
+
+    /* Decorative shapes stay subtle instead of filling a small screen. */
+    .circle-1 {
+        width: 320px;
+        height: 320px;
+        top: -120px;
+        right: -120px;
+    }
+
+    .circle-2 {
+        width: 220px;
+        height: 220px;
+        bottom: -80px;
+        left: -80px;
+    }
+
+    .circle-3 {
+        display: none;
+    }
+}
+
+/* Very small phones (320-380px): trim what is still a little generous. */
+@media (max-width: 380px) {
+    .hero {
+        padding: var(--space-8) 0 var(--space-10);
+    }
+
+    .hero-description {
+        font-size: 0.9375rem;
+        margin-bottom: var(--space-5);
+    }
+
+    .hero-card {
+        padding: var(--space-3) var(--space-4);
+    }
+
+    .stats-card {
+        padding: var(--space-4) var(--space-3);
+    }
+
+    .stat-label {
+        font-size: 0.625rem;
     }
 }

@@ -250,3 +250,11 @@
         display: none;
     }
 }
+
+/* Phones: 40px of side padding left little room for the logo beside the
+   toggle at 320px. Nothing else about the header changes. */
+@media (max-width: 768px) {
+    .navbar-container {
+        padding: 0 16px;
+    }
+}
