@@ -5,7 +5,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     displayableAdvertisement, advertisementFromResponse,
-    isUsableImageUrl, isUsableApplyUrl, isInternalApplyUrl,
+    isUsableImageUrl, isUsableApplyUrl, isInternalApplyUrl, internalApplyPath,
     seenKey, hasSeenAdvertisement, markAdvertisementSeen
 } from './advertisementModel.js'
 
@@ -23,9 +23,8 @@ describe('a complete advertisement', () => {
     })
 
     test('an external apply link is fine', () => {
-        const ad = displayableAdvertisement({ ...AD, applyUrl: 'https://surjitfinance.com/apply' })
-        assert.equal(ad.applyUrl, 'https://surjitfinance.com/apply')
-        assert.equal(isInternalApplyUrl(ad.applyUrl), false)
+        const ad = displayableAdvertisement({ ...AD, applyUrl: 'https://partner.example.com/apply' })
+        assert.equal(ad.applyUrl, 'https://partner.example.com/apply')
         assert.equal(isInternalApplyUrl('/loan-application'), true)
     })
 
@@ -200,5 +199,88 @@ describe('remembering that an advertisement was shown', () => {
             assert.equal(unusable, null)
             assert.equal(storage.store.size, 0)
         })
+    })
+})
+
+
+// ── Where Apply goes ──────────────────────────────────────────────────────────
+// A production bug lived here: the CMS stores the apply link as a full address
+// to this same site, which was read as off-site and opened in a new tab. That
+// tab starts with its own empty sessionStorage, so the advertisement the
+// visitor had just acted on appeared all over again.
+describe('telling this website apart from another one', () => {
+    const atOrigin = (origin, fn) => {
+        const previous = globalThis.window
+        globalThis.window = { ...(previous || {}), location: { origin } }
+        try { return fn() } finally { globalThis.window = previous }
+    }
+
+    test('a full address to this same site is internal', () => {
+        atOrigin('https://surjitfinance.com', () => {
+            assert.equal(isInternalApplyUrl('https://surjitfinance.com/loan-application'), true)
+            assert.equal(isInternalApplyUrl('https://surjitfinance.com/loan-application?productId=abc123'), true)
+        })
+    })
+
+    test('a path is internal wherever the page is served from', () => {
+        atOrigin('https://surjitfinance.com', () => {
+            assert.equal(isInternalApplyUrl('/loan-application'), true)
+            assert.equal(isInternalApplyUrl('/loan-application?productId=abc123#form'), true)
+        })
+    })
+
+    test('another site is not', () => {
+        atOrigin('https://surjitfinance.com', () => {
+            assert.equal(isInternalApplyUrl('https://partner.example.com/apply'), false)
+            assert.equal(isInternalApplyUrl('http://surjitfinance.com.evil.example/apply'), false)
+            assert.equal(isInternalApplyUrl('//surjitfinance.com/apply'), false)
+        })
+    })
+
+    test('a different scheme or port is a different origin', () => {
+        atOrigin('https://surjitfinance.com', () => {
+            assert.equal(isInternalApplyUrl('http://surjitfinance.com/apply'), false)
+            assert.equal(isInternalApplyUrl('https://surjitfinance.com:8443/apply'), false)
+        })
+        // And the site served from a port treats its own port as itself.
+        atOrigin('http://127.0.0.1:4173', () => {
+            assert.equal(isInternalApplyUrl('http://127.0.0.1:4173/loan-application?productId=abc123'), true)
+        })
+    })
+
+    test('with no window at all, nothing is assumed to be internal', () => {
+        const previous = globalThis.window
+        globalThis.window = undefined
+        try {
+            assert.equal(isInternalApplyUrl('https://surjitfinance.com/apply'), false)
+            assert.equal(isInternalApplyUrl('/loan-application'), true, 'a path needs no origin to be ours')
+        } finally {
+            globalThis.window = previous
+        }
+    })
+})
+
+describe('what the router is handed', () => {
+    test('the path, query and hash of a full address — never the origin', () => {
+        assert.equal(
+            internalApplyPath('https://surjitfinance.com/loan-application?productId=abc123'),
+            '/loan-application?productId=abc123'
+        )
+        assert.equal(internalApplyPath('https://surjitfinance.com/apply#form'), '/apply#form')
+        assert.equal(internalApplyPath('https://surjitfinance.com'), '/')
+    })
+
+    test('a path is passed through as it is', () => {
+        assert.equal(internalApplyPath('/loan-application?productId=abc123'), '/loan-application?productId=abc123')
+        assert.equal(internalApplyPath(' /loan-application '), '/loan-application')
+    })
+
+    test('the query string is part of the destination, not of the advertisement identity', () => {
+        // Two links to the same page with different products are different
+        // destinations, but suppression is keyed on the advertisement id alone.
+        const a = internalApplyPath('https://surjitfinance.com/loan-application?productId=one')
+        const b = internalApplyPath('https://surjitfinance.com/loan-application?productId=two')
+        assert.notEqual(a, b)
+        assert.equal(seenKey('ad-123'), 'sf_ad_seen_ad-123')
     })
 })

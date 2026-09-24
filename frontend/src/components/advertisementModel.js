@@ -39,7 +39,40 @@ export const isUsableApplyUrl = (value) => {
     }
 };
 
-export const isInternalApplyUrl = (value) => text(value).startsWith('/');
+// Whether Apply stays inside this website.
+//
+// A path is obviously internal, and so is a full URL to this same site — which
+// is what an admin pastes and what the CMS stores. Getting this wrong is not
+// cosmetic: an internal destination opened as an external one lands in a new
+// tab with its own empty sessionStorage, and the advertisement the visitor
+// just acted on appears all over again.
+export const isInternalApplyUrl = (value) => {
+    const url = text(value);
+    if (!url) return false;
+    if (url.startsWith('//')) return false;
+    if (url.startsWith('/')) return true;
+    try {
+        return new URL(url).origin === window.location.origin;
+    } catch {
+        // No window (or an unparseable value): treat it as off-site, which is
+        // the safer of the two — a new tab still works, it just leaves this one.
+        return false;
+    }
+};
+
+// What the router navigates to: the path, query and hash of an internal URL,
+// never its origin. The query string is carried through — a product id on the
+// apply link is part of where the visitor asked to go.
+export const internalApplyPath = (value) => {
+    const url = text(value);
+    if (url.startsWith('/')) return url;
+    try {
+        const { pathname, search, hash } = new URL(url);
+        return `${pathname}${search}${hash}`;
+    } catch {
+        return url;
+    }
+};
 
 // The advertisement the popup will render, or null.
 //

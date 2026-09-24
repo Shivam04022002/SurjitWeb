@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { getAdvertisement } from '../services/api';
 import {
-    displayableAdvertisement, isInternalApplyUrl,
+    displayableAdvertisement, isInternalApplyUrl, internalApplyPath,
     hasSeenAdvertisement, markAdvertisementSeen
 } from './advertisementModel';
 import './AdvertisementPopup.css';
@@ -116,9 +116,13 @@ const AdvertisementPopup = () => {
     // not add to those counts. This phase reports nothing about the popup.
     const onApply = () => {
         const { applyUrl } = advertisement;
+        // Recorded before anything moves, so the destination page — however it
+        // is reached — already knows this advertisement has been seen.
         close();
         if (isInternalApplyUrl(applyUrl)) {
-            navigate(applyUrl);
+            // Somewhere on this site, so the visitor stays in this tab and in
+            // this session, whether the CMS stored a path or a full address.
+            navigate(internalApplyPath(applyUrl));
         } else {
             // Validated as http(s) before the popup rendered; opened without
             // handing the new tab a reference back to this one.
