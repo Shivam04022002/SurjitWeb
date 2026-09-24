@@ -48,7 +48,7 @@ const websiteVisitSchema = new mongoose.Schema({
         enum: DEVICE_TYPES,
         default: 'unknown'
     },
-    // Coarse location, English names, from the local GeoLite2 City database.
+    // Coarse location, English names, from the local city database.
     country: { type: String, trim: true, default: null, maxlength: 120 },
     region: { type: String, trim: true, default: null, maxlength: 120 },
     city: { type: String, trim: true, default: null, maxlength: 120 },

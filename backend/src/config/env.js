@@ -78,7 +78,8 @@ const env = {
     PEXELS_API_KEY: process.env.PEXELS_API_KEY || '',
     GEMINI_RATE_LIMIT_WINDOW_MS: parseInt(process.env.GEMINI_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
     GEMINI_RATE_LIMIT_MAX: parseInt(process.env.GEMINI_RATE_LIMIT_MAX || '40', 10),
-    // Website analytics location: a local MaxMind GeoLite2 City database.
+    // Website analytics location: a local city database in MMDB format
+    // (production: DB-IP City Lite; a MaxMind GeoLite2 City file also works).
     // Unset (or a missing file) simply means visits are recorded without a
     // location. No visitor IP is ever stored or sent anywhere.
     GEOIP_CITY_DB_PATH: process.env.GEOIP_CITY_DB_PATH || '',

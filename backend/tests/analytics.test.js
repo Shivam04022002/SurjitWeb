@@ -1,8 +1,9 @@
 // Website analytics: the anonymous beacons, the city lookup and the admin
 // overview — end-to-end over HTTP against an in-memory MongoDB.
 //
-// Nothing here touches a real GeoLite2 file or the network: the reader is a
-// fake, so every lookup outcome (hit, miss, error, no database) is exercised.
+// Nothing here touches a real city database or the network: the reader is a
+// fake shaped like DB-IP City Lite, so every lookup outcome (hit, miss, error,
+// no database) is exercised.
 //
 //   npm test
 
@@ -37,18 +38,30 @@ for (const level of ['log', 'info', 'warn', 'error']) {
     };
 }
 
-// ── Fake GeoLite2 reader ──────────────────────────────────────────────────────
-const place = (city, region, country) => ({
+// ── Fake city-database reader ─────────────────────────────────────────────────
+// Records are shaped exactly like DB-IP City Lite's: English city and
+// subdivision names, an ISO country code, coordinates and a continent — and no
+// registered_country. Coordinates are present precisely to prove they are
+// never stored.
+const place = (city, region, country, iso = 'IN') => ({
     city: { names: { en: city } },
-    subdivisions: [{ names: { en: region } }],
-    country: { names: { en: country }, iso_code: 'IN' }
+    continent: { code: 'AS', names: { en: 'Asia' } },
+    country: { geoname_id: 1269750, is_in_european_union: false, iso_code: iso, names: { en: country } },
+    location: { latitude: 26.8467, longitude: 80.9462 },
+    subdivisions: [{ names: { en: region } }]
 });
 const RECORDS = {
     '49.36.1.10': place('Lucknow', 'Uttar Pradesh', 'India'),
     '103.21.58.7': place('Delhi', 'Delhi', 'India'),
     '2401:4900:1c80::5': place('Mumbai', 'Maharashtra', 'India'),
-    // A country-only answer: no city in the database for this address.
-    '8.8.8.8': { country: { names: { en: 'United States' }, iso_code: 'US' } }
+    // DB-IP qualifies many city names with a district.
+    '106.51.1.1': place('Navi Mumbai (Ghansoli)', 'Maharashtra', 'India'),
+    // A country-only answer: no city or subdivision for this address.
+    '8.8.8.8': { country: { names: { en: 'United States' }, iso_code: 'US' }, location: { latitude: 37.4, longitude: -122.1 } },
+    // City and country, but no subdivision.
+    '1.1.1.1': { city: { names: { en: 'Sydney' } }, country: { names: { en: 'Australia' }, iso_code: 'AU' } },
+    // A record with nothing we keep.
+    '198.18.0.1': { continent: { code: 'NA' }, location: { latitude: 0, longitude: 0 } }
 };
 const reader = { mode: 'ok', lookups: [] };
 const fakeReader = {
@@ -134,7 +147,7 @@ beforeEach(async () => {
     await WebsiteEvent.deleteMany({});
     reader.mode = 'ok';
     reader.lookups = [];
-    env.GEOIP_CITY_DB_PATH = '/test/GeoLite2-City.mmdb';
+    env.GEOIP_CITY_DB_PATH = '/test/dbip-city-lite.mmdb';
     geoip._setReader(fakeReader);
 });
 
@@ -238,7 +251,7 @@ describe('City lookup', () => {
     });
 
     test('a missing database file is reported once and never breaks tracking', async () => {
-        env.GEOIP_CITY_DB_PATH = '/does/not/exist/GeoLite2-City.mmdb';
+        env.GEOIP_CITY_DB_PATH = '/does/not/exist/dbip-city-lite.mmdb';
         geoip._reset();
         assert.equal(await geoip.locate('49.36.1.10'), null);
         const status = await geoip.status();
@@ -432,6 +445,61 @@ describe('Existing analytics are unchanged', () => {
         assert.deepEqual(Object.keys(raw[0]).filter((k) => ['city', 'country', 'region', 'ip'].includes(k)), [], 'events carry no location or address');
         const data = (await overview({ range: '7d' })).body.data;
         assert.equal(data.kpis.loanApplicationClicks, 1);
+    });
+});
+
+// ── DB-IP City Lite mapping ───────────────────────────────────────────────────
+// The production database is DB-IP City Lite; a MaxMind GeoLite2 City file has
+// the same record layout and works unchanged.
+describe('City database record mapping', () => {
+    test('city, region and country come from the English names', async () => {
+        assert.deepEqual(await geoip.locate('103.21.58.7'), { country: 'India', region: 'Delhi', city: 'Delhi' });
+    });
+
+    test('a district-qualified city name is reduced to the city', async () => {
+        assert.deepEqual(await geoip.locate('106.51.1.1'), { country: 'India', region: 'Maharashtra', city: 'Navi Mumbai' });
+        await track('106.51.1.1');
+        assert.equal((await WebsiteVisit.findOne().lean()).city, 'Navi Mumbai', 'one city, not one per district');
+    });
+
+    test('a record with no city keeps the country', async () => {
+        assert.deepEqual(await geoip.locate('8.8.8.8'), { country: 'United States', region: null, city: null });
+    });
+
+    test('a record with no subdivision keeps city and country', async () => {
+        assert.deepEqual(await geoip.locate('1.1.1.1'), { country: 'Australia', region: null, city: 'Sydney' });
+    });
+
+    test('a record with none of the three names is no location at all', async () => {
+        assert.equal(await geoip.locate('198.18.0.1'), null);
+    });
+
+    test('an address the database does not know is no location', async () => {
+        assert.equal(await geoip.locate('203.0.113.9'), null);
+    });
+
+    test('coordinates, continent and country code are read but never stored', async () => {
+        await track('49.36.1.10');
+        const raw = await mongoose.connection.db.collection('websitevisits').findOne({});
+        const json = JSON.stringify(raw);
+        for (const unwanted of ['latitude', 'longitude', 'location', 'continent', 'iso_code', 'countryCode', 'geoname']) {
+            assert.ok(!json.includes(unwanted), `${unwanted} must not be stored`);
+        }
+        assert.deepEqual(
+            { country: raw.country, region: raw.region, city: raw.city },
+            { country: 'India', region: 'Uttar Pradesh', city: 'Lucknow' }
+        );
+    });
+
+    test('a missing database is reported once, not on every page view', async () => {
+        env.GEOIP_CITY_DB_PATH = '/does/not/exist/dbip-city-lite.mmdb';
+        geoip._reset();
+        const before = captured.filter((l) => l.includes('GeoIP database not found')).length;
+        for (let i = 0; i < 5; i++) await track('49.36.1.10');
+        const after = captured.filter((l) => l.includes('GeoIP database not found')).length;
+        assert.equal(after - before, 1, 'the file is checked once, then remembered');
+        assert.equal(await WebsiteVisit.countDocuments(), 5, 'every visit is still recorded');
+        assert.equal((await WebsiteVisit.findOne().lean()).city, null);
     });
 });
 

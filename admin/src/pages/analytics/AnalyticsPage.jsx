@@ -554,11 +554,12 @@ const AnalyticsPage = () => {
                     {data.location.totalCities > data.location.cities.length
                       && ` · showing the top ${data.location.cities.length} of ${nf.format(data.location.totalCities)} cities`}
                   </Typography>
-                  {/* Required by the GeoLite2 licence wherever its data is shown. */}
+                  {/* DB-IP's licence (CC BY 4.0) requires this credit and link
+                      wherever its data is shown. */}
                   <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
                     City data from{' '}
-                    <Link href="https://www.maxmind.com" target="_blank" rel="noopener noreferrer" underline="hover" color="inherit">
-                      GeoLite2 by MaxMind
+                    <Link href="https://db-ip.com" target="_blank" rel="noopener noreferrer" underline="hover" color="inherit">
+                      IP Geolocation by DB-IP
                     </Link>
                     . Approximate, and never derived from a stored address.
                   </Typography>

@@ -8,16 +8,24 @@ const logger = require('../utils/logger');
 //
 //   req.ip ─► publicIp() ─► locate() ─► { country, region, city }
 //
-// The lookup uses a local MaxMind GeoLite2 City database (GEOIP_CITY_DB_PATH):
-// no visitor IP is ever sent to a third party, stored, hashed or logged. The
-// address exists only for the microseconds of the lookup; only the place names
-// are returned, and only those are saved with the page view.
+// The lookup uses a local city database in MaxMind's MMDB format
+// (GEOIP_CITY_DB_PATH). Production uses DB-IP City Lite; a MaxMind GeoLite2
+// City file works just as well, since both use the same record layout
+// (city.names.en, subdivisions[].names.en, country.names.en). Whichever is
+// installed, no visitor IP is ever sent to a third party, stored, hashed or
+// logged: the address exists only for the microseconds of the lookup, and only
+// the place names are returned and saved with the page view.
 //
 // Everything here is best-effort. With no database file, an unreadable file, a
 // private or malformed address, or any error at all, the answer is simply "no
 // location" and the page view is recorded without one.
 
 const MAX_NAME = 120;
+
+// DB-IP City Lite qualifies many city names with the district or area, as in
+// "Navi Mumbai (Ghansoli)" or "Lucknow (Hazratganj)". Traffic by City counts
+// cities, so the qualifier is dropped and the visits add up under one name.
+const districtSuffix = /\s*\([^()]*\)\s*$/;
 
 // Reserved and non-routable ranges. An address in one of these belongs to a
 // network, not a place: development machines, office LANs behind NAT, and
@@ -75,17 +83,23 @@ const openReader = async () => {
         return null;
     }
     if (!fs.existsSync(path)) {
-        unavailableReason = 'the GeoLite2 database file was not found';
+        unavailableReason = 'the city database file was not found';
         logger.warn('GeoIP database not found; visits will have no location', { path });
         return null;
     }
     try {
         const opened = await maxmind.open(path, { cache: { max: 2000 } });
-        logger.info('GeoIP database loaded', { path });
+        // Which database is in use, and how old it is — both worth knowing
+        // when a city looks wrong. Neither is a secret.
+        logger.info('GeoIP database loaded', {
+            path,
+            databaseType: opened.metadata?.databaseType || 'unknown',
+            built: opened.metadata?.buildEpoch instanceof Date ? opened.metadata.buildEpoch.toISOString() : ''
+        });
         unavailableReason = '';
         return opened;
     } catch (err) {
-        unavailableReason = 'the GeoLite2 database could not be opened';
+        unavailableReason = 'the city database could not be opened';
         logger.warn('GeoIP database could not be opened; visits will have no location', { path, error: err.message });
         return null;
     }
@@ -103,13 +117,16 @@ const ready = () => {
 
 const name = (value) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, MAX_NAME) : null);
 
-// A GeoLite2 record → the three names analytics keeps. English names are used
-// so the dashboard reads consistently whatever the visitor's locale.
+// A database record → the three names analytics keeps. English names are used
+// so the dashboard reads consistently whatever the visitor's locale. Any part
+// of a record we do not need — coordinates, continent, time zone, network —
+// is ignored and never stored. A record with none of the three names is no
+// location at all.
 const placeOf = (record) => {
     if (!record) return null;
     const country = name(record.country?.names?.en || record.registered_country?.names?.en);
     const region = name(record.subdivisions?.[0]?.names?.en);
-    const city = name(record.city?.names?.en);
+    const city = name(String(record.city?.names?.en || '').replace(districtSuffix, ''));
     if (!country && !region && !city) return null;
     return { country, region, city };
 };

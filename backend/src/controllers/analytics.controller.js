@@ -33,7 +33,7 @@ const referrerHost = (referrer) => {
 //
 // The city/region/country of the visit is resolved from req.ip — which Express
 // derives through the app's trust-proxy setting, never from a header read here
-// — against the local GeoLite2 database, and only those names are saved. A
+// — against the local city database, and only those names are saved. A
 // failed or impossible lookup records the visit with no location.
 const trackPageView = asyncHandler(async (req, res) => {
     await analyticsService.recordPageView({
