@@ -14,6 +14,8 @@ import InterestRatesTab from './InterestRatesTab'
 import FaqsTab from './FaqsTab'
 import EmiTab from './EmiTab'
 import SeoTab from './SeoTab'
+import ReadOnlyGuard from '../../../components/ReadOnlyGuard'
+import ReadOnlyNotice from '../../../components/ReadOnlyNotice'
 
 const TAB_LABELS = [
   'General',
@@ -77,6 +79,8 @@ const ProductEditorPage = () => {
 
   return (
     <Container maxWidth="xl" disableGutters>
+      <ReadOnlyNotice what="this product" />
+      <ReadOnlyGuard>
       <Box sx={{ mb: 3 }}>
         <Breadcrumbs sx={{ mb: 1 }}>
           <Link
@@ -189,6 +193,7 @@ const ProductEditorPage = () => {
         severity={toast.severity}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
       />
+      </ReadOnlyGuard>
     </Container>
   )
 }

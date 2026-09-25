@@ -9,6 +9,8 @@ import { blogService } from '../../services/blog.service'
 import RichTextEditor from '../../components/RichTextEditor'
 import ImageUpload from '../../components/ImageUpload'
 import Toast from '../../components/Toast'
+import ReadOnlyGuard from '../../components/ReadOnlyGuard'
+import ReadOnlyNotice from '../../components/ReadOnlyNotice'
 
 const SITE_URL = 'https://surjitfinance.com'
 
@@ -156,6 +158,8 @@ const BlogEditorPage = () => {
 
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
+      <ReadOnlyNotice what="this blog" />
+      <ReadOnlyGuard>
       <Breadcrumbs sx={{ mb: 1 }}>
         <Link component="button" underline="hover" color="inherit" onClick={() => navigate('/blogs')}>Blogs</Link>
         <Typography color="text.primary">{isNew ? 'Add Blog' : 'Edit Blog'}</Typography>
@@ -342,6 +346,7 @@ const BlogEditorPage = () => {
       </Grid>
 
       <Toast {...toast} onClose={() => setToast((t) => ({ ...t, open: false }))} />
+      </ReadOnlyGuard>
     </Container>
   )
 }

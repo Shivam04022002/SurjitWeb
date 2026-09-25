@@ -4,7 +4,7 @@ import { Box, Container, Typography, Button, Stack, Alert, Tabs, Tab } from '@mu
 import { AutoAwesome, Article, UploadFile } from '@mui/icons-material'
 import { geminiService } from '../../services/gemini.service'
 import { blogService } from '../../services/blog.service'
-import { usePermissions } from '../../hooks/usePermissions'
+import { usePermissions, usePagePermission } from '../../hooks/usePermissions'
 import Toast from '../../components/Toast'
 import SingleBlogTab from './SingleBlogTab'
 import BulkUploadTab from './BulkUploadTab'
@@ -15,7 +15,9 @@ import { errorMessage } from './geminiBlogUtils'
 // page only holds what they share (configuration, categories, toasts).
 const GeminiBlogsPage = () => {
   const navigate = useNavigate()
-  const { canCreate, isSuperAdmin } = usePermissions()
+  const { canCreate } = usePermissions()
+  // Whether this admin can reach the page where the key is configured.
+  const apiSettings = usePagePermission('integrations')
 
   const [mode, setMode] = useState('single')
   const [availability, setAvailability] = useState(null)
@@ -73,9 +75,9 @@ const GeminiBlogsPage = () => {
         <Alert
           severity="warning"
           sx={{ mb: 3 }}
-          action={isSuperAdmin && <Button color="inherit" size="small" onClick={() => navigate('/integrations/api')}>Open API</Button>}
+          action={apiSettings.canView && <Button color="inherit" size="small" onClick={() => navigate('/integrations/api')}>Open API</Button>}
         >
-          Gemini is not configured yet. {isSuperAdmin ? 'Add the API key on the API page.' : 'Ask a Super Admin to add the API key on the API page.'}
+          Gemini is not configured yet. {apiSettings.canEdit ? 'Add the API key on the API page.' : 'Ask an administrator with API access to add the key.'}
         </Alert>
       )}
 

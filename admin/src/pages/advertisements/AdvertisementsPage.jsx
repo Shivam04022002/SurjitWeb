@@ -244,9 +244,9 @@ const AdvertisementsPage = () => {
             </Tooltip>
           )}
 
-          {/* Deleting is Super Admin only, and a published advertisement is
-              refused by the server until it is moved to draft. */}
-          {perms.isSuperAdmin && (
+          {/* Deleting needs the page at edit, and a published advertisement
+              is refused by the server until it is moved to draft. */}
+          {perms.canEdit && (
             <Tooltip title={p.row.status === 'Published' ? 'Move to draft before deleting' : 'Delete'}>
               <span>
                 <IconButton

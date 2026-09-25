@@ -21,9 +21,15 @@ const adminSchema = new mongoose.Schema({
         required: [true, 'Password is required'],
         minlength: [8, 'Password must be at least 8 characters long']
     },
+    // The key of a role in the roles collection. Roles are created and
+    // renamed by administrators, so the set of valid keys is not fixed here;
+    // assignment is checked against the roles collection where it happens, and
+    // a key that no longer resolves simply carries no permissions.
     role: {
         type: String,
-        enum: Object.values(ROLES),
+        required: [true, 'Role is required'],
+        trim: true,
+        lowercase: true,
         default: ROLES.CONTENT_MANAGER
     },
     isActive: {

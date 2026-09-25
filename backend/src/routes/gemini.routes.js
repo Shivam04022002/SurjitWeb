@@ -1,11 +1,10 @@
 const express = require('express');
 const multer = require('multer');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { geminiLimiter } = require('../middleware/rateLimiters');
-const { ROLES } = require('../constants/roles');
 const { AppError } = require('../middleware/errorHandler');
 const HTTP_STATUS = require('../constants/httpStatus');
 const { MAX_FILE_BYTES } = require('../services/gemini/bulkPlan.service');
@@ -25,12 +24,14 @@ const {
 
 const router = express.Router();
 
-// The API key is a billing credential, so its configuration is Super Admin
-// only. Generating and saving drafts creates blog records, which follows the
-// blog module's create band: Super Admin and Editor. Content Manager cannot
-// create blogs anywhere, and cannot here.
-const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
-const canGenerate = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
+// Two pages meet in this file. The API key is a billing credential and belongs
+// to the API Settings page; generating and saving drafts belongs to Gemini
+// Blogs. Reading either page's state is a view — the key itself is never
+// returned, only whether one is configured — and changing it is an edit.
+const canReadConfig = [auth, viewPage('integrations')];
+const canManageConfig = [auth, editPage('integrations')];
+const canReadGemini = [auth, viewPage('geminiBlogs')];
+const canGenerate = [auth, editPage('geminiBlogs')];
 
 // Same storage path and file rules as the blog editor's own upload.
 const draftUpload = createUpload({ folder: 'blog', fileTypes: 'images' }).fields([
@@ -56,29 +57,29 @@ const planUpload = (req, res, next) => multer({
 });
 
 // ── API configuration ─────────────────────────────────────────────────────────
-router.get('/config', superAdminOnly, geminiController.getConfig);
-router.put('/config', superAdminOnly, saveConfigValidation, validate, geminiController.saveConfig);
-router.delete('/config/key', superAdminOnly, geminiController.removeKey);
-router.post('/config/test', superAdminOnly, geminiLimiter, testConnectionValidation, validate, geminiController.testConnection);
-router.get('/config/fallbacks', superAdminOnly, geminiController.getFallbacks);
-router.put('/config/fallbacks', superAdminOnly, saveFallbacksValidation, validate, geminiController.saveFallbacks);
-router.delete('/config/fallbacks', superAdminOnly, geminiController.clearFallbacks);
+router.get('/config', canReadConfig, geminiController.getConfig);
+router.put('/config', canManageConfig, saveConfigValidation, validate, geminiController.saveConfig);
+router.delete('/config/key', canManageConfig, geminiController.removeKey);
+router.post('/config/test', canManageConfig, geminiLimiter, testConnectionValidation, validate, geminiController.testConnection);
+router.get('/config/fallbacks', canReadConfig, geminiController.getFallbacks);
+router.put('/config/fallbacks', canManageConfig, saveFallbacksValidation, validate, geminiController.saveFallbacks);
+router.delete('/config/fallbacks', canManageConfig, geminiController.clearFallbacks);
 
 // Pexels (featured images): the same Super Admin rule as the Gemini key.
-router.get('/pexels/config', superAdminOnly, geminiController.getPexelsConfig);
-router.put('/pexels/config', superAdminOnly, savePexelsKeyValidation, validate, geminiController.savePexelsKey);
-router.delete('/pexels/config/key', superAdminOnly, geminiController.removePexelsKey);
-router.post('/pexels/config/test', superAdminOnly, geminiLimiter, testPexelsValidation, validate, geminiController.testPexelsConnection);
+router.get('/pexels/config', canReadConfig, geminiController.getPexelsConfig);
+router.put('/pexels/config', canManageConfig, savePexelsKeyValidation, validate, geminiController.savePexelsKey);
+router.delete('/pexels/config/key', canManageConfig, geminiController.removePexelsKey);
+router.post('/pexels/config/test', canManageConfig, geminiLimiter, testPexelsValidation, validate, geminiController.testPexelsConnection);
 
 // ── Blog generation ───────────────────────────────────────────────────────────
-router.get('/availability', canGenerate, geminiController.getAvailability);
+router.get('/availability', canReadGemini, geminiController.getAvailability);
 router.post('/blogs/generate', canGenerate, geminiLimiter, generateBlogValidation, validate, geminiController.generateBlog);
 router.post('/blogs/image', canGenerate, geminiLimiter, generateImageValidation, validate, geminiController.generateImage);
 router.post('/blogs/drafts', canGenerate, draftUpload, saveDraftValidation, validate, geminiController.saveDraft);
 
 // ── Excel monthly plan ────────────────────────────────────────────────────────
 // No Gemini calls, so not under the Gemini rate limit.
-router.get('/blogs/bulk/template', canGenerate, geminiController.bulkTemplate);
+router.get('/blogs/bulk/template', canReadGemini, geminiController.bulkTemplate);
 router.post('/blogs/bulk/parse', canGenerate, planUpload, geminiController.bulkParse);
 router.post('/blogs/bulk/validate', canGenerate, validateBulkRowsValidation, validate, geminiController.bulkValidate);
 

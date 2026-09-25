@@ -1,4 +1,5 @@
 const adminService = require('../services/admin.service');
+const { assertMayAssignRole } = require('../services/role.service');
 const { sendSuccess } = require('../utils/response');
 const HTTP_STATUS = require('../constants/httpStatus');
 const asyncHandler = require('../utils/asyncHandler');
@@ -20,6 +21,8 @@ const getUserById = asyncHandler(async (req, res) => {
 });
 
 const createUser = asyncHandler(async (req, res) => {
+    // Nobody creates an account with more reach than their own.
+    await assertMayAssignRole(req.user, req.body.role);
     const user = await adminService.createAdmin(req.body);
     return sendSuccess(res, 'User created successfully', { user }, HTTP_STATUS.CREATED);
 });
@@ -27,6 +30,7 @@ const createUser = asyncHandler(async (req, res) => {
 // req.user is set by the auth middleware; passing the acting id lets the
 // service refuse changes that would lock the current admin out.
 const updateUser = asyncHandler(async (req, res) => {
+    await assertMayAssignRole(req.user, req.body.role);
     const user = await adminService.updateAdmin(req.params.id, req.body, req.user?._id);
     return sendSuccess(res, 'User updated successfully', { user });
 });

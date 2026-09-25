@@ -33,10 +33,25 @@ const isRefreshRequest = (config) => {
   return config.url?.includes('/v1/auth/refresh-token')
 }
 
+// A 403 means this session believed it could do something the server does not
+// allow — usually because another administrator changed the role while this tab
+// was open. The permission provider listens for this and re-reads, so the menu
+// and the buttons catch up without a reload and without polling for changes
+// that almost never happen.
+export const PERMISSIONS_STALE = 'cms:permissions-stale'
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
+
+    if (error.response?.status === 403) {
+      try {
+        window.dispatchEvent(new CustomEvent(PERMISSIONS_STALE))
+      } catch {
+        // No window (tests, SSR): nothing to correct.
+      }
+    }
 
     if (
       error.response?.status === 401 &&

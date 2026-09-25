@@ -1,17 +1,16 @@
 const express = require('express');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const validate = require('../middleware/validate');
-const { ROLES } = require('../constants/roles');
 
 const reviewController = require('../controllers/review.controller');
 const { reorderReviewsValidation } = require('../validators/review.validator');
 
 const router = express.Router();
 
-const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
-const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
-const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
+const canManage = [auth, editPage('reviews')];
+const canRead = [auth, viewPage('reviews')];
+const superAdminOnly = [auth, editPage('reviews')];
 
 // Moderation only — reviews are written by customers through the public
 // endpoint, so there is deliberately no create or update route here.

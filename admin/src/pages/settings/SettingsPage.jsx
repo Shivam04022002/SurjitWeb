@@ -12,6 +12,8 @@ import SocialTab from './tabs/SocialTab'
 import HeaderTab from './tabs/HeaderTab'
 import FooterTab from './tabs/FooterTab'
 import BusinessHoursTab from './tabs/BusinessHoursTab'
+import ReadOnlyGuard from '../../components/ReadOnlyGuard'
+import ReadOnlyNotice from '../../components/ReadOnlyNotice'
 
 const TAB_LABELS = [
   'Company', 'Branding', 'Contact', 'Address',
@@ -175,6 +177,8 @@ const SettingsPage = () => {
 
   return (
     <Container maxWidth="lg" disableGutters>
+      <ReadOnlyNotice what="global settings" />
+      <ReadOnlyGuard>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>Global Settings</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -234,6 +238,7 @@ const SettingsPage = () => {
         severity={toast.severity}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
       />
+      </ReadOnlyGuard>
     </Container>
   )
 }

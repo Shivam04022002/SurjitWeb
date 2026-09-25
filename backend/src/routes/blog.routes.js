@@ -1,10 +1,9 @@
 const express = require('express');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
-const { ROLES } = require('../constants/roles');
 
 const blogsController = require('../controllers/blog/blogs.controller');
 const categoriesController = require('../controllers/blog/categories.controller');
@@ -14,13 +13,9 @@ const { createCategoryValidation, updateCategoryValidation } = require('../valid
 
 const router = express.Router();
 
-const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
-const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
 // Editing an existing record is open to Content Manager; creating,
 // deleting, publishing, changing status and reordering are not. The
 // blockProtectedFields guard stops an edit body reaching those anyway.
-const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
-const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
 
 // Reuses the shared upload middleware, so blog images land in S3 (or local
 // disk) on the same path every other module uses.
@@ -35,15 +30,15 @@ const inlineUpload = createUpload({ folder: 'blog/inline', fileTypes: 'images' }
 
 // ── Categories ────────────────────────────────────────────────────────────────
 // Declared before /:id blog routes so "categories" is never read as an id.
-router.get('/categories', canRead, categoriesController.getAllCategories);
-router.get('/categories/:id', canRead, categoriesController.getCategoryById);
-router.post('/categories', canManage, createCategoryValidation, validate, categoriesController.createCategory);
-router.put('/categories/:id', canEdit, blockProtectedFields, updateCategoryValidation, validate, categoriesController.updateCategory);
-router.delete('/categories/:id', superAdminOnly, categoriesController.deleteCategory);
-router.patch('/categories/:id/status', canManage, categoriesController.toggleCategoryStatus);
+router.get('/categories', [auth, viewPage('blogCategories')], categoriesController.getAllCategories);
+router.get('/categories/:id', [auth, viewPage('blogCategories')], categoriesController.getCategoryById);
+router.post('/categories', [auth, editPage('blogCategories')], createCategoryValidation, validate, categoriesController.createCategory);
+router.put('/categories/:id', [auth, editPage('blogCategories')], blockProtectedFields, updateCategoryValidation, validate, categoriesController.updateCategory);
+router.delete('/categories/:id', [auth, editPage('blogCategories')], categoriesController.deleteCategory);
+router.patch('/categories/:id/status', [auth, editPage('blogCategories')], categoriesController.toggleCategoryStatus);
 
 // ── Inline editor uploads ─────────────────────────────────────────────────────
-router.post('/uploads/inline', canManage, inlineUpload, (req, res) => {
+router.post('/uploads/inline', [auth, editPage('blogs')], inlineUpload, (req, res) => {
     const { buildFileResult } = require('../services/upload.service');
     const { sendSuccess } = require('../utils/response');
     if (!req.file) {
@@ -55,13 +50,13 @@ router.post('/uploads/inline', canManage, inlineUpload, (req, res) => {
 });
 
 // ── Blogs ─────────────────────────────────────────────────────────────────────
-router.get('/', canRead, blogsController.listBlogs);
-router.get('/:id', canRead, blogsController.getBlogById);
-router.post('/', canManage, blogUpload, createBlogValidation, validate, blogsController.createBlog);
-router.put('/:id', canEdit, blockProtectedFields, blogUpload, updateBlogValidation, validate, blogsController.updateBlog);
-router.delete('/:id', superAdminOnly, blogsController.deleteBlog);
-router.patch('/:id/publish', canManage, blogsController.publishBlog);
-router.patch('/:id/unpublish', canManage, blogsController.unpublishBlog);
-router.post('/:id/duplicate', canManage, blogsController.duplicateBlog);
+router.get('/', [auth, viewPage('blogs')], blogsController.listBlogs);
+router.get('/:id', [auth, viewPage('blogs')], blogsController.getBlogById);
+router.post('/', [auth, editPage('blogs')], blogUpload, createBlogValidation, validate, blogsController.createBlog);
+router.put('/:id', [auth, editPage('blogs')], blockProtectedFields, blogUpload, updateBlogValidation, validate, blogsController.updateBlog);
+router.delete('/:id', [auth, editPage('blogs')], blogsController.deleteBlog);
+router.patch('/:id/publish', [auth, editPage('blogs')], blogsController.publishBlog);
+router.patch('/:id/unpublish', [auth, editPage('blogs')], blogsController.unpublishBlog);
+router.post('/:id/duplicate', [auth, editPage('blogs')], blogsController.duplicateBlog);
 
 module.exports = router;

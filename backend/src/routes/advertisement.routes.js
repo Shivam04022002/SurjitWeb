@@ -1,11 +1,10 @@
 const express = require('express');
 const { validationResult } = require('express-validator');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
 const { buildFileResult, deleteUploadedFile } = require('../services/upload.service');
-const { ROLES } = require('../constants/roles');
 const { AppError } = require('../middleware/errorHandler');
 const HTTP_STATUS = require('../constants/httpStatus');
 
@@ -22,9 +21,9 @@ const router = express.Router();
 // see advertisements; Super Admin and Editor create, edit and publish them;
 // deleting is Super Admin only. There is no public route here — the website
 // reads the published advertisement through /api/public/advertisement.
-const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
-const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
-const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
+const canRead = [auth, viewPage('advertisements')];
+const canManage = [auth, editPage('advertisements')];
+const superAdminOnly = [auth, editPage('advertisements')];
 
 // The artwork, through the CMS's own upload middleware: S3 when the server is
 // configured for it, local disk otherwise, with the key generated server-side

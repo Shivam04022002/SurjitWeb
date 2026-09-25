@@ -1,10 +1,9 @@
 const express = require('express');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
-const { ROLES } = require('../constants/roles');
 
 const companyController = require('../controllers/about/company.controller');
 const directorController = require('../controllers/about/director.controller');
@@ -28,12 +27,9 @@ const {
 
 const router = express.Router();
 
-const canManage = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR);
-const canRead = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER);
 // Editing an existing record is open to Content Manager; creating,
 // deleting, publishing, changing status and reordering are not. The
 // blockProtectedFields guard stops an edit body reaching those anyway.
-const canEdit = authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER);
 
 const imageUpload = createUpload({ folder: 'about', fileTypes: 'images' });
 
@@ -42,14 +38,14 @@ const imageUpload = createUpload({ folder: 'about', fileTypes: 'images' });
 router.get(
     '/company',
     auth,
-    canRead,
+    viewPage('company'),
     companyController.getCompanyInfo
 );
 
 router.put(
     '/company',
     auth,
-    canEdit, blockProtectedFields,
+    editPage('company'), blockProtectedFields,
     imageUpload.fields([
         { name: 'heroImage', maxCount: 1 },
         { name: 'aboutImage', maxCount: 1 }
@@ -64,14 +60,14 @@ router.put(
 router.get(
     '/directors',
     auth,
-    canRead,
+    viewPage('directors'),
     directorController.getAllDirectors
 );
 
 router.post(
     '/directors',
     auth,
-    canManage,
+    editPage('directors'),
     imageUpload.single('photo'),
     createDirectorValidation,
     validate,
@@ -81,7 +77,7 @@ router.post(
 router.put(
     '/directors/:id',
     auth,
-    canEdit, blockProtectedFields,
+    editPage('directors'), blockProtectedFields,
     imageUpload.single('photo'),
     updateDirectorValidation,
     validate,
@@ -91,14 +87,14 @@ router.put(
 router.delete(
     '/directors/:id',
     auth,
-    canManage,
+    editPage('directors'),
     directorController.deleteDirector
 );
 
 router.patch(
     '/directors/reorder',
     auth,
-    canManage,
+    editPage('directors'),
     directorReorderValidation,
     validate,
     directorController.reorderDirectors
@@ -107,14 +103,14 @@ router.patch(
 router.patch(
     '/directors/:id/status',
     auth,
-    canManage,
+    editPage('directors'),
     directorController.toggleStatus
 );
 
 router.post(
     '/directors/:id/transfer',
     auth,
-    canManage,
+    editPage('directors'),
     directorTransferValidation,
     validate,
     directorController.transferDirector
@@ -125,14 +121,14 @@ router.post(
 router.get(
     '/leadership',
     auth,
-    canRead,
+    viewPage('leadership'),
     leadershipController.getAllLeadershipMembers
 );
 
 router.post(
     '/leadership',
     auth,
-    canManage,
+    editPage('leadership'),
     imageUpload.single('photo'),
     createLeadershipValidation,
     validate,
@@ -142,7 +138,7 @@ router.post(
 router.put(
     '/leadership/:id',
     auth,
-    canEdit, blockProtectedFields,
+    editPage('leadership'), blockProtectedFields,
     imageUpload.single('photo'),
     updateLeadershipValidation,
     validate,
@@ -152,14 +148,14 @@ router.put(
 router.delete(
     '/leadership/:id',
     auth,
-    canManage,
+    editPage('leadership'),
     leadershipController.deleteLeadershipMember
 );
 
 router.patch(
     '/leadership/reorder',
     auth,
-    canManage,
+    editPage('leadership'),
     leadershipReorderValidation,
     validate,
     leadershipController.reorderLeadershipMembers
@@ -168,14 +164,14 @@ router.patch(
 router.patch(
     '/leadership/:id/status',
     auth,
-    canManage,
+    editPage('leadership'),
     leadershipController.toggleStatus
 );
 
 router.post(
     '/leadership/:id/transfer',
     auth,
-    canManage,
+    editPage('leadership'),
     leadershipTransferValidation,
     validate,
     leadershipController.transferLeadershipMember

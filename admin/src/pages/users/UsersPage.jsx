@@ -7,18 +7,16 @@ import {
 import { DataGrid } from '@mui/x-data-grid'
 import { Add, Edit, Delete, Search, Person } from '@mui/icons-material'
 import { userService } from '../../services/user.service'
+import { roleService } from '../../services/role.service'
 import { useAuth } from '../../hooks/useAuth'
+import { usePermissions, usePermissionState } from '../../hooks/usePermissions'
 import { ROLES, ROLE_LABELS } from '../../utils/constants'
+import { assignableRoles, roleLabelForKey, roleSummary, roleColour } from '../roles/roleOptions'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import ReadOnlyNotice from '../../components/ReadOnlyNotice'
 import Toast from '../../components/Toast'
 
 const EMPTY = { name: '', email: '', password: '', role: ROLES.CONTENT_MANAGER, isActive: true }
-
-const ROLE_COLOR = {
-  [ROLES.SUPER_ADMIN]: 'error',
-  [ROLES.EDITOR]: 'primary',
-  [ROLES.CONTENT_MANAGER]: 'default'
-}
 
 const initialsOf = (name) => String(name || '?').trim().charAt(0).toUpperCase()
 
@@ -26,12 +24,21 @@ const fmt = (d) => (d
   ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   : '—')
 
-// Manages the accounts that can sign in to the CMS. Super Admin only — the
-// route is guarded server-side too, so a non-super-admin reaching this page
-// simply gets 403s rather than data.
+// Manages the accounts that can sign in to the CMS.
+//
+// The roles on offer come from the roles API, so one created on the Roles page
+// can be assigned straight away. A role is offered only when it is active and
+// reaches no further than the administrator doing the assigning — the server
+// applies the same two rules, and this only keeps the menu honest.
 const UsersPage = () => {
   const { user: currentUser } = useAuth()
+  const perms = usePermissions()
+  const { levels: myLevels } = usePermissionState()
   const isSuperAdmin = currentUser?.role === ROLES.SUPER_ADMIN
+
+  const [roles, setRoles] = useState([])
+  const [rolesLoading, setRolesLoading] = useState(true)
+  const [rolesError, setRolesError] = useState('')
 
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
@@ -83,8 +90,32 @@ const UsersPage = () => {
     return () => clearTimeout(t)
   }, [fetchUsers])
 
+  // The roles on offer. Fetched once — assigning a role needs this list, and
+  // without it the form says so rather than falling back to a guess.
+  useEffect(() => {
+    let active = true
+    roleService.getAllRoles()
+      .then((res) => { if (active) { setRoles(res.data.data); setRolesError('') } })
+      .catch((err) => {
+        if (!active) return
+        setRoles([])
+        setRolesError(err?.response?.status === 403
+          ? 'Your role cannot read the list of roles, so roles cannot be assigned here.'
+          : 'The list of roles could not be loaded.')
+      })
+      .finally(() => { if (active) setRolesLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  // Active roles that reach no further than this administrator does. Super
+  // Admin sees every role; anyone else cannot hand out more than they hold.
+  const myPermissions = Object.entries(myLevels || {}).flatMap(([page, level]) => (
+    level === 'edit' ? [`${page}.view`, `${page}.edit`] : level === 'view' ? [`${page}.view`] : []
+  ))
+  const options = assignableRoles(roles, { isSuperAdmin, permissions: myPermissions })
+
   const openCreate = () => {
-    setForm(EMPTY); setErrors({})
+    setForm({ ...EMPTY, role: options[0]?.key || '' }); setErrors({})
     setDialog({ open: true, editing: null })
   }
 
@@ -171,8 +202,8 @@ const UsersPage = () => {
       field: 'role', headerName: 'Role', width: 170,
       renderCell: (p) => (
         <Chip
-          label={ROLE_LABELS[p.row.role] || p.row.role}
-          color={ROLE_COLOR[p.row.role] || 'default'}
+          label={roleLabelForKey(p.row.role, roles, ROLE_LABELS)}
+          color={roleColour(p.row.role)}
           size="small"
           variant={p.row.role === ROLES.CONTENT_MANAGER ? 'outlined' : 'filled'}
         />
@@ -201,21 +232,23 @@ const UsersPage = () => {
       field: 'actions', headerName: 'Actions', width: 130, sortable: false,
       renderCell: (p) => (
         <Stack direction="row">
-          <Tooltip title="Edit">
+          <Tooltip title={perms.canEdit ? 'Edit' : 'View'}>
             <IconButton size="small" onClick={() => openEdit(p.row)}>
               <Edit fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={isSelf(p.row) ? 'You cannot delete your own account' : 'Delete'}>
-            <span>
-              <IconButton
-                size="small" color="error" disabled={isSelf(p.row)}
-                onClick={() => setDeleteDialog({ open: true, id: p.row._id, name: p.row.name })}
-              >
-                <Delete fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
+          {perms.canEdit && (
+            <Tooltip title={isSelf(p.row) ? 'You cannot delete your own account' : 'Delete'}>
+              <span>
+                <IconButton
+                  size="small" color="error" disabled={isSelf(p.row)}
+                  onClick={() => setDeleteDialog({ open: true, id: p.row._id, name: p.row.name })}
+                >
+                  <Delete fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
         </Stack>
       )
     }
@@ -230,17 +263,14 @@ const UsersPage = () => {
             Accounts that can sign in to the CMS, and what each one may do
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreate} disabled={!isSuperAdmin}>
-          Add User
-        </Button>
+        {perms.canEdit && (
+          <Button variant="contained" startIcon={<Add />} onClick={openCreate}>
+            Add User
+          </Button>
+        )}
       </Box>
 
-      {!isSuperAdmin && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Only a Super Admin can manage CMS users.
-        </Alert>
-      )}
-
+      <ReadOnlyNotice what="CMS users" />
       {loadError && <Alert severity="error" sx={{ mb: 2 }}>{loadError}</Alert>}
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
@@ -257,8 +287,8 @@ const UsersPage = () => {
           sx={{ minWidth: 200 }}
         >
           <MenuItem value="">All roles</MenuItem>
-          {Object.values(ROLES).map((r) => (
-            <MenuItem key={r} value={r}>{ROLE_LABELS[r]}</MenuItem>
+          {roles.map((r) => (
+            <MenuItem key={r.key} value={r.key}>{r.name}</MenuItem>
           ))}
         </TextField>
       </Stack>
@@ -305,19 +335,33 @@ const UsersPage = () => {
                 : 'At least 8 characters')}
             />
             <TextField
-              select label="Role" fullWidth value={form.role}
+              select label="Role" fullWidth required value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-              helperText={
-                form.role === ROLES.SUPER_ADMIN ? 'Full access, including users and deletions'
-                  : form.role === ROLES.EDITOR ? 'Can create and edit content, but not delete'
-                    : 'Read-only access to content'
-              }
-              disabled={dialog.editing && String(dialog.editing._id) === String(currentUser?._id)}
+              error={!!errors.role}
+              helperText={errors.role
+                || (rolesLoading ? 'Loading roles…'
+                  : rolesError || roleSummary(roles.find((r) => r.key === form.role))
+                  || 'Choose what this user may reach')}
+              disabled={rolesLoading || options.length === 0
+                || (dialog.editing && String(dialog.editing._id) === String(currentUser?._id))}
             >
-              {Object.values(ROLES).map((r) => (
-                <MenuItem key={r} value={r}>{ROLE_LABELS[r]}</MenuItem>
+              {/* The role this user already holds stays selectable even if it
+                  is no longer on offer — otherwise saving a name change would
+                  silently move them to another role. */}
+              {dialog.editing && form.role && !options.some((r) => r.key === form.role) && (
+                <MenuItem value={form.role}>{roleLabelForKey(form.role, roles, ROLE_LABELS)} (current)</MenuItem>
+              )}
+              {options.map((r) => (
+                <MenuItem key={r.key} value={r.key}>{r.name}</MenuItem>
               ))}
             </TextField>
+
+            {!rolesLoading && !rolesError && options.length === 0 && (
+              <Alert severity="warning">
+                There are no roles you can assign. A Super Admin can create one on the Roles page.
+              </Alert>
+            )}
+            {rolesError && <Alert severity="warning">{rolesError}</Alert>}
             {dialog.editing && String(dialog.editing._id) === String(currentUser?._id) && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: -1.5 }}>
                 You cannot change your own role or deactivate yourself.
@@ -338,7 +382,7 @@ const UsersPage = () => {
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialog({ open: false, editing: null })} disabled={saving}>Cancel</Button>
           <Button
-            variant="contained" onClick={handleSave} disabled={saving}
+            variant="contained" onClick={handleSave} disabled={saving || !perms.canEdit}
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
           >
             {dialog.editing ? 'Save' : 'Create'}

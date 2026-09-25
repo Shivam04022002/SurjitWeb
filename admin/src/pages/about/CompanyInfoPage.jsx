@@ -16,8 +16,12 @@ import { useForm, Controller } from 'react-hook-form'
 import { aboutService } from '../../services/about.service'
 import ImageUpload from '../../components/ImageUpload'
 import Toast from '../../components/Toast'
+import { usePermissions } from '../../hooks/usePermissions'
+import ReadOnlyGuard from '../../components/ReadOnlyGuard'
+import ReadOnlyNotice from '../../components/ReadOnlyNotice'
 
 const CompanyInfoPage = () => {
+  const perms = usePermissions()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [heroImageFile, setHeroImageFile] = useState(null)
@@ -107,17 +111,21 @@ const CompanyInfoPage = () => {
         <Typography variant="h5" fontWeight={700}>
           Company Information
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />}
-          onClick={handleSubmit(onSubmit)}
-          disabled={saving}
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </Button>
+        {perms.canEdit && (
+          <Button
+            variant="contained"
+            startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />}
+            onClick={handleSubmit(onSubmit)}
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        )}
       </Box>
 
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <ReadOnlyNotice what="company information" />
+
+      <ReadOnlyGuard><form onSubmit={handleSubmit(onSubmit)}>
         <Grid container spacing={3}>
           {/* Basic Info */}
           <Grid item xs={12}>
@@ -270,7 +278,7 @@ const CompanyInfoPage = () => {
             </Card>
           </Grid>
         </Grid>
-      </form>
+      </form></ReadOnlyGuard>
 
       <Toast
         open={toast.open}

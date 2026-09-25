@@ -1,24 +1,23 @@
 const express = require('express');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const validate = require('../middleware/validate');
-const { ROLES } = require('../constants/roles');
 
 const userController = require('../controllers/user.controller');
 const { createUserValidation, updateUserValidation } = require('../validators/user.validator');
 
 const router = express.Router();
 
-// Managing who can sign in — and with which role — is a super-admin power.
-// Editors and content managers have no business here, so unlike every other
-// module this one does not grant them read access either: the list exposes
-// every colleague's email and role.
-const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
+// Who can sign in, and with which role. The list exposes every colleague's
+// email and role, so it is not granted casually — but reading it is a view and
+// creating or changing an account is an edit, like every other page.
+const canRead = [auth, viewPage('users')];
+const canManage = [auth, editPage('users')];
 
-router.get('/', superAdminOnly, userController.listUsers);
-router.get('/:id', superAdminOnly, userController.getUserById);
-router.post('/', superAdminOnly, createUserValidation, validate, userController.createUser);
-router.put('/:id', superAdminOnly, updateUserValidation, validate, userController.updateUser);
-router.delete('/:id', superAdminOnly, userController.deleteUser);
+router.get('/', canRead, userController.listUsers);
+router.get('/:id', canRead, userController.getUserById);
+router.post('/', canManage, createUserValidation, validate, userController.createUser);
+router.put('/:id', canManage, updateUserValidation, validate, userController.updateUser);
+router.delete('/:id', canManage, userController.deleteUser);
 
 module.exports = router;

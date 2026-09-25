@@ -1,10 +1,9 @@
 const express = require('express');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
-const { ROLES } = require('../constants/roles');
 
 const legalController = require('../controllers/legalPage.controller');
 const {
@@ -15,13 +14,13 @@ const {
 
 const router = express.Router();
 
-const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
-const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+const canManage = [auth, editPage('legalPages')];
+const canRead = [auth, viewPage('legalPages')];
 // Editing an existing record is open to Content Manager; creating,
 // deleting, publishing, changing status and reordering are not. The
 // blockProtectedFields guard stops an edit body reaching those anyway.
-const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
-const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
+const canEdit = [auth, editPage('legalPages')];
+const superAdminOnly = [auth, editPage('legalPages')];
 
 // One upload pass: the optional document must be a PDF. The filter requires the
 // extension and reported mime type to agree, so a renamed file is rejected, as

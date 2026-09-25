@@ -358,12 +358,29 @@ describe('Authorisation', () => {
         assert.equal((await call('DELETE', `${BASE}/${id}`, { token: tokens.content })).status, 403);
     });
 
-    test('an Editor may manage but not delete; a Super Admin may do everything', async () => {
+    // Access is now a page permission: an Editor holds advertisements at edit,
+    // which is every change to the page including removal. Deletion used to be
+    // Super Admin only — a distinction the two-level model does not draw.
+    test('an Editor may manage the page, deletion included', async () => {
         const id = (await create({ name: 'Editor made this' }, tokens.editor)).body.data.advertisement._id;
         assert.equal((await publish(id, tokens.editor)).status, 200);
         assert.equal((await unpublish(id, tokens.editor)).status, 200);
-        assert.equal((await call('DELETE', `${BASE}/${id}`, { token: tokens.editor })).status, 403, 'deleting is Super Admin only');
+        assert.equal((await call('DELETE', `${BASE}/${id}`, { token: tokens.editor })).status, 200);
+    });
+
+    test('a Super Admin may do everything', async () => {
+        const id = (await create({ name: 'Super made this' }, tokens.super)).body.data.advertisement._id;
+        assert.equal((await publish(id, tokens.super)).status, 200);
+        assert.equal((await unpublish(id, tokens.super)).status, 200);
         assert.equal((await call('DELETE', `${BASE}/${id}`, { token: tokens.super })).status, 200);
+    });
+
+    // Removal still needs the page at edit: a role holding only view is
+    // refused, which is what protects the page from a reader.
+    test('a role holding the page at view cannot delete', async () => {
+        const id = (await create({ name: 'Not yours to remove' })).body.data.advertisement._id;
+        assert.equal((await call('DELETE', `${BASE}/${id}`, { token: tokens.content })).status, 403);
+        assert.equal(await Advertisement.countDocuments({ _id: id }), 1);
     });
 });
 

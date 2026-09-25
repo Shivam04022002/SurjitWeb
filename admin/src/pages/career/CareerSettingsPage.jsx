@@ -6,6 +6,9 @@ import {
 import { Save, CloudUpload } from '@mui/icons-material'
 import { careerService } from '../../services/career.service'
 import Toast from '../../components/Toast'
+import { usePermissions } from '../../hooks/usePermissions'
+import ReadOnlyGuard from '../../components/ReadOnlyGuard'
+import ReadOnlyNotice from '../../components/ReadOnlyNotice'
 
 const ImageUploadField = ({ label, preview, name, onChange }) => (
   <Box>
@@ -25,6 +28,7 @@ const ImageUploadField = ({ label, preview, name, onChange }) => (
 )
 
 const CareerSettingsPage = () => {
+  const perms = usePermissions()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
@@ -127,6 +131,8 @@ const CareerSettingsPage = () => {
 
   return (
     <Container maxWidth="lg" disableGutters>
+      <ReadOnlyNotice what="career settings" />
+      <ReadOnlyGuard>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" fontWeight={700}>Career Settings</Typography>
         <Button
@@ -225,6 +231,7 @@ const CareerSettingsPage = () => {
         severity={toast.severity}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
       />
+      </ReadOnlyGuard>
     </Container>
   )
 }

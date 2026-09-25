@@ -10,6 +10,8 @@ import Toast from '../../../components/Toast'
 import GeneralTab from './GeneralTab'
 import StringListTab from './StringListTab'
 import SeoTab from './SeoTab'
+import ReadOnlyGuard from '../../../components/ReadOnlyGuard'
+import ReadOnlyNotice from '../../../components/ReadOnlyNotice'
 
 const TAB_LABELS = ['General', 'Responsibilities', 'Qualifications', 'Skills', 'SEO']
 
@@ -66,6 +68,8 @@ const JobEditorPage = () => {
 
   return (
     <Container maxWidth="xl" disableGutters>
+      <ReadOnlyNotice what="this job opening" />
+      <ReadOnlyGuard>
       <Box sx={{ mb: 3 }}>
         <Breadcrumbs sx={{ mb: 1 }}>
           <Link
@@ -168,6 +172,7 @@ const JobEditorPage = () => {
         severity={toast.severity}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
       />
+      </ReadOnlyGuard>
     </Container>
   )
 }

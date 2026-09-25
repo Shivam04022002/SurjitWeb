@@ -1,7 +1,17 @@
 const { body } = require('express-validator');
-const { ROLES } = require('../constants/roles');
 
-const ROLE_VALUES = Object.values(ROLES);
+
+
+// Roles are records now, so a role is valid when it exists and is active —
+// not when it appears in a list compiled at build time.
+const roleMustExist = async (value) => {
+    if (!value) return true;
+    const Role = require('../models/Role');
+    const role = await Role.findOne({ key: value }).select('status').lean();
+    if (!role) throw new Error('That role does not exist');
+    if (role.status !== 'Active') throw new Error('That role is not active');
+    return true;
+};
 
 const createUserValidation = [
     body('name')
@@ -16,7 +26,8 @@ const createUserValidation = [
         // Matches the model's own minimum so the two cannot disagree.
         .isLength({ min: 8 }).withMessage('Password must be at least 8 characters long'),
     body('role')
-        .optional().isIn(ROLE_VALUES).withMessage(`Role must be one of: ${ROLE_VALUES.join(', ')}`),
+        .optional().trim().toLowerCase()
+        .custom(roleMustExist),
     body('isActive')
         .optional().isBoolean().withMessage('isActive must be boolean').toBoolean()
 ];
@@ -35,7 +46,8 @@ const updateUserValidation = [
         .optional({ checkFalsy: true })
         .isLength({ min: 8 }).withMessage('Password must be at least 8 characters long'),
     body('role')
-        .optional().isIn(ROLE_VALUES).withMessage(`Role must be one of: ${ROLE_VALUES.join(', ')}`),
+        .optional().trim().toLowerCase()
+        .custom(roleMustExist),
     body('isActive')
         .optional().isBoolean().withMessage('isActive must be boolean').toBoolean()
 ];

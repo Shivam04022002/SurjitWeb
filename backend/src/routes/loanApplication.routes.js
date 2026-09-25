@@ -5,8 +5,7 @@ const { loanApplicationValidator } = require('../validators');
 const { createUpload } = require('../middleware/upload');
 const { loanApplicationLimiter, loanStatusLimiter } = require('../middleware/rateLimiters');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
-const { ROLES } = require('../constants/roles');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 
 const router = express.Router();
 
@@ -21,10 +20,10 @@ const loanUploads = createUpload({ folder: 'loan-documents', fileTypes: 'all' })
 // materially more sensitive than the marketing content the CMS otherwise
 // manages, so unlike every other module here the read grant stops at Editor
 // and does not extend to Content Manager.
-const canViewApplications = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
+const canViewApplications = [auth, viewPage('loanApplications')];
 // Moving an application between statuses is limited to the same two roles that
 // may see it at all — Content Manager reaches neither.
-const canDecideApplications = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
+const canDecideApplications = [auth, editPage('loanApplications')];
 
 // ── Public ───────────────────────────────────────────────────────────────────
 

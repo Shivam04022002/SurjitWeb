@@ -36,7 +36,7 @@ const StatusRow = ({ label, children }) => (
 )
 
 const ApiSettingsPage = () => {
-  const { isSuperAdmin } = usePermissions()
+  const perms = usePermissions()
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -74,13 +74,13 @@ const ApiSettingsPage = () => {
   }
 
   useEffect(() => {
-    // Other roles see the no-permission view, which renders before loading.
-    if (!isSuperAdmin) return
+    // The route guard has already refused anyone without integrations.view, so
+    // reaching here means the configuration may be read.
     geminiService.getConfig()
       .then((res) => applyConfig(res.data.config))
       .catch((err) => setLoadError(err?.response?.data?.message || 'Could not load the API configuration.'))
       .finally(() => setLoading(false))
-  }, [isSuperAdmin])
+  }, [])
 
   // The Pexels card changes whether featured images can be found automatically.
   const refreshConfig = useCallback(() => {
@@ -175,15 +175,6 @@ const ApiSettingsPage = () => {
       setRemoving(false)
       setConfirmRemove(false)
     }
-  }
-
-  if (!isSuperAdmin) {
-    return (
-      <Container maxWidth="lg" sx={{ py: 3 }}>
-        <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>API</Typography>
-        <Alert severity="info">Only a Super Admin can view or change API keys.</Alert>
-      </Container>
-    )
   }
 
   if (loading) {

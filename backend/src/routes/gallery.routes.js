@@ -1,11 +1,10 @@
 const express = require('express');
 const multer = require('multer');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
 const { createUpload } = require('../middleware/upload');
-const { ROLES } = require('../constants/roles');
 
 const albumsController = require('../controllers/gallery/albums.controller');
 const imagesController = require('../controllers/gallery/images.controller');
@@ -24,13 +23,13 @@ const {
 
 const router = express.Router();
 
-const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
-const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+const canManage = [auth, editPage('gallery')];
+const canRead = [auth, viewPage('gallery')];
 // Editing an existing record is open to Content Manager; creating,
 // deleting, publishing, changing status and reordering are not. The
 // blockProtectedFields guard stops an edit body reaching those anyway.
-const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
-const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
+const canEdit = [auth, editPage('gallery')];
+const superAdminOnly = [auth, editPage('gallery')];
 
 // Cover image upload (single)
 const coverUpload = createUpload({ folder: 'gallery/covers', fileTypes: 'images' }).single('coverImage');

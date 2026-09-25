@@ -33,6 +33,8 @@ import NodalOfficersPage from '../pages/nodalOfficers/NodalOfficersPage'
 import ApiSettingsPage from '../pages/integrations/ApiSettingsPage'
 import GeminiBlogsPage from '../pages/gemini/GeminiBlogsPage'
 import AdvertisementsPage from '../pages/advertisements/AdvertisementsPage'
+import RolesPage from '../pages/roles/RolesPage'
+import RequirePagePermission from '../components/RequirePagePermission'
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth()
@@ -83,36 +85,37 @@ const AppRoutes = () => {
       >
         <Route index element={<DashboardPage />} />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="about/company" element={<CompanyInfoPage />} />
-        <Route path="about/directors" element={<DirectorsPage />} />
-        <Route path="loan-applications" element={<LoanApplicationsPage />} />
-        <Route path="analytics" element={<AnalyticsPage />} />
-        <Route path="about/leadership" element={<LeadershipPage />} />
-        <Route path="products/categories" element={<ProductCategoriesPage />} />
-        <Route path="products" element={<ProductsPage />} />
-        <Route path="products/:id/edit" element={<ProductEditorPage />} />
-        <Route path="career/settings" element={<CareerSettingsPage />} />
-        <Route path="career/jobs" element={<JobOpeningsPage />} />
-        <Route path="career/jobs/:id/edit" element={<JobEditorPage />} />
-        <Route path="career/applications" element={<ApplicationsPage />} />
-        <Route path="gallery/albums" element={<AlbumsPage />} />
-        <Route path="gallery/albums/:id/edit" element={<AlbumEditorPage />} />
+        <Route path="about/company" element={<RequirePagePermission page="company"><CompanyInfoPage /></RequirePagePermission>} />
+        <Route path="about/directors" element={<RequirePagePermission page="directors"><DirectorsPage /></RequirePagePermission>} />
+        <Route path="loan-applications" element={<RequirePagePermission page="loanApplications"><LoanApplicationsPage /></RequirePagePermission>} />
+        <Route path="analytics" element={<RequirePagePermission page="analytics"><AnalyticsPage /></RequirePagePermission>} />
+        <Route path="about/leadership" element={<RequirePagePermission page="leadership"><LeadershipPage /></RequirePagePermission>} />
+        <Route path="products/categories" element={<RequirePagePermission page="productCategories"><ProductCategoriesPage /></RequirePagePermission>} />
+        <Route path="products" element={<RequirePagePermission page="products"><ProductsPage /></RequirePagePermission>} />
+        <Route path="products/:id/edit" element={<RequirePagePermission page="products"><ProductEditorPage /></RequirePagePermission>} />
+        <Route path="career/settings" element={<RequirePagePermission page="careerSettings"><CareerSettingsPage /></RequirePagePermission>} />
+        <Route path="career/jobs" element={<RequirePagePermission page="jobs"><JobOpeningsPage /></RequirePagePermission>} />
+        <Route path="career/jobs/:id/edit" element={<RequirePagePermission page="jobs"><JobEditorPage /></RequirePagePermission>} />
+        <Route path="career/applications" element={<RequirePagePermission page="jobApplications"><ApplicationsPage /></RequirePagePermission>} />
+        <Route path="gallery/albums" element={<RequirePagePermission page="gallery"><AlbumsPage /></RequirePagePermission>} />
+        <Route path="gallery/albums/:id/edit" element={<RequirePagePermission page="gallery"><AlbumEditorPage /></RequirePagePermission>} />
         {/* "categories" and "new" are declared before :id so they are not read as ids. */}
-        <Route path="blogs" element={<BlogsPage />} />
-        <Route path="blogs/categories" element={<BlogCategoriesPage />} />
-        <Route path="blogs/new" element={<BlogEditorPage />} />
-        <Route path="blogs/:id/edit" element={<BlogEditorPage />} />
-        <Route path="reviews" element={<ReviewsPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="branches" element={<BranchesPage />} />
-        <Route path="homepage-stats" element={<HomepageStatsPage />} />
-        <Route path="legal-pages" element={<LegalPagesPage />} />
-        <Route path="nodal-officers" element={<NodalOfficersPage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="integrations/api" element={<ApiSettingsPage />} />
-        <Route path="gemini-blogs" element={<GeminiBlogsPage />} />
-        <Route path="advertisements" element={<AdvertisementsPage />} />
+        <Route path="blogs" element={<RequirePagePermission page="blogs"><BlogsPage /></RequirePagePermission>} />
+        <Route path="blogs/categories" element={<RequirePagePermission page="blogCategories"><BlogCategoriesPage /></RequirePagePermission>} />
+        <Route path="blogs/new" element={<RequirePagePermission page="blogs"><BlogEditorPage /></RequirePagePermission>} />
+        <Route path="blogs/:id/edit" element={<RequirePagePermission page="blogs"><BlogEditorPage /></RequirePagePermission>} />
+        <Route path="reviews" element={<RequirePagePermission page="reviews"><ReviewsPage /></RequirePagePermission>} />
+        <Route path="reports" element={<RequirePagePermission page="reports"><ReportsPage /></RequirePagePermission>} />
+        <Route path="branches" element={<RequirePagePermission page="branches"><BranchesPage /></RequirePagePermission>} />
+        <Route path="homepage-stats" element={<RequirePagePermission page="homepageStats"><HomepageStatsPage /></RequirePagePermission>} />
+        <Route path="legal-pages" element={<RequirePagePermission page="legalPages"><LegalPagesPage /></RequirePagePermission>} />
+        <Route path="nodal-officers" element={<RequirePagePermission page="nodalOfficers"><NodalOfficersPage /></RequirePagePermission>} />
+        <Route path="users" element={<RequirePagePermission page="users"><UsersPage /></RequirePagePermission>} />
+        <Route path="settings" element={<RequirePagePermission page="settings"><SettingsPage /></RequirePagePermission>} />
+        <Route path="integrations/api" element={<RequirePagePermission page="integrations"><ApiSettingsPage /></RequirePagePermission>} />
+        <Route path="gemini-blogs" element={<RequirePagePermission page="geminiBlogs"><GeminiBlogsPage /></RequirePagePermission>} />
+        <Route path="advertisements" element={<RequirePagePermission page="advertisements"><AdvertisementsPage /></RequirePagePermission>} />
+        <Route path="roles" element={<RequirePagePermission page="roles"><RolesPage /></RequirePagePermission>} />
       </Route>
     </Routes>
   )

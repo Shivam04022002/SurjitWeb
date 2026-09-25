@@ -10,6 +10,8 @@ import Toast from '../../../components/Toast'
 import GeneralTab from './GeneralTab'
 import ImagesTab from './ImagesTab'
 import ZipImportTab from './ZipImportTab'
+import ReadOnlyGuard from '../../../components/ReadOnlyGuard'
+import ReadOnlyNotice from '../../../components/ReadOnlyNotice'
 
 const TAB_LABELS = ['General', 'Images', 'ZIP Import']
 
@@ -59,6 +61,8 @@ const AlbumEditorPage = () => {
 
   return (
     <Container maxWidth="xl" disableGutters>
+      <ReadOnlyNotice what="this album" />
+      <ReadOnlyGuard>
       <Box sx={{ mb: 3 }}>
         <Breadcrumbs sx={{ mb: 1 }}>
           <Link
@@ -141,6 +145,7 @@ const AlbumEditorPage = () => {
         severity={toast.severity}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
       />
+      </ReadOnlyGuard>
     </Container>
   )
 }

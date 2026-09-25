@@ -1,9 +1,8 @@
 const express = require('express');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const { canView: viewPage, canEdit: editPage } = require('../middleware/permission');
 const { blockProtectedFields } = require('../middleware/restrictFields');
 const validate = require('../middleware/validate');
-const { ROLES } = require('../constants/roles');
 
 const branchController = require('../controllers/branch.controller');
 const {
@@ -14,13 +13,13 @@ const {
 
 const router = express.Router();
 
-const canManage = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR)];
-const canRead = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
+const canManage = [auth, editPage('branches')];
+const canRead = [auth, viewPage('branches')];
 // Editing an existing record is open to Content Manager; creating,
 // deleting, publishing, changing status and reordering are not. The
 // blockProtectedFields guard stops an edit body reaching those anyway.
-const canEdit = [auth, authorize(ROLES.SUPER_ADMIN, ROLES.EDITOR, ROLES.CONTENT_MANAGER)];
-const superAdminOnly = [auth, authorize(ROLES.SUPER_ADMIN)];
+const canEdit = [auth, editPage('branches')];
+const superAdminOnly = [auth, editPage('branches')];
 
 // reorder before /:id so the word is never read as an id
 router.get('/', canRead, branchController.listBranches);

@@ -19,6 +19,7 @@ const nodalOfficerRoutes = require('./nodalOfficer.routes');
 const analyticsRoutes = require('./analytics.routes');
 const geminiRoutes = require('./gemini.routes');
 const advertisementRoutes = require('./advertisement.routes');
+const roleRoutes = require('./role.routes');
 
 const router = express.Router();
 
@@ -42,5 +43,6 @@ router.use('/v1/nodal-officers', nodalOfficerRoutes);
 router.use('/v1/analytics', analyticsRoutes);
 router.use('/v1/gemini', geminiRoutes);
 router.use('/v1/advertisements', advertisementRoutes);
+router.use('/v1/roles', roleRoutes);
 
 module.exports = router;

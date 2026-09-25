@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
 import { AuthProvider } from './contexts/AuthContext'
+import { PermissionProvider } from './contexts/PermissionContext'
 import App from './App'
 import './index.css'
 
@@ -23,7 +24,9 @@ createRoot(document.getElementById('root')).render(
       <CssBaseline />
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <PermissionProvider>
+            <App />
+          </PermissionProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>
