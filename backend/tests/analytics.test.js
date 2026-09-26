@@ -329,9 +329,9 @@ describe('Traffic by City', () => {
         const { location, kpis } = (await overview({ range: '7d' })).body.data;
         assert.equal(location.available, true);
         assert.deepEqual(location.cities, [
-            { city: 'Delhi', visitors: 3 },
-            { city: 'Lucknow', visitors: 2 },
-            { city: 'Mumbai', visitors: 1 }
+            { city: 'Delhi', country: null, visitors: 3 },
+            { city: 'Lucknow', country: null, visitors: 2 },
+            { city: 'Mumbai', country: null, visitors: 1 }
         ]);
         assert.equal(location.knownVisitors, 6);
         assert.equal(location.unknownVisitors, 0);
@@ -345,7 +345,7 @@ describe('Traffic by City', () => {
         await seedVisit({ city: null });
         await seedVisit({ city: '' });
         const { location } = (await overview({ range: '7d' })).body.data;
-        assert.deepEqual(location.cities, [{ city: 'Lucknow', visitors: 1 }]);
+        assert.deepEqual(location.cities, [{ city: 'Lucknow', country: null, visitors: 1 }]);
         assert.equal(location.knownVisitors, 1);
         assert.equal(location.unknownVisitors, 3);
         assert.equal(location.visitors, 4);
@@ -572,5 +572,504 @@ describe('Analytics retention', () => {
         assert.equal(data.kpis.pageViews, 2);
         assert.equal(data.location.knownVisitors, 2);
         assert.equal(await WebsiteVisit.countDocuments(), 2, 'nothing was deleted by reading or writing');
+    });
+});
+
+
+// -- Reporting is in UTC ------------------------------------------------------
+// A figure on this dashboard has to mean the same thing to everyone who reads
+// it, so every window is a UTC calendar day. The tests that matter most are the
+// ones near midnight: a visit at 23:30 UTC belongs to that UTC day, and one at
+// 00:30 UTC to the next, whatever timezone the server or the reader is in.
+describe('Analytics reporting timezone', () => {
+    const utc = require('../src/utils/zonedDate').utc;
+    const { resolveRange, RANGES } = require('../src/services/analytics.service');
+
+    const atUtc = (iso) => new Date(iso);
+    const dayOf = (date) => date.toISOString().slice(0, 10);
+
+    test('the reporting clock is UTC, not the business timezone', () => {
+        assert.equal(utc.TIMEZONE, 'UTC');
+        // And the business clock is left where it was, for blog scheduling.
+        assert.equal(require('../src/utils/zonedDate').TIMEZONE, env.ANALYTICS_TIMEZONE);
+    });
+
+    test('a UTC day begins at midnight UTC exactly', () => {
+        assert.equal(utc.startOfDay('2026-01-15').toISOString(), '2026-01-15T00:00:00.000Z');
+        assert.equal(utc.startOfDay('2026-06-15').toISOString(), '2026-06-15T00:00:00.000Z',
+            'and does not move with any daylight saving');
+    });
+
+    test('an instant near midnight falls on the UTC day it belongs to', () => {
+        // 23:30 UTC is still that day; 00:30 UTC is already the next. In
+        // Asia/Kolkata both of these read as the following calendar date, which
+        // is exactly the confusion this pins down.
+        assert.equal(utc.dayOf(atUtc('2026-03-10T23:30:00Z')), '2026-03-10');
+        assert.equal(utc.dayOf(atUtc('2026-03-11T00:30:00Z')), '2026-03-11');
+        assert.equal(utc.dayOf(atUtc('2026-03-10T23:59:59.999Z')), '2026-03-10');
+        assert.equal(utc.dayOf(atUtc('2026-03-11T00:00:00.000Z')), '2026-03-11');
+    });
+
+    test('the UTC day differs from the business day, which is the point', () => {
+        const business = require('../src/utils/zonedDate');
+        const lateEvening = atUtc('2026-03-10T20:00:00Z');   // 01:30 next day in IST
+        assert.equal(utc.dayOf(lateEvening), '2026-03-10');
+        assert.equal(business.dayOf(lateEvening), '2026-03-11');
+    });
+
+    test('every preset resolves to UTC midnight boundaries', () => {
+        for (const key of Object.keys(RANGES)) {
+            if (key === 'custom') continue;
+            const r = resolveRange({ range: key });
+            assert.equal(r.start.getUTCHours(), 0, `${key} start hour`);
+            assert.equal(r.start.getUTCMinutes(), 0, `${key} start minute`);
+            assert.equal(r.start.getUTCSeconds(), 0, `${key} start second`);
+            assert.equal(r.start.getUTCMilliseconds(), 0, `${key} start ms`);
+            assert.equal(dayOf(r.start), r.fromDay, `${key} start is its own first day`);
+        }
+    });
+
+    test('Today runs from this UTC midnight to now', () => {
+        const r = resolveRange({ range: 'today' });
+        const now = new Date();
+
+        assert.equal(r.fromDay, utc.today());
+        assert.equal(r.toDay, utc.today());
+        assert.equal(r.start.toISOString(), `${utc.today()}T00:00:00.000Z`);
+        assert.ok(r.end <= new Date(now.getTime() + 2000) && r.end >= now.getTime() - 5000,
+            'the window ends at the current instant, not at the end of the day');
+        assert.deepEqual(r.days, [utc.today()]);
+    });
+
+    test('Yesterday runs from the previous UTC midnight to this one', () => {
+        const r = resolveRange({ range: 'yesterday' });
+        const yesterday = utc.addDays(utc.today(), -1);
+
+        assert.equal(r.fromDay, yesterday);
+        assert.equal(r.toDay, yesterday);
+        assert.equal(r.start.toISOString(), `${yesterday}T00:00:00.000Z`);
+        assert.equal(r.end.toISOString(), `${utc.today()}T00:00:00.000Z`,
+            'it stops at midnight, and never runs on into today');
+        assert.deepEqual(r.days, [yesterday]);
+    });
+
+    test('Last 7 Days covers seven UTC days ending today', () => {
+        const r = resolveRange({ range: '7d' });
+        assert.equal(r.days.length, 7);
+        assert.equal(r.toDay, utc.today());
+        assert.equal(r.fromDay, utc.addDays(utc.today(), -6));
+        assert.equal(r.start.toISOString(), `${r.fromDay}T00:00:00.000Z`);
+    });
+
+    test('Last 30 Days covers thirty UTC days ending today', () => {
+        const r = resolveRange({ range: '30d' });
+        assert.equal(r.days.length, 30);
+        assert.equal(r.toDay, utc.today());
+        assert.equal(r.fromDay, utc.addDays(utc.today(), -29));
+        assert.equal(r.start.toISOString(), `${r.fromDay}T00:00:00.000Z`);
+    });
+
+    test('a custom range is read as UTC days, start inclusive and end exclusive', () => {
+        const r = resolveRange({ range: 'custom', from: '2026-01-10', to: '2026-01-12' });
+
+        assert.equal(r.key, 'custom');
+        assert.equal(r.start.toISOString(), '2026-01-10T00:00:00.000Z');
+        assert.equal(r.end.toISOString(), '2026-01-13T00:00:00.000Z', 'the last day is included in full');
+        assert.deepEqual(r.days, ['2026-01-10', '2026-01-11', '2026-01-12']);
+    });
+
+    test('a single-day custom range is one whole UTC day', () => {
+        const r = resolveRange({ range: 'custom', from: '2026-02-01', to: '2026-02-01' });
+        assert.equal(r.start.toISOString(), '2026-02-01T00:00:00.000Z');
+        assert.equal(r.end.toISOString(), '2026-02-02T00:00:00.000Z');
+        assert.deepEqual(r.days, ['2026-02-01']);
+    });
+
+    test('an unusable custom range falls back rather than querying everything', () => {
+        for (const bad of [
+            { from: '2026-01-12', to: '2026-01-10' },
+            { from: 'not-a-date', to: '2026-01-10' },
+            { from: '2026-02-31', to: '2026-03-01' },
+            {}
+        ]) {
+            const r = resolveRange({ range: 'custom', ...bad });
+            assert.equal(r.key, '7d', JSON.stringify(bad));
+        }
+    });
+
+    test('the overview reports UTC as its timezone', async () => {
+        const res = await call('GET', '/v1/analytics/overview?range=today', { token });
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.timezone, 'UTC');
+    });
+});
+
+// -- A visit is counted on its UTC day ---------------------------------------
+// The same scenario end to end: visits placed either side of a UTC midnight,
+// then asked for through the API.
+describe('UTC day boundaries in the overview', () => {
+    const utc = require('../src/utils/zonedDate').utc;
+
+    const at = (isoUtc) => new Date(isoUtc);
+    const overview = async (query) => {
+        const res = await call('GET', `/v1/analytics/overview?${query}`, { token });
+        assert.equal(res.status, 200, res.text);
+        return res.body.data;
+    };
+
+    test('Yesterday counts the visit at 23:30 and not the one at 00:30', async () => {
+        const today = utc.today();
+        const yesterday = utc.addDays(today, -1);
+
+        await seedVisit({ sessionId: 'late-yesterday', at: at(`${yesterday}T23:30:00Z`) });
+        await seedVisit({ sessionId: 'early-today', at: at(`${today}T00:30:00Z`) });
+
+        const y = await overview('range=yesterday');
+        assert.equal(y.from, yesterday);
+        assert.equal(y.to, yesterday);
+        assert.equal(y.kpis.pageViews, 1, 'only the 23:30 visit belongs to yesterday');
+        assert.deepEqual(y.daily.map((d) => d.date), [yesterday]);
+        assert.equal(y.daily[0].pageViews, 1);
+
+        const t = await overview('range=today');
+        assert.equal(t.kpis.pageViews, 1, 'only the 00:30 visit belongs to today');
+        assert.equal(t.daily[0].date, today);
+    });
+
+    test('a visit one millisecond before UTC midnight is on the earlier day', async () => {
+        const today = utc.today();
+        const yesterday = utc.addDays(today, -1);
+
+        await seedVisit({ sessionId: 'edge-before', at: at(`${yesterday}T23:59:59.999Z`) });
+        await seedVisit({ sessionId: 'edge-after', at: at(`${today}T00:00:00.000Z`) });
+
+        assert.equal((await overview('range=yesterday')).kpis.pageViews, 1);
+        assert.equal((await overview('range=today')).kpis.pageViews, 1);
+    });
+
+    test('the daily series buckets each visit on its own UTC day', async () => {
+        const today = utc.today();
+        const days = [utc.addDays(today, -2), utc.addDays(today, -1), today];
+
+        // Two visits late on the first day, one early on the second, none on
+        // the third. In IST every one of these would land a day later.
+        await seedVisit({ sessionId: 'a', at: at(`${days[0]}T22:00:00Z`) });
+        await seedVisit({ sessionId: 'b', at: at(`${days[0]}T23:45:00Z`) });
+        await seedVisit({ sessionId: 'c', at: at(`${days[1]}T00:15:00Z`) });
+
+        const data = await overview(`range=custom&from=${days[0]}&to=${days[2]}`);
+        const byDay = Object.fromEntries(data.daily.map((d) => [d.date, d.pageViews]));
+
+        assert.deepEqual(data.daily.map((d) => d.date), days, 'every day in the window appears');
+        assert.equal(byDay[days[0]], 2);
+        assert.equal(byDay[days[1]], 1);
+        assert.equal(byDay[days[2]], 0, 'a day with no traffic is a zero, not a gap');
+    });
+
+    test('a custom range excludes what falls outside it, to the millisecond', async () => {
+        const today = utc.today();
+        const from = utc.addDays(today, -5);
+        const to = utc.addDays(today, -4);
+
+        await seedVisit({ sessionId: 'before', at: at(`${utc.addDays(from, -1)}T23:59:59.999Z`) });
+        await seedVisit({ sessionId: 'inside-start', at: at(`${from}T00:00:00.000Z`) });
+        await seedVisit({ sessionId: 'inside-end', at: at(`${to}T23:59:59.999Z`) });
+        await seedVisit({ sessionId: 'after', at: at(`${utc.addDays(to, 1)}T00:00:00.000Z`) });
+
+        const data = await overview(`range=custom&from=${from}&to=${to}`);
+        assert.equal(data.kpis.pageViews, 2, 'both boundary visits are in, neither neighbour is');
+    });
+
+    test('Last 7 Days reaches back exactly seven UTC days', async () => {
+        const today = utc.today();
+
+        await seedVisit({ sessionId: 'in-window', at: at(`${utc.addDays(today, -6)}T00:00:00.000Z`) });
+        await seedVisit({ sessionId: 'just-outside', at: at(`${utc.addDays(today, -7)}T23:59:59.999Z`) });
+
+        const data = await overview('range=7d');
+        assert.equal(data.kpis.pageViews, 1);
+        assert.equal(data.daily.length, 7);
+    });
+
+    test('Yesterday is offered as a range by the API', async () => {
+        const res = await call('GET', '/v1/analytics/overview?range=yesterday', { token });
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.range, 'yesterday');
+        assert.equal(res.body.data.label, 'Yesterday');
+    });
+});
+
+
+// -- Every city in the window ------------------------------------------------
+// The dashboard card shows ten cities; this is the list behind its "See All".
+// It counts the same way the card does — a visitor is a session, placed on the
+// city of its first page view — so the two can never disagree.
+describe('All cities', () => {
+    const utc = require('../src/utils/zonedDate').utc;
+
+    const cities = async (query = '') => {
+        const res = await call('GET', `/v1/analytics/cities${query}`, { token });
+        assert.equal(res.status, 200, res.text);
+        return res.body.data;
+    };
+
+    // Fifteen cities, so the ten-row card definitely truncates and the tail is
+    // made of ones and twos — exactly the rows that must not be dropped.
+    const seedManyCities = async () => {
+        const plan = [
+            ['Mountain View', 12], ['Lucknow', 8], ['Mumbai', 7], ['Delhi', 6],
+            ['Navi Mumbai', 5], ['Ashburn', 4], ['Chennai', 4], ['Pune', 3],
+            ['Kolkata', 3], ['Jaipur', 2], ['Surat', 2], ['Indore', 1],
+            ['Bhopal', 1], ['Nagpur', 1], ['Mountain Ash', 1]
+        ];
+        for (const [city, n] of plan) {
+            for (let i = 0; i < n; i += 1) await seedVisit({ city });
+        }
+        return plan;
+    };
+
+    test('includes every city, not just the ten the card shows', async () => {
+        const plan = await seedManyCities();
+
+        const all = await cities('?range=7d&limit=100');
+        assert.equal(all.totalCities, plan.length, 'every city is counted');
+        assert.equal(all.total, plan.length);
+        assert.equal(all.rows.length, plan.length, 'and every one is returned');
+
+        // The card, for comparison: still ten.
+        const card = (await overview({ range: '7d' })).body.data.location;
+        assert.equal(card.cities.length, 10);
+        assert.equal(card.totalCities, plan.length);
+    });
+
+    test('low-volume cities survive: the single-visitor tail is all there', async () => {
+        await seedManyCities();
+        const all = await cities('?range=7d&limit=100');
+
+        const ones = all.rows.filter((r) => r.visitors === 1).map((r) => r.city).sort();
+        assert.deepEqual(ones, ['Bhopal', 'Indore', 'Mountain Ash', 'Nagpur']);
+    });
+
+    test('counts match the card exactly, city for city', async () => {
+        await seedManyCities();
+
+        const all = await cities('?range=7d&limit=100');
+        const card = (await overview({ range: '7d' })).body.data.location;
+        const byCity = Object.fromEntries(all.rows.map((r) => [r.city, r.visitors]));
+
+        for (const row of card.cities) {
+            assert.equal(byCity[row.city], row.visitors, row.city);
+        }
+        assert.equal(all.visitors, card.visitors);
+        assert.equal(all.knownVisitors, card.knownVisitors);
+        assert.equal(all.unknownVisitors, card.unknownVisitors);
+    });
+
+    test('a visitor is a session, however many pages it viewed', async () => {
+        const s = sessionId();
+        await seedVisit({ sessionId: s, city: 'Lucknow' });
+        await seedVisit({ sessionId: s, city: 'Lucknow', path: '/about' });
+        await seedVisit({ sessionId: s, city: 'Lucknow', path: '/contact' });
+        await seedVisit({ city: 'Lucknow' });
+
+        const all = await cities('?range=7d');
+        assert.deepEqual(all.rows, [{ city: 'Lucknow', country: null, visitors: 2 }]);
+    });
+
+    test('the country is carried through where one was resolved', async () => {
+        await seedVisit({ city: 'Lucknow', country: 'India', region: 'Uttar Pradesh' });
+        await seedVisit({ city: 'Ashburn', country: 'United States' });
+
+        const rows = (await cities('?range=7d')).rows;
+        assert.deepEqual(rows.find((r) => r.city === 'Lucknow').country, 'India');
+        assert.deepEqual(rows.find((r) => r.city === 'Ashburn').country, 'United States');
+    });
+
+    test('unknown locations are kept as their own count, never as a city', async () => {
+        await seedVisit({ city: 'Lucknow' });
+        await seedVisit({});
+        await seedVisit({ city: null });
+        await seedVisit({ city: '' });
+
+        const all = await cities('?range=7d');
+        assert.deepEqual(all.rows.map((r) => r.city), ['Lucknow']);
+        assert.equal(all.knownVisitors, 1);
+        assert.equal(all.unknownVisitors, 3);
+        assert.equal(all.visitors, 4);
+        assert.equal(all.totalCities, 1, 'unknown is not a city');
+    });
+
+    // ── The global UTC window ────────────────────────────────────────────────
+
+    test('Today includes only today\'s UTC traffic', async () => {
+        const today = utc.today();
+        const yesterday = utc.addDays(today, -1);
+
+        await seedVisit({ city: 'Today City', at: new Date(`${today}T00:30:00Z`) });
+        await seedVisit({ city: 'Yesterday City', at: new Date(`${yesterday}T23:30:00Z`) });
+
+        const data = await cities('?range=today');
+        assert.deepEqual(data.rows.map((r) => r.city), ['Today City']);
+        assert.equal(data.from, today);
+        assert.equal(data.to, today);
+        assert.equal(data.timezone, 'UTC');
+    });
+
+    test('Yesterday includes only yesterday\'s UTC traffic', async () => {
+        const today = utc.today();
+        const yesterday = utc.addDays(today, -1);
+
+        await seedVisit({ city: 'Today City', at: new Date(`${today}T00:30:00Z`) });
+        await seedVisit({ city: 'Yesterday City', at: new Date(`${yesterday}T23:30:00Z`) });
+
+        const data = await cities('?range=yesterday');
+        assert.deepEqual(data.rows.map((r) => r.city), ['Yesterday City']);
+        assert.equal(data.from, yesterday);
+        assert.equal(data.to, yesterday);
+    });
+
+    test('a custom UTC range filters cities to its own days', async () => {
+        const today = utc.today();
+        const from = utc.addDays(today, -5);
+        const to = utc.addDays(today, -4);
+
+        await seedVisit({ city: 'Before', at: new Date(`${utc.addDays(from, -1)}T23:59:59.999Z`) });
+        await seedVisit({ city: 'Inside Start', at: new Date(`${from}T00:00:00.000Z`) });
+        await seedVisit({ city: 'Inside End', at: new Date(`${to}T23:59:59.999Z`) });
+        await seedVisit({ city: 'After', at: new Date(`${utc.addDays(to, 1)}T00:00:00.000Z`) });
+
+        const data = await cities(`?range=custom&from=${from}&to=${to}`);
+        assert.deepEqual(data.rows.map((r) => r.city).sort(), ['Inside End', 'Inside Start']);
+        assert.equal(data.totalCities, 2);
+    });
+
+    test('a narrower window changes the counts, not just the rows', async () => {
+        await seedVisit({ city: 'Lucknow', at: new Date() });
+        await seedVisit({ city: 'Lucknow', at: daysAgo(3) });
+        await seedVisit({ city: 'Delhi', at: daysAgo(20) });
+
+        const week = await cities('?range=7d');
+        assert.deepEqual(week.rows, [{ city: 'Lucknow', country: null, visitors: 2 }]);
+
+        const month = await cities('?range=30d');
+        assert.deepEqual(month.rows.map((r) => r.city).sort(), ['Delhi', 'Lucknow']);
+        assert.equal(month.rows.find((r) => r.city === 'Lucknow').visitors, 2);
+    });
+
+    // ── Search ───────────────────────────────────────────────────────────────
+
+    test('search matches case-insensitively, anywhere in the name', async () => {
+        await seedManyCities();
+
+        for (const term of ['mountain', 'MOUNTAIN', 'Mountain', 'ountain']) {
+            const data = await cities(`?range=7d&limit=100&search=${term}`);
+            assert.deepEqual(data.rows.map((r) => r.city).sort(), ['Mountain Ash', 'Mountain View'], term);
+        }
+    });
+
+    test('search narrows the list without touching the counts', async () => {
+        await seedManyCities();
+
+        const all = await cities('?range=7d&limit=100');
+        const found = await cities('?range=7d&limit=100&search=mumbai');
+
+        assert.deepEqual(found.rows.map((r) => r.city).sort(), ['Mumbai', 'Navi Mumbai']);
+        assert.equal(found.rows.find((r) => r.city === 'Mumbai').visitors, 7, 'the count is what it always was');
+        assert.equal(found.total, 2, 'pagination counts the matches');
+        assert.equal(found.totalCities, all.totalCities, 'and the window still has every city in it');
+        assert.equal(found.visitors, all.visitors);
+        assert.equal(found.unknownVisitors, all.unknownVisitors);
+    });
+
+    test('a search that matches nothing is an empty list, not an error', async () => {
+        await seedManyCities();
+        const data = await cities('?range=7d&search=atlantis');
+
+        assert.deepEqual(data.rows, []);
+        assert.equal(data.total, 0);
+        assert.ok(data.totalCities > 0, 'the window still has cities');
+    });
+
+    test('a search term is matched literally, never as a pattern', async () => {
+        await seedVisit({ city: 'Lucknow' });
+        await seedVisit({ city: 'Delhi' });
+
+        // Regex metacharacters must find nothing rather than match everything.
+        for (const term of ['.*', '^L', 'Luck.ow', '(Lucknow)', '[a-z]+']) {
+            const data = await cities(`?range=7d&search=${encodeURIComponent(term)}`);
+            assert.deepEqual(data.rows, [], term);
+        }
+    });
+
+    // ── Pagination ───────────────────────────────────────────────────────────
+
+    test('pagination returns the right slice, in rank order', async () => {
+        const plan = await seedManyCities();
+        const ranked = [...plan].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([c]) => c);
+
+        const first = await cities('?range=7d&page=1&limit=5');
+        assert.deepEqual(first.rows.map((r) => r.city), ranked.slice(0, 5));
+        assert.equal(first.page, 1);
+        assert.equal(first.limit, 5);
+
+        const second = await cities('?range=7d&page=2&limit=5');
+        assert.deepEqual(second.rows.map((r) => r.city), ranked.slice(5, 10));
+
+        const third = await cities('?range=7d&page=3&limit=5');
+        assert.deepEqual(third.rows.map((r) => r.city), ranked.slice(10, 15));
+
+        // No page overlaps another, and together they are the whole list.
+        const seen = [...first.rows, ...second.rows, ...third.rows].map((r) => r.city);
+        assert.equal(new Set(seen).size, plan.length);
+    });
+
+    test('the total is the number of cities, not of pages or visits', async () => {
+        const plan = await seedManyCities();
+        const page = await cities('?range=7d&page=1&limit=5');
+
+        assert.equal(page.total, plan.length);
+        assert.equal(page.totalCities, plan.length);
+        assert.equal(page.rows.length, 5, 'one page of them');
+    });
+
+    test('a page past the end is empty, and says so honestly', async () => {
+        await seedManyCities();
+        const data = await cities('?range=7d&page=99&limit=25');
+
+        assert.deepEqual(data.rows, []);
+        assert.equal(data.total, 15, 'the count still describes the whole list');
+    });
+
+    test('pagination and search work together', async () => {
+        await seedManyCities();
+        const data = await cities('?range=7d&search=a&page=1&limit=3');
+
+        assert.equal(data.rows.length, 3);
+        assert.ok(data.total > 3, 'more matches than fit on a page');
+        assert.ok(data.rows.every((r) => /a/i.test(r.city)));
+    });
+
+    test('an empty window is an empty list with zeroed totals', async () => {
+        const data = await cities('?range=today');
+
+        assert.deepEqual(data.rows, []);
+        assert.equal(data.total, 0);
+        assert.equal(data.totalCities, 0);
+        assert.equal(data.visitors, 0);
+        assert.equal(data.knownVisitors, 0);
+        assert.equal(data.unknownVisitors, 0);
+    });
+
+    // ── Access ───────────────────────────────────────────────────────────────
+
+    test('the endpoint needs the analytics page, like the rest of the dashboard', async () => {
+        assert.equal((await call('GET', '/v1/analytics/cities')).status, 401);
+    });
+
+    test('bad parameters are refused rather than guessed at', async () => {
+        for (const q of ['?range=nonsense', '?page=0', '?limit=500', '?range=custom&from=2026-13-01&to=2026-13-02']) {
+            const res = await call('GET', `/v1/analytics/cities${q}`, { token });
+            assert.equal(res.status, 400, `${q} -> ${res.status}`);
+        }
     });
 });

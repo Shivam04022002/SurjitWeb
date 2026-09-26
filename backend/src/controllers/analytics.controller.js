@@ -81,4 +81,17 @@ const getPages = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Pages fetched successfully', pages, HTTP_STATUS.OK);
 });
 
-module.exports = { trackPageView, trackEvent, getOverview, getPages };
+// Every city in the window, for the dashboard's "See All". Same range
+// parameters as everything else on the page, so the list can never be looking
+// at a different period than the card it came from.
+const getCities = asyncHandler(async (req, res) => {
+    const cities = await analyticsService.getCities({
+        ...rangeParams(req.query),
+        page: req.query.page || 1,
+        limit: req.query.limit || 25,
+        search: req.query.search || ''
+    });
+    return sendSuccess(res, 'Cities fetched successfully', cities, HTTP_STATUS.OK);
+});
+
+module.exports = { trackPageView, trackEvent, getOverview, getPages, getCities };

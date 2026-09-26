@@ -1,7 +1,8 @@
 const { body, query } = require('express-validator');
 const { RANGES, MAX_CUSTOM_DAYS } = require('../services/analytics.service');
 const { EVENT_ACTION_KEYS } = require('../constants/analyticsEvents');
-const zoned = require('../utils/zonedDate');
+// Custom ranges are UTC calendar days, matching the service.
+const zoned = require('../utils/zonedDate').utc;
 
 const RANGE_KEYS = Object.keys(RANGES);
 
@@ -69,12 +70,23 @@ const rangeValidation = [
 
 const overviewValidation = rangeValidation;
 
-const pagesValidation = [
-    ...rangeValidation,
+const paginationValidation = [
     query('page').optional().isInt({ min: 1, max: 10000 }).withMessage('page must be a positive integer').toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('limit must be between 1 and 100').toInt()
 ];
 
+const pagesValidation = [...rangeValidation, ...paginationValidation];
+
+// The city list: the same window and paging, plus a search term that only
+// narrows which cities are listed.
+const citiesValidation = [
+    ...rangeValidation,
+    ...paginationValidation,
+    query('search').optional({ checkFalsy: true }).trim()
+        .isLength({ max: 120 }).withMessage('search is too long')
+];
+
 module.exports = {
-    trackPageViewValidation, trackEventValidation, overviewValidation, pagesValidation, RANGE_KEYS
+    trackPageViewValidation, trackEventValidation, overviewValidation, pagesValidation,
+    citiesValidation, RANGE_KEYS
 };

@@ -2,25 +2,24 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Box, Container, Typography, Card, CardContent, Stack, Button, TextField, Popover,
   ToggleButton, ToggleButtonGroup, CircularProgress, Alert, Link, Tooltip, Dialog,
-  DialogTitle, DialogContent, DialogActions, TablePagination,
+  DialogTitle, DialogContent, DialogActions, TablePagination, InputAdornment,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material'
 import {
   Refresh, People, Visibility, AssignmentTurnedIn, ContactPhone, Timer, ExitToApp,
-  InfoOutlined, OpenInNew, TouchApp, LocationOff, CalendarMonth
+  InfoOutlined, OpenInNew, TouchApp, LocationOff, CalendarMonth, Search
 } from '@mui/icons-material'
 import { analyticsService } from '../../services/analytics.service'
 import { LineChart, DonutChart, BarList } from './charts'
 import { SERIES, nf } from './chartTheme'
+import {
+  PRESETS, TIMEZONE_LABEL, utcToday, formatAxisDate, formatRangeDay, rangeLabelOf,
+  CITY_PAGE_SIZE, cityShare, formatShare, citySummary
+} from './analyticsRange'
 
 const SITE_URL = 'https://surjitfinance.com'
 
-const PRESETS = [
-  { value: 'today', label: 'Today' },
-  { value: '7d', label: '7 Days' },
-  { value: '30d', label: '30 Days' },
-  { value: '90d', label: '90 Days' }
-]
+
 
 // Colour follows the source, whatever else is on screen.
 const SOURCE_COLORS = {
@@ -39,23 +38,7 @@ const LOAN_SERIES = [
   { key: 'loanApplicationClicks', label: 'Loan Application Clicks', color: SERIES.blue }
 ]
 
-// Days arrive as YYYY-MM-DD in the business timezone; parse them as local
-// calendar dates so the label never shifts by a day.
-const parseDay = (day) => {
-  const [y, m, d] = day.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
 
-const formatAxisDate = (day, long = false) => parseDay(day).toLocaleDateString('en-GB', long
-  ? { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }
-  : { day: 'numeric', month: 'short' })
-
-const formatRangeDay = (day) => parseDay(day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-
-const localToday = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 const formatDuration = (sec) => {
   if (sec == null) return '—'
@@ -145,7 +128,7 @@ const PageLink = ({ path }) => (
 const CustomRangePopover = ({ anchorEl, onClose, initial, onApply }) => {
   const [from, setFrom] = useState(initial.from)
   const [to, setTo] = useState(initial.to)
-  const max = localToday()
+  const max = utcToday()
   const invalid = !from || !to || from > to || to > max
 
   return (
@@ -181,6 +164,155 @@ const CustomRangePopover = ({ anchorEl, onClose, initial, onApply }) => {
 }
 
 // ── Top pages "View All" ─────────────────────────────────────────────────────
+
+// ── Traffic by City "See All" ────────────────────────────────────────────────
+//
+// The card shows the ten busiest cities; this shows every one of them, for the
+// same UTC window the rest of the page is on. Paged and searched on the server,
+// like All Pages — the browser never holds the whole list.
+//
+// Search narrows which cities are listed. It never changes a count: the totals
+// and the unknown bucket describe the window, not the search.
+const AllCitiesDialog = ({ onClose, range, rangeLabel }) => {
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(CITY_PAGE_SIZE)
+  const [search, setSearch] = useState('')
+  const [term, setTerm] = useState('')
+  const [result, setResult] = useState({ key: null, data: null, error: '' })
+
+  // Typing is debounced, so a search is one request rather than one per key.
+  useEffect(() => {
+    const t = setTimeout(() => { setTerm(search.trim()); setPage(0) }, 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const requestKey = `${page}|${rowsPerPage}|${term}`
+  const loading = result.key !== requestKey
+  const data = result.data
+  const rows = data?.rows || []
+  const totalVisitors = data?.visitors || 0
+
+  useEffect(() => {
+    let cancelled = false
+    analyticsService.getCities(range, { page: page + 1, limit: rowsPerPage, search: term })
+      .then((res) => {
+        if (!cancelled) setResult({ key: requestKey, data: res?.data || null, error: '' })
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setResult((r) => ({ ...r, key: requestKey, error: err?.response?.data?.message || 'Could not load cities.' }))
+        }
+      })
+    return () => { cancelled = true }
+  }, [range, page, rowsPerPage, term, requestKey])
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        Traffic by City
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          {rangeLabel} · {TIMEZONE_LABEL}
+        </Typography>
+      </DialogTitle>
+
+      <DialogContent dividers sx={{ p: 0 }}>
+        <Box sx={{ p: 2, pb: 1.5 }}>
+          <TextField
+            size="small"
+            fullWidth
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search cities…"
+            inputProps={{ 'aria-label': 'Search cities' }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><Search fontSize="small" /></InputAdornment> }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            {citySummary({ total: data?.total, totalCities: data?.totalCities, search: term })}
+            {data ? ` · ${nf.format(data.unknownVisitors)} visitors have an unknown location` : ''}
+          </Typography>
+        </Box>
+
+        {result.error && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{result.error}</Alert>}
+
+        <TableContainer sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity 150ms' }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: 56 }}>#</TableCell>
+                <TableCell>City</TableCell>
+                <TableCell>Country</TableCell>
+                <TableCell align="right">Visitors</TableCell>
+                <TableCell align="right">Share</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.map((c, i) => (
+                <TableRow key={c.city} hover>
+                  <TableCell>{page * rowsPerPage + i + 1}</TableCell>
+                  <TableCell>{c.city}</TableCell>
+                  <TableCell>
+                    {c.country || <Typography variant="caption" color="text.disabled">—</Typography>}
+                  </TableCell>
+                  <TableCell align="right">{nf.format(c.visitors)}</TableCell>
+                  <TableCell align="right">{formatShare(cityShare(c.visitors, totalVisitors))}</TableCell>
+                </TableRow>
+              ))}
+
+              {!loading && !rows.length && !result.error && (
+                <TableRow>
+                  <TableCell colSpan={5}>
+                    <Empty icon={LocationOff}>
+                      {term ? `No city matches “${term}” in this period.` : 'No city data in this period.'}
+                    </Empty>
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {/* Unknown locations are real visitors, so they are shown — as
+                  their own row, never folded into a city. */}
+              {!loading && !term && data?.unknownVisitors > 0 && (
+                <TableRow>
+                  <TableCell />
+                  <TableCell colSpan={2}>
+                    <Typography variant="body2" color="text.secondary">Unknown location</Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" color="text.secondary">{nf.format(data.unknownVisitors)}</Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" color="text.secondary">
+                      {formatShare(cityShare(data.unknownVisitors, totalVisitors))}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </DialogContent>
+
+      <TablePagination
+        component="div"
+        count={data?.total || 0}
+        page={page}
+        rowsPerPage={rowsPerPage}
+        rowsPerPageOptions={[25, 50, 100]}
+        onPageChange={(e, p) => setPage(p)}
+        onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0) }}
+      />
+
+      <DialogActions sx={{ justifyContent: 'space-between' }}>
+        <Typography variant="caption" color="text.disabled" sx={{ pl: 2 }}>
+          Estimated location from IP ·{' '}
+          <Link href="https://db-ip.com" target="_blank" rel="noopener noreferrer" underline="hover" color="inherit">
+            IP Geolocation by DB-IP
+          </Link>
+        </Typography>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
 
 // Mounted only while open, so each opening starts on page one for the range
 // currently selected.
@@ -265,6 +397,7 @@ const AnalyticsPage = () => {
   const [error, setError] = useState('')
   const [customAnchor, setCustomAnchor] = useState(null)
   const [allPagesOpen, setAllPagesOpen] = useState(false)
+  const [allCitiesOpen, setAllCitiesOpen] = useState(false)
   // Ignores a slow response for a range the admin has already moved away from.
   const requestId = useRef(0)
 
@@ -286,9 +419,7 @@ const AnalyticsPage = () => {
 
   useEffect(() => { fetchOverview() }, [fetchOverview])
 
-  const rangeLabel = data
-    ? (data.from === data.to ? formatRangeDay(data.from) : `${formatRangeDay(data.from)} – ${formatRangeDay(data.to)}`)
-    : ''
+  const rangeLabel = rangeLabelOf(data)
 
   const onPreset = (e, value) => {
     // Custom opens its picker from its own onClick, which also fires when it
@@ -339,12 +470,10 @@ const AnalyticsPage = () => {
               Refresh
             </Button>
           </Stack>
-          {rangeLabel && (
-            <Typography variant="caption" color="text.secondary">
-              {rangeLabel}
-              {data?.timezone && ` · ${data.timezone}`}
-            </Typography>
-          )}
+          <Typography variant="caption" color="text.secondary">
+            {rangeLabel && <>{rangeLabel} · </>}
+            {TIMEZONE_LABEL}
+          </Typography>
         </Stack>
       </Stack>
 
@@ -352,7 +481,7 @@ const AnalyticsPage = () => {
         <CustomRangePopover
           anchorEl={customAnchor}
           onClose={() => setCustomAnchor(null)}
-          initial={{ from: data?.from || localToday(), to: data?.to || localToday() }}
+          initial={{ from: data?.from || utcToday(), to: data?.to || utcToday() }}
           onApply={({ from, to }) => {
             setCustomAnchor(null)
             setRange({ range: 'custom', from, to })
@@ -543,6 +672,11 @@ const AnalyticsPage = () => {
               subtitle={data.location.available
                 ? `${nf.format(data.location.knownVisitors)} of ${nf.format(data.location.visitors)} visitors have a known city`
                 : 'Visitors by city'}
+              action={data.location.available && (
+                <Button size="small" onClick={() => setAllCitiesOpen(true)}>
+                  See All ({nf.format(data.location.totalCities)})
+                </Button>
+              )}
             >
               {data.location.available ? (
                 <>
@@ -610,6 +744,14 @@ const AnalyticsPage = () => {
             </Section>
           </Box>
         </Box>
+      )}
+
+      {allCitiesOpen && (
+        <AllCitiesDialog
+          onClose={() => setAllCitiesOpen(false)}
+          range={range}
+          rangeLabel={rangeLabel}
+        />
       )}
 
       {allPagesOpen && (

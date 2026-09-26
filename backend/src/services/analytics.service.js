@@ -2,18 +2,24 @@ const WebsiteVisit = require('../models/WebsiteVisit');
 const WebsiteEvent = require('../models/WebsiteEvent');
 const env = require('../config/env');
 const { EVENT_ACTIONS, CONTACT_ACTIONS } = require('../constants/analyticsEvents');
-const zoned = require('../utils/zonedDate');
+// Analytics is reported in UTC, always. See utils/zonedDate.
+const zoned = require('../utils/zonedDate').utc;
 const geoip = require('./geoip.service');
 
-// Admin-selectable windows. Presets are an allowlist; a custom window is two
-// validated calendar days (see analytics.validator), capped in span, so a
-// client can never widen the query beyond MAX_CUSTOM_DAYS.
+// Admin-selectable windows, in UTC calendar days. Presets are an allowlist; a
+// custom window is two validated calendar days (see analytics.validator),
+// capped in span, so a client can never widen the query beyond MAX_CUSTOM_DAYS.
+//
+// `endsDaysAgo` is where the window's last day sits relative to today, and
+// `days` how many days back from there it reaches. Yesterday is the only one
+// that does not end today, which is why both are needed.
 const RANGES = {
-    today: { days: 0, label: 'Today' },
-    '7d': { days: 6, label: 'Last 7 Days' },
-    '30d': { days: 29, label: 'Last 30 Days' },
-    '90d': { days: 89, label: 'Last 90 Days' },
-    custom: { days: null, label: 'Custom Range' }
+    today: { endsDaysAgo: 0, days: 0, label: 'Today' },
+    yesterday: { endsDaysAgo: 1, days: 0, label: 'Yesterday' },
+    '7d': { endsDaysAgo: 0, days: 6, label: 'Last 7 Days' },
+    '30d': { endsDaysAgo: 0, days: 29, label: 'Last 30 Days' },
+    '90d': { endsDaysAgo: 0, days: 89, label: 'Last 90 Days' },
+    custom: { endsDaysAgo: null, days: null, label: 'Custom Range' }
 };
 
 const MAX_CUSTOM_DAYS = 366;
@@ -34,6 +40,10 @@ const DEVICES = {
     tablet: 'Tablet',
     unknown: 'Unknown'
 };
+
+// A search term as a literal, case-insensitive match: a city name is a term to
+// look for, never a pattern to run.
+const escapedRegex = (term) => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
 const SEARCH_HOST = /(^|\.)(google|bing|yahoo|duckduckgo|baidu|yandex|ecosia|ask|aol|brave|qwant|startpage)\.|googlequicksearchbox/;
 const SOCIAL_HOST = /(^|\.)(facebook\.com|fb\.com|fb\.me|instagram\.com|t\.co|twitter\.com|x\.com|linkedin\.com|lnkd\.in|youtube\.com|youtu\.be|whatsapp\.com|wa\.me|pinterest\.[a-z.]+|reddit\.com|quora\.com|telegram\.org|t\.me|threads\.net|snapchat\.com)$|com\.(facebook|instagram|linkedin|whatsapp)\./;
@@ -56,9 +66,14 @@ const classifySource = (host) => {
     return 'referral';
 };
 
-// Turns the request's range into concrete bounds. `start` is inclusive, `end`
-// exclusive and never later than now, and `days` lists every calendar day in
-// the window so a day with no traffic still appears as a zero.
+// Turns the request's range into concrete bounds, all in UTC. `start` is
+// inclusive, `end` exclusive and never later than now, and `days` lists every
+// UTC calendar day in the window so a day with no traffic still appears as a
+// zero.
+//
+// Every boundary here comes from the UTC day helpers, never from a JavaScript
+// local-time Date: a visit at 23:30 UTC belongs to that UTC day wherever the
+// server happens to be running.
 const resolveRange = ({ range, from, to } = {}) => {
     let key = RANGES[range] ? range : '7d';
     let fromDay;
@@ -73,7 +88,7 @@ const resolveRange = ({ range, from, to } = {}) => {
         }
     }
     if (key !== 'custom') {
-        toDay = zoned.today();
+        toDay = zoned.addDays(zoned.today(), -RANGES[key].endsDaysAgo);
         fromDay = zoned.addDays(toDay, -RANGES[key].days);
     }
 
@@ -119,9 +134,9 @@ const topPagesPipeline = (match, skip, limit) => [
 // same person on two days counts twice. Sessions with actions but no page
 // view inside the window (a view just before midnight, a click just after)
 // are dropped — they began in an earlier window and were counted there.
-const sessionsPipeline = (start, end) => [
+const sessionStages = (start, end) => [
     { $match: { viewedAt: { $gte: start, $lt: end } } },
-    { $project: { _id: 0, sessionId: 1, at: '$viewedAt', view: { $literal: 1 }, referrer: 1, deviceType: 1, city: 1 } },
+    { $project: { _id: 0, sessionId: 1, at: '$viewedAt', view: { $literal: 1 }, referrer: 1, deviceType: 1, city: 1, country: 1 } },
     {
         $unionWith: {
             coll: WebsiteEvent.collection.name,
@@ -146,10 +161,18 @@ const sessionsPipeline = (start, end) => [
             // The city of the session's first page view: visits recorded
             // before location lookup existed, and addresses that cannot be
             // placed, have none.
-            city: { $first: '$city' }
+            city: { $first: '$city' },
+            // The country of that same first page view, where one was
+            // resolved. Shown beside the city; never inferred from it.
+            country: { $first: '$country' }
         }
     },
-    { $match: { views: { $gt: 0 } } },
+    { $match: { views: { $gt: 0 } } }
+];
+
+// One row per session, then the dashboard's facets over them.
+const sessionsPipeline = (start, end) => [
+    ...sessionStages(start, end),
     {
         $facet: {
             totals: [{
@@ -172,7 +195,7 @@ const sessionsPipeline = (start, end) => [
             ],
             byCity: [
                 { $match: { city: { $nin: [null, ''] } } },
-                { $group: { _id: '$city', visitors: { $sum: 1 } } },
+                { $group: { _id: '$city', visitors: { $sum: 1 }, country: { $first: '$country' } } },
                 { $sort: { visitors: -1, _id: 1 } }
             ]
         }
@@ -301,7 +324,9 @@ const getOverview = async (params) => {
         location: {
             available: knownVisitors > 0,
             enabled: (await geoip.status()).available,
-            cities: cityRows.slice(0, TOP_CITIES_LIMIT).map((c) => ({ city: c._id, visitors: c.visitors })),
+            cities: cityRows.slice(0, TOP_CITIES_LIMIT).map((c) => ({
+                city: c._id, country: c.country || null, visitors: c.visitors
+            })),
             totalCities: cityRows.length,
             knownVisitors,
             unknownVisitors: Math.max(0, totals.sessions - knownVisitors),
@@ -311,9 +336,18 @@ const getOverview = async (params) => {
 };
 
 // Full, paginated Top Pages for the "View All" dialog.
-const getPages = async ({ page = 1, limit = 25, ...rangeParams }) => {
+// Paging, as numbers. Express 5 hands `req.query` back freshly parsed on every
+// read, so a validator's toInt() never reaches the handler — these arrive as
+// strings, and a string in a $limit stage is an error from the driver.
+const paging = (page, limit, defaultLimit = 25) => {
+    const size = Math.min(Math.max(parseInt(limit, 10) || defaultLimit, 1), 100);
+    const n = Math.max(parseInt(page, 10) || 1, 1);
+    return { page: n, limit: size, skip: (n - 1) * size };
+};
+
+const getPages = async ({ page: requestedPage, limit: requestedLimit, ...rangeParams }) => {
     const r = resolveRange(rangeParams);
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = paging(requestedPage, requestedLimit);
     const [result] = await WebsiteVisit.aggregate(
         topPagesPipeline({ viewedAt: { $gte: r.start, $lt: r.end } }, skip, limit)
     );
@@ -325,6 +359,77 @@ const getPages = async ({ page = 1, limit = 25, ...rangeParams }) => {
         limit,
         total: result?.total?.[0]?.n || 0,
         rows: result?.rows || []
+    };
+};
+
+// Every city in the window, paginated — the "See All" view behind the
+// dashboard's Traffic by City card.
+//
+// A visitor is a session, counted on the city of its first page view: the same
+// definition the card uses, from the same pipeline, so the two can never
+// disagree. Sessions whose first view has no city are not a city — they stay
+// in their own unknown count rather than being folded into one.
+//
+// Search narrows which cities are listed, never how they were counted.
+const getCities = async ({ page: requestedPage, limit: requestedLimit, search = '', ...rangeParams } = {}) => {
+    const r = resolveRange(rangeParams);
+    const { page, limit, skip } = paging(requestedPage, requestedLimit);
+
+    const term = String(search || '').trim();
+    // Escaped: a city name is a search term, never a pattern.
+    const searchStage = term
+        ? [{ $match: { _id: escapedRegex(term) } }]
+        : [];
+
+    const hasCity = [{ $match: { city: { $nin: [null, ''] } } }];
+    const byCity = [{ $group: { _id: '$city', visitors: { $sum: 1 }, country: { $first: '$country' } } }];
+    const ranked = [{ $sort: { visitors: -1, _id: 1 } }];
+
+    // One pass over the sessions, four questions asked of it. Not nested
+    // facets — MongoDB does not allow those — just four plain branches.
+    const [facets] = await WebsiteVisit.aggregate([
+        ...sessionStages(r.start, r.end),
+        {
+            $facet: {
+                rows: [
+                    ...hasCity, ...byCity, ...ranked, ...searchStage,
+                    { $skip: skip }, { $limit: limit },
+                    { $project: { _id: 0, city: '$_id', country: 1, visitors: 1 } }
+                ],
+                matching: [...hasCity, ...byCity, ...searchStage, { $count: 'n' }],
+                allCities: [...hasCity, ...byCity, { $count: 'n' }],
+                totals: [{
+                    $group: {
+                        _id: null,
+                        visitors: { $sum: 1 },
+                        known: { $sum: { $cond: [{ $in: ['$city', [null, '']] }, 0, 1] } }
+                    }
+                }]
+            }
+        }
+    ]).allowDiskUse(true);
+
+    const totals = facets?.totals?.[0] || { visitors: 0, known: 0 };
+
+    return {
+        range: r.key,
+        label: r.label,
+        from: r.fromDay,
+        to: r.toDay,
+        timezone: zoned.TIMEZONE,
+        search: term,
+        page,
+        limit,
+        // What the pagination counts: the cities this search matched.
+        total: facets?.matching?.[0]?.n || 0,
+        // How many there are in the window, whatever the search.
+        totalCities: facets?.allCities?.[0]?.n || 0,
+        visitors: totals.visitors,
+        knownVisitors: totals.known,
+        // Sessions whose first page view carried no city. A real number, kept
+        // separate — never turned into a city of its own.
+        unknownVisitors: Math.max(0, totals.visitors - totals.known),
+        rows: facets?.rows || []
     };
 };
 
@@ -358,6 +463,6 @@ const recordEvent = async ({ sessionId, action, path, target }) => {
 };
 
 module.exports = {
-    getOverview, getPages, recordPageView, recordEvent,
+    getOverview, getPages, getCities, recordPageView, recordEvent,
     classifySource, resolveRange, RANGES, MAX_CUSTOM_DAYS
 };

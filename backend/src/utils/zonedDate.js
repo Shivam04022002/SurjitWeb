@@ -1,14 +1,22 @@
 const env = require('../config/env');
 
-// Calendar-day helpers pinned to the business timezone.
+// Calendar-day helpers for a named timezone.
 //
-// Analytics buckets by day, and "a day" has to mean the admin's day, not the
-// server's or UTC's — otherwise a visit at 01:00 IST lands on the previous
-// date and "Today" silently excludes the first five and a half hours. Days are
-// passed around as 'YYYY-MM-DD' strings so no Date ever has to be interpreted
-// in the wrong zone.
+// A "day" only means something once you say whose day it is. Blog scheduling
+// means the business day — a post dated the 5th should read as the 5th to the
+// people running the site. Analytics reporting means the UTC day, so a figure
+// is the same figure whoever opens the dashboard and from wherever.
+//
+// The two are built from this one implementation rather than two similar ones:
+// `forTimezone` makes an instance, and the module's own exports are the
+// business-timezone instance, which is what every existing caller gets.
+//
+// Days are passed around as 'YYYY-MM-DD' strings so no Date ever has to be
+// interpreted in the wrong zone.
 
-const TIMEZONE = env.ANALYTICS_TIMEZONE;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const forTimezone = (TIMEZONE) => {
 
 const dayFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit'
@@ -20,8 +28,6 @@ const partsFormatter = new Intl.DateTimeFormat('en-US', {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit'
 });
-
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const parseDay = (day) => day.split('-').map(Number);
 
@@ -69,4 +75,17 @@ const isValidDay = (value) => {
     return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 };
 
-module.exports = { TIMEZONE, dayOf, today, startOfDay, middayOf, addDays, daysBetween, isValidDay };
+return { TIMEZONE, dayOf, today, startOfDay, middayOf, addDays, daysBetween, isValidDay };
+
+};
+
+// The business timezone: blog dates, scheduling, anything an administrator
+// reads as "their" calendar. This is what `require('zonedDate')` gives you.
+const business = forTimezone(env.ANALYTICS_TIMEZONE);
+
+// Reporting time. Analytics is always read and compared in UTC, so it is
+// pinned here rather than configured — a dashboard whose day boundary moves
+// with a server setting is a dashboard whose numbers cannot be compared.
+const utc = forTimezone('UTC');
+
+module.exports = { ...business, forTimezone, business, utc };
