@@ -9,6 +9,7 @@ import CompanyInfoPage from '../pages/about/CompanyInfoPage'
 import DirectorsPage from '../pages/about/DirectorsPage'
 import LoanApplicationsPage from '../pages/loanApplications/LoanApplicationsPage'
 import AnalyticsPage from '../pages/analytics/AnalyticsPage'
+import CityTrafficPage from '../pages/analytics/CityTrafficPage'
 import LeadershipPage from '../pages/about/LeadershipPage'
 import ProductCategoriesPage from '../pages/products/ProductCategoriesPage'
 import ProductsPage from '../pages/products/ProductsPage'
@@ -89,6 +90,7 @@ const AppRoutes = () => {
         <Route path="about/directors" element={<RequirePagePermission page="directors"><DirectorsPage /></RequirePagePermission>} />
         <Route path="loan-applications" element={<RequirePagePermission page="loanApplications"><LoanApplicationsPage /></RequirePagePermission>} />
         <Route path="analytics" element={<RequirePagePermission page="analytics"><AnalyticsPage /></RequirePagePermission>} />
+        <Route path="analytics/cities" element={<RequirePagePermission page="analytics"><CityTrafficPage /></RequirePagePermission>} />
         <Route path="about/leadership" element={<RequirePagePermission page="leadership"><LeadershipPage /></RequirePagePermission>} />
         <Route path="products/categories" element={<RequirePagePermission page="productCategories"><ProductCategoriesPage /></RequirePagePermission>} />
         <Route path="products" element={<RequirePagePermission page="products"><ProductsPage /></RequirePagePermission>} />

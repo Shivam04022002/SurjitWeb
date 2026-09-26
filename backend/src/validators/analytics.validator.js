@@ -86,7 +86,20 @@ const citiesValidation = [
         .isLength({ max: 120 }).withMessage('search is too long')
 ];
 
+// The hourly city view: the same window, paging and search, plus an hour of the
+// UTC day and a single city. Midnight arrives as the string '0', which is
+// truthy, so it is validated like any other hour rather than read as absent.
+const cityHourlyValidation = [
+    ...citiesValidation,
+    query('hour')
+        .optional({ checkFalsy: true })
+        .isInt({ min: 0, max: 23 }).withMessage('hour must be a UTC hour between 0 and 23'),
+    query('city')
+        .optional({ checkFalsy: true }).trim()
+        .isLength({ max: 120 }).withMessage('city is too long')
+];
+
 module.exports = {
     trackPageViewValidation, trackEventValidation, overviewValidation, pagesValidation,
-    citiesValidation, RANGE_KEYS
+    citiesValidation, cityHourlyValidation, RANGE_KEYS
 };

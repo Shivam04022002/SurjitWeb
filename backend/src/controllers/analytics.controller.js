@@ -94,4 +94,20 @@ const getCities = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Cities fetched successfully', cities, HTTP_STATUS.OK);
 });
 
-module.exports = { trackPageView, trackEvent, getOverview, getPages, getCities };
+// Traffic by city and by hour of the UTC day, for the dedicated Traffic by City
+// page. `hour` is a UTC hour of the day (0–23) and `city` narrows to one city;
+// both are optional, and absent means "all". The service decides what an hour
+// means — the request only names one.
+const getCityHourly = asyncHandler(async (req, res) => {
+    const hourly = await analyticsService.getCityHourly({
+        ...rangeParams(req.query),
+        page: req.query.page || 1,
+        limit: req.query.limit || 25,
+        search: req.query.search || '',
+        hour: req.query.hour,
+        city: req.query.city || ''
+    });
+    return sendSuccess(res, 'City traffic fetched successfully', hourly, HTTP_STATUS.OK);
+});
+
+module.exports = { trackPageView, trackEvent, getOverview, getPages, getCities, getCityHourly };

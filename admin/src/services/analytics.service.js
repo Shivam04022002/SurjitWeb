@@ -1,5 +1,5 @@
 import api from './api'
-import { rangeParams } from '../pages/analytics/analyticsRange'
+import { rangeParams, cityHourlyParams } from '../pages/analytics/analyticsRange'
 
 const BASE = '/v1/analytics'
 
@@ -29,8 +29,18 @@ const getCities = async (range, { page = 1, limit = 25, search = '' } = {}) => {
   return response.data
 }
 
+// Traffic by city and by hour of the UTC day — what the dedicated Traffic by
+// City page reads. The hour is an hour of the UTC day (0–23) and the city
+// narrows to one of them; either may be absent, meaning all of them. What an
+// hour spans is the server's business, and cityHourlyParams only names it.
+const getCityHourly = async (range, options = {}) => {
+  const response = await api.get(`${BASE}/cities/hourly`, { params: cityHourlyParams(range, options) })
+  return response.data
+}
+
 export const analyticsService = {
   getOverview,
   getPages,
-  getCities
+  getCities,
+  getCityHourly
 }

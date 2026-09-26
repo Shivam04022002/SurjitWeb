@@ -1073,3 +1073,446 @@ describe('All cities', () => {
         }
     });
 });
+
+// ── Traffic by city, hour by hour ─────────────────────────────────────────────
+//
+// The question being answered is "who was here at 3 PM?", and 3 PM has to mean
+// 15:00–15:59 UTC to everyone reading the dashboard, whatever their own machine
+// says. These tests pin that down, and pin down that an hour over a multi-day
+// window means that hour on each of those days rather than one long span.
+describe('City traffic by hour', () => {
+    const roleService = require('../src/services/role.service');
+    const Role = require('../src/models/Role');
+    const { invalidatePermissionCache } = require('../src/middleware/permission');
+
+    const hourly = async (query = '') => {
+        const res = await call('GET', `/v1/analytics/cities/hourly${query}`, { token });
+        assert.equal(res.status, 200, res.text);
+        return res.body.data;
+    };
+
+    // A UTC instant: `days` back from today, at a given hour of that UTC day.
+    // Built from the UTC getters so the machine's own zone cannot shift it.
+    const atHour = (days, hour, minute = 0) => {
+        const d = new Date(Date.now() + days * 86400000);
+        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hour, minute, 0, 0));
+    };
+
+    const utcDay = (days = 0) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+
+    // An hour of today that has certainly begun. Seeding a visit at 15:00 today
+    // when it is not yet 15:00 would put it in the future, which the window
+    // clamps away — so today's assertions use the hour we are in.
+    const hourNow = () => new Date().getUTCHours();
+
+    const visitorsAt = (data, hour) => data.hourly.find((h) => h.hour === hour).visitors;
+
+    // ── The shape of the answer ──────────────────────────────────────────────
+
+    test('every hour of the UTC day is reported, including the quiet ones', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+
+        const data = await hourly('?range=yesterday');
+        assert.equal(data.hourly.length, 24);
+        assert.deepEqual(data.hourly.map((h) => h.hour), Array.from({ length: 24 }, (_, i) => i));
+        assert.equal(visitorsAt(data, 15), 1);
+        assert.equal(visitorsAt(data, 14), 0, 'a quiet hour is nought, not missing');
+        assert.equal(data.timezone, 'UTC');
+    });
+
+    test('the hourly figures account for every visitor in the window', async () => {
+        for (const [hour, n] of [[3, 2], [9, 1], [15, 4], [23, 1]]) {
+            for (let i = 0; i < n; i += 1) await seedVisit({ city: 'Lucknow', at: atHour(-1, hour) });
+        }
+
+        const data = await hourly('?range=yesterday');
+        const summed = data.hourly.reduce((n, h) => n + h.visitors, 0);
+        assert.equal(summed, data.visitors);
+        assert.equal(summed, 8);
+    });
+
+    // ── An hour means that hour, in UTC ──────────────────────────────────────
+
+    test('3 PM is 15:00 UTC, and nothing else is', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15, 0) });
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15, 59) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 14, 59) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 16, 0) });
+
+        const at15 = await hourly('?range=yesterday&hour=15');
+        assert.equal(at15.visitors, 2, 'both minutes inside the hour, neither outside it');
+        assert.deepEqual(at15.rows.map((r) => r.city), ['Lucknow']);
+        assert.equal(at15.hour, 15);
+    });
+
+    // 15:00 UTC is 20:30 in the timezone this business runs in. If anything in
+    // the chain read the hour locally, a 15:00 UTC visit would answer to hour
+    // 20 and the dashboard would quietly lie about when its traffic arrived.
+    test('15:00 UTC is not 20:30 IST: the hour is never read locally', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15, 0) });
+
+        assert.equal((await hourly('?range=yesterday&hour=15')).visitors, 1);
+        assert.equal((await hourly('?range=yesterday&hour=20')).visitors, 0, '20:30 IST must not claim it');
+        assert.equal((await hourly('?range=yesterday&hour=9')).visitors, 0);
+
+        const all = await hourly('?range=yesterday');
+        assert.equal(visitorsAt(all, 15), 1);
+        assert.equal(visitorsAt(all, 20), 0);
+    });
+
+    test('a UTC evening visit belongs to its UTC day, not the next one', async () => {
+        // 19:00 UTC yesterday is half past midnight tomorrow in IST. The UTC
+        // day is what decides, so this is yesterday's traffic at hour 19.
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 19) });
+
+        assert.equal((await hourly('?range=yesterday&hour=19')).visitors, 1);
+        assert.equal((await hourly('?range=today&hour=19')).visitors, 0);
+    });
+
+    test('midnight is an hour like any other, and is not read as "no hour"', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 0, 0) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 0, 59) });
+        await seedVisit({ city: 'Mumbai', at: atHour(-1, 1, 0) });
+
+        const midnight = await hourly('?range=yesterday&hour=0');
+        assert.equal(midnight.hour, 0, 'hour zero survives as a choice');
+        assert.equal(midnight.visitors, 2);
+        assert.deepEqual(midnight.rows.map((r) => r.city).sort(), ['Delhi', 'Lucknow']);
+
+        // Without an hour the filter is absent — which is not hour zero.
+        const every = await hourly('?range=yesterday');
+        assert.equal(every.hour, null);
+        assert.equal(every.visitors, 3);
+    });
+
+    test('hour 23 reaches the last minute of the UTC day', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 23, 59) });
+
+        const last = await hourly('?range=yesterday&hour=23');
+        assert.equal(last.visitors, 1);
+        assert.equal(last.hour, 23);
+        assert.equal((await hourly('?range=yesterday&hour=22')).visitors, 0);
+    });
+
+    // ── The same hour across every window ────────────────────────────────────
+
+    test('today at a given hour', async () => {
+        const h = hourNow();
+        await seedVisit({ city: 'Lucknow', at: atHour(0, h) });
+
+        const today = await hourly(`?range=today&hour=${h}`);
+        assert.equal(today.visitors, 1);
+        assert.equal(today.from, utcDay(0));
+        assert.equal(today.to, utcDay(0));
+
+        const other = await hourly(`?range=today&hour=${(h + 1) % 24}`);
+        assert.equal(other.visitors, 0);
+    });
+
+    test('yesterday at 3 PM excludes the same hour on other days', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        await seedVisit({ city: 'Delhi', at: atHour(-2, 15) });
+
+        const data = await hourly('?range=yesterday&hour=15');
+        assert.equal(data.visitors, 1);
+        assert.deepEqual(data.rows.map((r) => r.city), ['Lucknow']);
+        assert.equal(data.from, utcDay(-1));
+        assert.equal(data.to, utcDay(-1));
+    });
+
+    // The point of the whole feature: over a multi-day window an hour is that
+    // hour on each day, not one continuous stretch of time.
+    test('an hour over a multi-day window is that hour on every day in it', async () => {
+        const past = [1, 2, 3, 8, 20, 40, 80];
+        for (const d of past) await seedVisit({ city: 'Lucknow', at: atHour(-d, 15) });
+        // Noise at another hour on the same days, which must never be counted.
+        for (const d of past) await seedVisit({ city: 'Delhi', at: atHour(-d, 4) });
+
+        const within = (n) => past.filter((d) => d <= n).length;
+
+        assert.equal((await hourly('?range=7d&hour=15')).visitors, within(6));
+        assert.equal((await hourly('?range=30d&hour=15')).visitors, within(29));
+        assert.equal((await hourly('?range=90d&hour=15')).visitors, within(89));
+
+        // Every one of them is Lucknow; the 4am Delhi sessions never appear.
+        const wide = await hourly('?range=90d&hour=15');
+        assert.deepEqual(wide.rows.map((r) => r.city), ['Lucknow']);
+        assert.equal(wide.rows[0].visitors, past.length);
+    });
+
+    test('a custom window applies the hour to each of its UTC days', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-3, 15) });
+        await seedVisit({ city: 'Mumbai', at: atHour(-2, 15) });
+        await seedVisit({ city: 'Delhi', at: atHour(-5, 15) });
+
+        const data = await hourly(`?range=custom&from=${utcDay(-3)}&to=${utcDay(-2)}&hour=15`);
+        assert.equal(data.visitors, 2, 'both days in the window, at that hour');
+        assert.deepEqual(data.rows.map((r) => r.city).sort(), ['Lucknow', 'Mumbai']);
+        assert.equal(data.from, utcDay(-3));
+        assert.equal(data.to, utcDay(-2));
+    });
+
+    // ── City and hour together ──────────────────────────────────────────────
+
+    test('a city and an hour together: how many came from Lucknow at 3 PM', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15, 30) });
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 9) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 15) });
+
+        const data = await hourly('?range=yesterday&hour=15&city=Lucknow');
+        assert.equal(data.city, 'Lucknow');
+        assert.equal(data.visitors, 2);
+        assert.deepEqual(data.rows.map((r) => r.city), ['Lucknow']);
+        assert.equal(data.rows[0].visitors, 2);
+    });
+
+    test('all cities at an hour keeps every city that had traffic in it', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 15) });
+        await seedVisit({ city: 'Mumbai', at: atHour(-1, 8) });
+
+        const data = await hourly('?range=yesterday&hour=15');
+        assert.equal(data.city, null);
+        assert.deepEqual(data.rows.map((r) => r.city).sort(), ['Delhi', 'Lucknow']);
+        assert.equal(data.totalCities, 2, 'cities with traffic in the chosen hour');
+        assert.equal(data.windowCities, 3, 'cities in the window, whatever the hour');
+    });
+
+    // Choosing an hour must not flatten the chart the hour was chosen from.
+    test('the hourly profile answers to the city filter but not to the hour', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 9) });
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 15) });
+
+        const picked = await hourly('?range=yesterday&hour=15');
+        assert.equal(visitorsAt(picked, 9), 1, 'the other hours are still there to click');
+        assert.equal(visitorsAt(picked, 15), 2);
+
+        const city = await hourly('?range=yesterday&city=Lucknow');
+        assert.equal(visitorsAt(city, 9), 1);
+        assert.equal(visitorsAt(city, 15), 1, 'a Delhi session is not in Lucknow profile');
+
+        const both = await hourly('?range=yesterday&hour=15&city=Lucknow');
+        assert.equal(visitorsAt(both, 9), 1, 'the profile is still the city, all hours');
+        assert.equal(both.visitors, 1, 'while the totals are the city at that hour');
+    });
+
+    test('the city filter offers every city in the window, not just the chosen hour', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 8) });
+        await seedVisit({ city: 'Mumbai', at: atHour(-1, 2) });
+
+        const data = await hourly('?range=yesterday&hour=15');
+        assert.deepEqual([...data.cityOptions].sort(), ['Delhi', 'Lucknow', 'Mumbai']);
+    });
+
+    // ── Session semantics, unchanged ────────────────────────────────────────
+
+    test('a visitor is a session, counted in the hour it began', async () => {
+        const s = sessionId();
+        await seedVisit({ sessionId: s, city: 'Lucknow', at: atHour(-1, 9, 50) });
+        await seedVisit({ sessionId: s, city: null, at: atHour(-1, 10, 5) });
+        await seedVisit({ sessionId: s, city: null, at: atHour(-1, 10, 20) });
+
+        const data = await hourly('?range=yesterday');
+        assert.equal(data.visitors, 1, 'one session, three page views');
+        assert.equal(data.pageViews, 3);
+        assert.equal(visitorsAt(data, 9), 1, 'the hour it began');
+        assert.equal(visitorsAt(data, 10), 0, 'not every hour it touched');
+
+        // And it is Lucknow's, from its first page view.
+        assert.deepEqual(data.rows.map((r) => r.city), ['Lucknow']);
+        assert.equal(data.rows[0].visitors, 1);
+        assert.equal(data.rows[0].pageViews, 3);
+    });
+
+    test('visitors and page views are reported separately, never mixed', async () => {
+        const s = sessionId();
+        await seedVisit({ sessionId: s, city: 'Delhi', at: atHour(-1, 15, 1) });
+        await seedVisit({ sessionId: s, city: 'Delhi', at: atHour(-1, 15, 9) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 15, 20) });
+
+        const data = await hourly('?range=yesterday&hour=15');
+        assert.equal(data.visitors, 2);
+        assert.equal(data.pageViews, 3);
+        assert.equal(data.hourly.find((h) => h.hour === 15).pageViews, 3);
+    });
+
+    // ── Unknown location ───────────────────────────────────────────────────
+
+    test('an unknown location is counted, kept separate, and never a city', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        await seedVisit({ city: null, at: atHour(-1, 15) });
+        await seedVisit({ city: '', at: atHour(-1, 15) });
+
+        const data = await hourly('?range=yesterday&hour=15');
+        assert.equal(data.visitors, 3);
+        assert.equal(data.knownVisitors, 1);
+        assert.equal(data.unknownVisitors, 2);
+        assert.deepEqual(data.rows.map((r) => r.city), ['Lucknow']);
+        assert.equal(data.totalCities, 1, 'unknown is not one of the cities');
+        assert.equal(visitorsAt(data, 15), 3, 'but it is in the hour it arrived');
+    });
+
+    test('unknown visitors follow the chosen hour too', async () => {
+        await seedVisit({ city: null, at: atHour(-1, 15) });
+        await seedVisit({ city: null, at: atHour(-1, 8) });
+
+        assert.equal((await hourly('?range=yesterday&hour=15')).unknownVisitors, 1);
+        assert.equal((await hourly('?range=yesterday')).unknownVisitors, 2);
+    });
+
+    test('choosing a city leaves no unknown visitors to report', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        await seedVisit({ city: null, at: atHour(-1, 15) });
+
+        const data = await hourly('?range=yesterday&city=Lucknow');
+        assert.equal(data.visitors, 1);
+        assert.equal(data.knownVisitors, 1);
+        assert.equal(data.unknownVisitors, 0);
+    });
+
+    // ── Search and paging, as on the city list ─────────────────────────────
+
+    test('search narrows which cities are listed, not how they were counted', async () => {
+        for (const city of ['Mountain View', 'Mountain Ash', 'Lucknow', 'Delhi']) {
+            await seedVisit({ city, at: atHour(-1, 15) });
+        }
+
+        const found = await hourly('?range=yesterday&hour=15&search=mountain');
+        assert.deepEqual(found.rows.map((r) => r.city).sort(), ['Mountain Ash', 'Mountain View']);
+        assert.equal(found.total, 2, 'the pagination counts the matches');
+        assert.equal(found.totalCities, 4, 'the window still has four cities');
+        assert.equal(found.visitors, 4, 'and four visitors: a search counts nothing');
+    });
+
+    test('search is case-insensitive', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+
+        for (const term of ['lucknow', 'LUCKNOW', 'LuCkNoW', 'cknow']) {
+            const data = await hourly(`?range=yesterday&hour=15&search=${term}`);
+            assert.deepEqual(data.rows.map((r) => r.city), ['Lucknow'], term);
+        }
+    });
+
+    test('a search term is a name, never a pattern', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        await seedVisit({ city: 'Delhi', at: atHour(-1, 15) });
+
+        for (const term of ['.*', '.+', 'L.cknow', '^Delhi$', '(Lucknow|Delhi)']) {
+            const data = await hourly(`?range=yesterday&hour=15&search=${encodeURIComponent(term)}`);
+            assert.deepEqual(data.rows, [], `${term} matched something`);
+            assert.equal(data.total, 0);
+        }
+    });
+
+    test('pages divide the cities without repeating or dropping one', async () => {
+        const plan = ['Agra', 'Bhopal', 'Chennai', 'Delhi', 'Indore', 'Jaipur', 'Kanpur'];
+        for (const city of plan) await seedVisit({ city, at: atHour(-1, 15) });
+
+        const first = await hourly('?range=yesterday&hour=15&page=1&limit=3');
+        const second = await hourly('?range=yesterday&hour=15&page=2&limit=3');
+        const third = await hourly('?range=yesterday&hour=15&page=3&limit=3');
+
+        assert.equal(first.rows.length, 3);
+        assert.equal(second.rows.length, 3);
+        assert.equal(third.rows.length, 1);
+        assert.equal(first.total, plan.length);
+
+        const seen = [...first.rows, ...second.rows, ...third.rows].map((r) => r.city);
+        assert.equal(new Set(seen).size, plan.length, 'no city appears twice');
+        assert.deepEqual([...seen].sort(), [...plan].sort());
+    });
+
+    test('an explicit page size is honoured, as a number', async () => {
+        await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+
+        for (const limit of [25, 50, 100]) {
+            const data = await hourly(`?range=yesterday&hour=15&limit=${limit}`);
+            assert.equal(data.limit, limit);
+        }
+    });
+
+    test('the busiest hour is visible without asking for one', async () => {
+        for (let i = 0; i < 5; i += 1) await seedVisit({ city: 'Lucknow', at: atHour(-1, 15) });
+        for (let i = 0; i < 2; i += 1) await seedVisit({ city: 'Delhi', at: atHour(-1, 9) });
+
+        const data = await hourly('?range=yesterday');
+        const busiest = data.hourly.reduce((best, h) => (h.visitors > best.visitors ? h : best));
+        assert.equal(busiest.hour, 15);
+        assert.equal(busiest.visitors, 5);
+    });
+
+    test('an empty window is an empty list, with all 24 hours at nought', async () => {
+        const data = await hourly('?range=today&hour=15');
+
+        assert.deepEqual(data.rows, []);
+        assert.equal(data.total, 0);
+        assert.equal(data.totalCities, 0);
+        assert.equal(data.visitors, 0);
+        assert.equal(data.unknownVisitors, 0);
+        assert.equal(data.hourly.length, 24);
+        assert.equal(data.hourly.reduce((n, h) => n + h.visitors, 0), 0);
+    });
+
+    test('it agrees with the city list about the same window', async () => {
+        for (const city of ['Lucknow', 'Delhi', 'Mumbai']) {
+            await seedVisit({ city, at: atHour(-1, 15) });
+        }
+        await seedVisit({ city: null, at: atHour(-1, 15) });
+
+        const hour = await hourly('?range=yesterday&limit=100');
+        const list = (await call('GET', '/v1/analytics/cities?range=yesterday&limit=100', { token })).body.data;
+
+        assert.equal(hour.visitors, list.visitors);
+        assert.equal(hour.knownVisitors, list.knownVisitors);
+        assert.equal(hour.unknownVisitors, list.unknownVisitors);
+        assert.equal(hour.totalCities, list.totalCities);
+        assert.deepEqual(hour.rows.map((r) => r.city), list.rows.map((r) => r.city));
+    });
+
+    // ── Access ──────────────────────────────────────────────────────────────
+
+    test('the endpoint needs a session', async () => {
+        assert.equal((await call('GET', '/v1/analytics/cities/hourly')).status, 401);
+    });
+
+    test('and it needs the analytics page: a role without it is refused', async () => {
+        const role = await roleService.createRole({
+            name: 'Hourly No Analytics',
+            description: 'fixture: holds a page, but not analytics',
+            permissions: { blogs: 'view' },
+            status: 'Active'
+        });
+        const outsider = await Admin.create({
+            name: 'No Analytics Admin',
+            email: 'hourly-no-analytics@test.local',
+            password: 'Password@123',
+            role: role.key,
+            isActive: true
+        });
+        invalidatePermissionCache();
+        const outsiderToken = generateAccessToken({ id: outsider._id, role: role.key });
+
+        for (const path of ['/v1/analytics/overview', '/v1/analytics/cities', '/v1/analytics/cities/hourly']) {
+            const res = await call('GET', `${path}?range=7d`, { token: outsiderToken });
+            assert.equal(res.status, 403, `${path} -> ${res.status}`);
+        }
+
+        await Admin.deleteOne({ _id: outsider._id });
+        await Role.deleteOne({ _id: role._id });
+        invalidatePermissionCache();
+    });
+
+    test('bad parameters are refused rather than guessed at', async () => {
+        const bad = [
+            '?hour=24', '?hour=-1', '?hour=15.5', '?hour=noon', '?hour=999',
+            '?range=nonsense', '?page=0', '?limit=500'
+        ];
+        for (const q of bad) {
+            const res = await call('GET', `/v1/analytics/cities/hourly${q}`, { token });
+            assert.equal(res.status, 400, `${q} -> ${res.status}`);
+        }
+    });
+});

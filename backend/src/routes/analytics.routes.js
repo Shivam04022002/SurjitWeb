@@ -4,7 +4,9 @@ const { canView: viewPage, canEdit: editPage } = require('../middleware/permissi
 const validate = require('../middleware/validate');
 
 const analyticsController = require('../controllers/analytics.controller');
-const { overviewValidation, pagesValidation, citiesValidation } = require('../validators/analytics.validator');
+const {
+    overviewValidation, pagesValidation, citiesValidation, cityHourlyValidation
+} = require('../validators/analytics.validator');
 
 const router = express.Router();
 
@@ -17,5 +19,6 @@ const canReadAnalytics = [auth, viewPage('analytics')];
 router.get('/overview', canReadAnalytics, overviewValidation, validate, analyticsController.getOverview);
 router.get('/pages', canReadAnalytics, pagesValidation, validate, analyticsController.getPages);
 router.get('/cities', canReadAnalytics, citiesValidation, validate, analyticsController.getCities);
+router.get('/cities/hourly', canReadAnalytics, cityHourlyValidation, validate, analyticsController.getCityHourly);
 
 module.exports = router;

@@ -27,6 +27,15 @@ const TOP_PAGES_LIMIT = 10;
 const TOP_CITIES_LIMIT = 10;
 const RECENT_ACTIVITY_LIMIT = 15;
 
+// Hours of the UTC day, 00 through 23. Every window reports all of them, so a
+// quiet hour reads as nought traffic rather than as a gap in the chart.
+const HOURS_IN_DAY = 24;
+
+// How many cities the hourly view offers in its city filter. The list exists to
+// be chosen from; past a few hundred entries a dropdown is the wrong tool, and
+// the search box is the right one.
+const CITY_OPTIONS_LIMIT = 500;
+
 const SOURCES = {
     direct: 'Direct',
     search: 'Search',
@@ -106,6 +115,21 @@ const resolveRange = ({ range, from, to } = {}) => {
 const dayExpr = (field) => ({
     $dateToString: { format: '%Y-%m-%d', date: field, timezone: zoned.TIMEZONE }
 });
+
+// The hour of the UTC day a moment falls in. The timezone is stated for the
+// same reason the day helper states it: what "3 PM" means must not depend on
+// how the server, or the reader's laptop, happens to be set. 3 PM is 15:00 UTC
+// through 15:59:59.999 UTC, wherever anyone is sitting.
+const hourExpr = (field) => ({ $hour: { date: field, timezone: zoned.TIMEZONE } });
+
+// A selected hour, as a UTC hour of the day. Anything that is not one of 0–23
+// means no hour was chosen — which is a different statement from hour zero, so
+// midnight has to survive this untouched.
+const normaliseHour = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 && n < HOURS_IN_DAY ? n : null;
+};
 
 // Top Pages. Grouping on (path, session) first and then on path keeps each
 // group's state to a counter — unlike $addToSet, it cannot grow with traffic.
@@ -433,6 +457,126 @@ const getCities = async ({ page: requestedPage, limit: requestedLimit, search = 
     };
 };
 
+// Traffic by city and by hour of the UTC day — what the dedicated Traffic by
+// City page reads.
+//
+// The question this answers is "who was here at 3 PM?", so a visitor is placed
+// in the hour their session began, the same page view that gives them their
+// city. One session therefore falls in exactly one hour, and the 24 hourly
+// figures add up to the window's visitors.
+//
+// Over a multi-day window an hour means that hour on every day in it: Last 7
+// Days at 3 PM is seven 15:00–15:59 UTC windows, not one continuous hour.
+// Matching on the hour of the day rather than on a span of time is what makes
+// that so.
+//
+// Three scopes are at work, and they are deliberately different:
+//   · the hourly profile takes the city filter but not the hour — otherwise
+//     choosing an hour would flatten the chart used to choose it;
+//   · the city rows and totals take both;
+//   · the filter's list of cities takes neither, so the choices do not shrink
+//     to whatever the current hour happens to contain.
+const getCityHourly = async ({
+    page: requestedPage, limit: requestedLimit, search = '', hour, city, ...rangeParams
+} = {}) => {
+    const r = resolveRange(rangeParams);
+    const { page, limit, skip } = paging(requestedPage, requestedLimit);
+
+    const term = String(search || '').trim();
+    const selectedHour = normaliseHour(hour);
+    const selectedCity = String(city || '').trim();
+
+    // Escaped: a city name is a search term, never a pattern.
+    const searchStage = term ? [{ $match: { _id: escapedRegex(term) } }] : [];
+    const hasCity = [{ $match: { city: { $nin: [null, ''] } } }];
+    const byCity = [{
+        $group: {
+            _id: '$city',
+            visitors: { $sum: 1 },
+            pageViews: { $sum: '$views' },
+            country: { $first: '$country' }
+        }
+    }];
+    const ranked = [{ $sort: { visitors: -1, _id: 1 } }];
+
+    const cityFilter = selectedCity ? [{ $match: { city: selectedCity } }] : [];
+    const hourFilter = selectedHour === null ? [] : [{ $match: { hourOfDay: selectedHour } }];
+    const scope = [...cityFilter, ...hourFilter];
+
+    // One pass over the sessions in the window; each branch asks its own
+    // question of them. Not nested facets — MongoDB does not allow those.
+    const [facets] = await WebsiteVisit.aggregate([
+        ...sessionStages(r.start, r.end),
+        { $addFields: { hourOfDay: hourExpr('$firstAt') } },
+        {
+            $facet: {
+                rows: [
+                    ...scope, ...hasCity, ...byCity, ...ranked, ...searchStage,
+                    { $skip: skip }, { $limit: limit },
+                    { $project: { _id: 0, city: '$_id', country: 1, visitors: 1, pageViews: 1 } }
+                ],
+                // What the pagination counts: the cities this search matched.
+                matching: [...scope, ...hasCity, ...byCity, ...searchStage, { $count: 'n' }],
+                // How many cities the current filters leave, whatever the search.
+                allCities: [...scope, ...hasCity, ...byCity, { $count: 'n' }],
+                // How many there are in the window, whatever any filter says.
+                windowCities: [...hasCity, ...byCity, { $count: 'n' }],
+                totals: [...scope, {
+                    $group: {
+                        _id: null,
+                        visitors: { $sum: 1 },
+                        pageViews: { $sum: '$views' },
+                        known: { $sum: { $cond: [{ $in: ['$city', [null, '']] }, 0, 1] } }
+                    }
+                }],
+                hourly: [
+                    ...cityFilter,
+                    { $group: { _id: '$hourOfDay', visitors: { $sum: 1 }, pageViews: { $sum: '$views' } } }
+                ],
+                cityOptions: [
+                    ...hasCity, ...byCity, ...ranked,
+                    { $limit: CITY_OPTIONS_LIMIT },
+                    { $project: { _id: 0, city: '$_id' } }
+                ]
+            }
+        }
+    ]).allowDiskUse(true);
+
+    const totals = facets?.totals?.[0] || { visitors: 0, known: 0, pageViews: 0 };
+    const byHour = new Map((facets?.hourly || []).map((h) => [h._id, h]));
+
+    return {
+        range: r.key,
+        label: r.label,
+        from: r.fromDay,
+        to: r.toDay,
+        timezone: zoned.TIMEZONE,
+        // Null, not zero: no hour chosen is not the same as midnight.
+        hour: selectedHour,
+        city: selectedCity || null,
+        search: term,
+        page,
+        limit,
+        total: facets?.matching?.[0]?.n || 0,
+        totalCities: facets?.allCities?.[0]?.n || 0,
+        windowCities: facets?.windowCities?.[0]?.n || 0,
+        visitors: totals.visitors,
+        pageViews: totals.pageViews,
+        knownVisitors: totals.known,
+        // Sessions whose first page view carried no city. A real number, kept
+        // separate — never turned into a city of its own.
+        unknownVisitors: Math.max(0, totals.visitors - totals.known),
+        // All 24 hours, always, so a quiet hour reads as nought.
+        hourly: Array.from({ length: HOURS_IN_DAY }, (_, h) => ({
+            hour: h,
+            visitors: byHour.get(h)?.visitors || 0,
+            pageViews: byHour.get(h)?.pageViews || 0
+        })),
+        rows: facets?.rows || [],
+        cityOptions: (facets?.cityOptions || []).map((c) => c.city)
+    };
+};
+
 // Public write path. Only these values are taken from the request; the
 // timestamp is the server's, never the client's. `location` is the coarse
 // place the controller resolved (never an address), or nothing at all.
@@ -463,6 +607,6 @@ const recordEvent = async ({ sessionId, action, path, target }) => {
 };
 
 module.exports = {
-    getOverview, getPages, getCities, recordPageView, recordEvent,
-    classifySource, resolveRange, RANGES, MAX_CUSTOM_DAYS
+    getOverview, getPages, getCities, getCityHourly, recordPageView, recordEvent,
+    classifySource, resolveRange, normaliseHour, RANGES, MAX_CUSTOM_DAYS, HOURS_IN_DAY
 };

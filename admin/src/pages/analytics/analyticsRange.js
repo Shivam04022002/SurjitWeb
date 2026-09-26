@@ -80,11 +80,99 @@ export const cityShare = (visitors, totalVisitors) => (
 
 export const formatShare = (ratio) => (ratio == null ? '—' : `${(ratio * 100).toFixed(1)}%`)
 
-// What the dialog's footer says about the list being shown. Search narrows
-// which cities are listed, never how they were counted, and the line says so.
+// What the list's footer says about itself. Search narrows which cities are
+// listed, never how they were counted, and the line says so.
 export const citySummary = ({ total = 0, totalCities = 0, search = '' } = {}) => {
   if (!totalCities) return 'No city data in this period'
   const all = `${totalCities} ${totalCities === 1 ? 'city' : 'cities'}`
   if (!search) return all
   return `${total} of ${all} matching “${search}”`
+}
+
+// ── Hour of the UTC day ──────────────────────────────────────────────────────
+//
+// An hour on this page is an hour of the UTC day: 3 PM is 15:00–15:59 UTC to
+// every reader, whatever their machine is set to. So an hour is carried as the
+// number 0–23 and rendered from that number alone — never by formatting a Date,
+// which would hand a reader in Lucknow "8:30 PM" for the same traffic.
+//
+// Over a window of several days that hour means that hour on each of them: Last
+// 7 Days at 3 PM is seven 15:00–15:59 windows. The server does the matching;
+// this only names the hour.
+
+export const HOURS_IN_DAY = 24
+
+// No hour chosen. Distinct from hour 0, which is midnight and a real answer.
+export const ALL_HOURS = ''
+export const ALL_CITIES = ''
+
+export const hourLabel = (hour) => {
+  const h = Number(hour)
+  const twelve = h % 12 === 0 ? 12 : h % 12
+  return `${twelve} ${h < 12 ? 'AM' : 'PM'}`
+}
+
+// The hour spelled out as the window it actually is, so nobody has to trust the
+// 12-hour label alone.
+export const hourWindowLabel = (hour) => {
+  const h = String(Number(hour)).padStart(2, '0')
+  return `${h}:00–${h}:59 UTC`
+}
+
+export const hourAxisLabel = (hour) => String(Number(hour)).padStart(2, '0')
+
+export const HOUR_OPTIONS = [
+  { value: ALL_HOURS, label: 'All Hours' },
+  ...Array.from({ length: HOURS_IN_DAY }, (_, h) => ({ value: String(h), label: hourLabel(h) }))
+]
+
+// Whether an hour was chosen at all. Hour 0 has to pass this.
+export const hasHour = (hour) => hour !== ALL_HOURS && hour !== null && hour !== undefined
+
+// What travels to the API for the hourly city view: the window, the paging, and
+// the two filters — each sent only when it narrows something.
+export const cityHourlyParams = (range, {
+  page = 1, limit = CITY_PAGE_SIZE, search = '', hour = ALL_HOURS, city = ALL_CITIES
+} = {}) => {
+  const params = { ...rangeParams(range), page, limit }
+  if (search) params.search = search
+  if (hasHour(hour)) params.hour = Number(hour)
+  if (city) params.city = city
+  return params
+}
+
+// Where the dashboard's "See All" goes. The window travels in the link, so the
+// page opens on the period the card was showing rather than on a default of its
+// own — and so the resulting URL can be shared or bookmarked as that view.
+export const CITY_PAGE_PATH = '/analytics/cities'
+
+export const cityPageLink = ({ range = '7d', from, to } = {}) => {
+  const query = new URLSearchParams({ range })
+  if (range === 'custom' && from && to) {
+    query.set('from', from)
+    query.set('to', to)
+  }
+  return `${CITY_PAGE_PATH}?${query.toString()}`
+}
+
+// The hour with the most visitors, for "which hour was busiest?". Null when
+// nothing arrived at all — no hour won, rather than midnight winning by default.
+export const busiestHour = (hourly = []) => {
+  const seen = hourly.filter((h) => h.visitors > 0)
+  if (!seen.length) return null
+  return seen.reduce((best, h) => (h.visitors > best.visitors ? h : best))
+}
+
+// What the page says the current selection is, above the city table.
+export const hourScopeLabel = ({ hour, city } = {}) => {
+  const when = hasHour(hour) ? `${hourLabel(hour)} · ${hourWindowLabel(hour)}` : 'All hours'
+  return city ? `${when} · ${city}` : when
+}
+
+// The one-line summary under the hourly chart: what the chosen hour holds.
+export const hourSelectionSummary = ({ hour, visitors = 0, cities = 0 } = {}) => {
+  if (!hasHour(hour)) return 'Every hour of the UTC day. Select one to narrow the cities below.'
+  const people = `${visitors} ${visitors === 1 ? 'visitor' : 'visitors'}`
+  const places = `${cities} ${cities === 1 ? 'city' : 'cities'}`
+  return visitors ? `${people} across ${places}` : 'No visitors in this hour'
 }

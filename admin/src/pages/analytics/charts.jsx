@@ -325,3 +325,87 @@ export const BarList = ({ items, color = SERIES.blue, showShare = true, emptyTex
     </Stack>
   )
 }
+
+// Twenty-four columns, one per hour of the UTC day, each one selectable.
+//
+// A column is a real button: the hour is chosen with a click, the keyboard or a
+// screen reader alike, and the selected one stays visibly selected rather than
+// relying on colour alone. Hours with no traffic still draw — a flat column at
+// the baseline says "nobody came" where a gap would say nothing at all.
+export const HourBars = ({
+  items, selected, onSelect, color = SERIES.blue, height = 132, formatHour, formatWindow
+}) => {
+  const max = Math.max(0, ...items.map((i) => i.visitors))
+
+  return (
+    <Box>
+      <Stack direction="row" alignItems="flex-end" spacing={0.5} sx={{ height, mb: 0.5 }}>
+        {items.map((i) => {
+          const isSelected = String(selected) === String(i.hour)
+          const ratio = max ? i.visitors / max : 0
+          return (
+            <Box
+              key={i.hour}
+              component="button"
+              type="button"
+              onClick={() => onSelect(isSelected ? '' : String(i.hour))}
+              aria-pressed={isSelected}
+              aria-label={`${formatHour(i.hour)}, ${formatWindow(i.hour)}: ${nf.format(i.visitors)} visitors`}
+              title={`${formatHour(i.hour)} · ${formatWindow(i.hour)} · ${nf.format(i.visitors)} visitors`}
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                height: '100%',
+                p: 0,
+                border: 0,
+                bgcolor: 'transparent',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+                borderRadius: 1,
+                '&:hover > *': { opacity: 0.85 },
+                '&:focus-visible': { outline: '2px solid', outlineColor: color, outlineOffset: 2 }
+              }}
+            >
+              <Box
+                sx={{
+                  // A hair of height even at nought, so every hour is a target.
+                  height: `${Math.max(ratio * 100, i.visitors ? 4 : 2)}%`,
+                  bgcolor: isSelected ? color : `${color}59`,
+                  border: isSelected ? 0 : 1,
+                  borderColor: `${color}80`,
+                  borderRadius: 1,
+                  transition: 'height 200ms, background-color 150ms'
+                }}
+              />
+            </Box>
+          )
+        })}
+      </Stack>
+
+      <Stack direction="row" spacing={0.5}>
+        {items.map((i) => {
+          const isSelected = String(selected) === String(i.hour)
+          return (
+            <Typography
+              key={i.hour}
+              variant="caption"
+              align="center"
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: 10,
+                fontVariantNumeric: 'tabular-nums',
+                color: isSelected ? 'text.primary' : 'text.disabled',
+                fontWeight: isSelected ? 700 : 400
+              }}
+            >
+              {String(i.hour).padStart(2, '0')}
+            </Typography>
+          )
+        })}
+      </Stack>
+    </Box>
+  )
+}
