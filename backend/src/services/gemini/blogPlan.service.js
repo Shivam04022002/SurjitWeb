@@ -80,7 +80,7 @@ const savePlan = async ({ name, rows }, { userId }) => {
         categoryName: r.category ? r.category.name : null,
         generateImage: r.generateImage !== false,
         status: r.valid ? 'scheduled' : 'invalid',
-        errors: r.errors || []
+        validationErrors: r.errors || []
     }));
 
     await GeminiPlanRow.insertMany(documents);
@@ -137,7 +137,7 @@ const shape = (plan, rows) => ({
         categoryName: r.categoryName,
         generateImage: r.generateImage,
         status: r.status,
-        errors: r.errors || [],
+        errors: r.validationErrors || [],
         blog: r.blog || null,
         generatedAt: r.generatedAt,
         attempts: r.attempts,

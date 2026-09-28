@@ -74,7 +74,9 @@ const geminiPlanRowSchema = new mongoose.Schema({
         default: 'scheduled'
     },
     // What the plan validator said, for a row that could not be scheduled.
-    errors: [{
+    // Not called `errors`: Mongoose reserves that name on a document for its
+    // own validation state, and this row is saved as a document.
+    validationErrors: [{
         _id: false,
         field: { type: String },
         message: { type: String }
