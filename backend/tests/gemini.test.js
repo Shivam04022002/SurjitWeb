@@ -2043,7 +2043,7 @@ describe('Excel bulk plan', () => {
         assert.equal(await BlogCategory.countDocuments({ name: 'General' }), 0, 'no category is created');
     });
 
-    test('duplicate topics and dates are flagged on the later row', async () => {
+    test('a duplicate topic is flagged on the later row; a repeated date is not', async () => {
         const { rows, summary } = (await upload(workbook([
             HEAD,
             ['05/10/2026', 'Saving for a new shop', '', 'Yes'],
@@ -2052,8 +2052,9 @@ describe('Excel bulk plan', () => {
         ]))).body.data;
         assert.equal(rows[0].valid, true);
         assert.match(rowErrors(rows[1], 'topic'), /Duplicate topic — same as row 2/);
-        assert.match(rowErrors(rows[2], 'date'), /Duplicate date — row 2 already uses 05\/10\/2026/);
-        assert.equal(summary.valid, 1);
+        assert.equal(rows[2].valid, true, 'the same day, a different topic: a second blog that day');
+        assert.equal(rowErrors(rows[2], 'date'), '');
+        assert.equal(summary.valid, 2);
     });
 
     test('partial files keep their valid rows usable', async () => {
@@ -2121,7 +2122,7 @@ describe('Excel bulk plan', () => {
         const { rows } = res.body.data;
         assert.deepEqual(rows[0].category, { _id: activeId, name: 'Business Loans' }, 'category by id');
         assert.match(rowErrors(rows[1]), /Duplicate topic — same as #1/);
-        assert.match(rowErrors(rows[1]), /Duplicate date — #1 already uses 05\/10\/2026/);
+        assert.doesNotMatch(rowErrors(rows[1]), /Duplicate date/, 'the shared date is not the problem');
         assert.match(rowErrors(rows[2], 'topic'), /3-200 characters/);
         assert.equal((await call('POST', '/v1/gemini/blogs/bulk/validate', { token: tokens.super, body: { rows: [] } })).status, 400);
         assert.equal((await call('POST', '/v1/gemini/blogs/bulk/validate', { token: tokens.super, body: { rows: [{ topic: { $ne: 1 } }] } })).status, 400);
@@ -2147,6 +2148,138 @@ describe('Excel bulk plan', () => {
         // The template itself uploads cleanly.
         const reparsed = await upload(Buffer.from(await (await realFetch(`${baseUrl}/api/v1/gemini/blogs/bulk/template`, { headers: { Authorization: `Bearer ${tokens.super}` } })).arrayBuffer()));
         assert.equal(reparsed.body.data.summary.invalid, 0, reparsed.text);
+    });
+
+
+    // ── A date is a schedule, not an identity ────────────────────────────────
+    //
+    // A monthly plan says when to publish. A day can carry as many blogs as the
+    // plan asks for, so two rows sharing 01 Oct are two blogs that day — not one
+    // blog written twice. What must not repeat is the topic.
+    describe('several blogs on one date', () => {
+        // The rows from the report: both were on 01 Oct, and the second was
+        // refused for no reason but that.
+        test('the reported pair: both rows are valid', async () => {
+            const { rows, summary } = (await upload(workbook([
+                HEAD,
+                ['01/10/2026', 'What is a Business Loan and How Does It Work?', '', 'Yes'],
+                ['01/10/2026', 'Term Loan vs Working Capital Loan: Key Differences', '', 'Yes']
+            ]))).body.data;
+
+            assert.equal(rows[0].valid, true, rowErrors(rows[0]));
+            assert.equal(rows[1].valid, true, rowErrors(rows[1]));
+            for (const r of rows) assert.doesNotMatch(rowErrors(r), /Duplicate date/);
+            assert.equal(summary.valid, 2);
+            assert.equal(summary.invalid, 0);
+        });
+
+        test('three on the same date are three valid rows', async () => {
+            const { rows, summary } = (await upload(workbook([
+                HEAD,
+                ['01/10/2026', 'Topic A', '', 'Yes'],
+                ['01/10/2026', 'Topic B', '', 'Yes'],
+                ['01/10/2026', 'Topic C', '', 'Yes']
+            ]))).body.data;
+
+            assert.equal(summary.valid, 3);
+            assert.equal(summary.invalid, 0);
+            for (const r of rows) {
+                assert.equal(r.valid, true, rowErrors(r));
+                assert.equal(r.date, '2026-10-01', 'each keeps its own date');
+            }
+        });
+
+        test('several dates, several blogs each', async () => {
+            const { rows, summary } = (await upload(workbook([
+                HEAD,
+                ['01/10/2026', 'Blog A', '', 'Yes'],
+                ['01/10/2026', 'Blog B', '', 'Yes'],
+                ['02/10/2026', 'Blog C', '', 'Yes'],
+                ['02/10/2026', 'Blog D', '', 'Yes'],
+                ['03/10/2026', 'Blog E', '', 'Yes']
+            ]))).body.data;
+
+            assert.equal(summary.total, 5);
+            assert.equal(summary.valid, 5);
+            assert.deepEqual(rows.map((r) => r.date),
+                ['2026-10-01', '2026-10-01', '2026-10-02', '2026-10-02', '2026-10-03']);
+        });
+
+        test('a whole month on one day is still a whole month', async () => {
+            const plan = Array.from({ length: 31 }, (_, i) => ['01/10/2026', `Same-day topic ${i + 1}`, '', 'Yes']);
+            const { summary } = (await upload(workbook([HEAD, ...plan]))).body.data;
+
+            assert.equal(summary.total, 31);
+            assert.equal(summary.valid, 31, 'no row is refused for sharing the date');
+            assert.equal(summary.invalid, 0);
+        });
+
+        test('edited rows sharing a date stay valid when re-validated', async () => {
+            const { rows } = (await validateRows([
+                { date: '2026-10-01', topic: 'What is a Business Loan and How Does It Work?', category: '', generateImage: true },
+                { date: '01/10/2026', topic: 'Term Loan vs Working Capital Loan: Key Differences', category: '', generateImage: true },
+                { date: '2026-10-01', topic: 'A third one that day', category: '', generateImage: false }
+            ])).body.data;
+
+            for (const r of rows) {
+                assert.equal(r.valid, true, rowErrors(r));
+                assert.doesNotMatch(rowErrors(r), /Duplicate date/);
+            }
+        });
+
+        // The counters drive the UI, and Generate All runs on what they count.
+        test('a mixed plan counts only the genuinely invalid rows', async () => {
+            const good = Array.from({ length: 31 }, (_, i) => ['01/10/2026', `Good topic ${i + 1}`, '', 'Yes']);
+            const bad = Array.from({ length: 31 }, (_, i) => ['not a date', `Bad topic ${i + 1}`, '', 'Yes']);
+            const { rows, summary } = (await upload(workbook([HEAD, ...good, ...bad]))).body.data;
+
+            assert.equal(summary.total, 62);
+            assert.equal(summary.valid, 31, 'every same-date row survives');
+            assert.equal(summary.invalid, 31, 'only the unparseable dates fail');
+            assert.equal(rows.filter((r) => /Duplicate date/.test(rowErrors(r))).length, 0);
+        });
+
+        // The rules that do protect against real duplication are untouched.
+        test('the same topic twice is still refused, whatever the dates', async () => {
+            const { rows, summary } = (await upload(workbook([
+                HEAD,
+                ['01/10/2026', 'Working capital explained', '', 'Yes'],
+                ['01/10/2026', 'working   CAPITAL explained ', '', 'Yes'],
+                ['09/11/2026', 'Working Capital Explained', '', 'Yes']
+            ]))).body.data;
+
+            assert.equal(rows[0].valid, true);
+            assert.match(rowErrors(rows[1], 'topic'), /Duplicate topic/, 'same day, same topic');
+            assert.match(rowErrors(rows[2], 'topic'), /Duplicate topic/, 'different day, same topic');
+            assert.equal(summary.valid, 1);
+        });
+
+        test('the other row rules still apply to same-date rows', async () => {
+            const { rows } = (await upload(workbook([
+                HEAD,
+                ['01/10/2026', 'A perfectly fine topic', '', 'Yes'],
+                ['01/10/2026', 'ab', '', 'Yes'],
+                ['01/10/2026', 'Another fine topic', 'No Such Category', 'Yes'],
+                ['01/10/2026', 'A third fine topic', '', 'perhaps']
+            ]))).body.data;
+
+            assert.equal(rows[0].valid, true);
+            assert.match(rowErrors(rows[1], 'topic'), /3-200 characters/);
+            assert.match(rowErrors(rows[2], 'category'), /does not exist/);
+            assert.match(rowErrors(rows[3], 'generateImage'), /./);
+            for (const r of rows) assert.doesNotMatch(rowErrors(r), /Duplicate date/);
+        });
+
+        test('the template no longer tells anyone one blog per date', async () => {
+            const res = await realFetch(`${baseUrl}/api/v1/gemini/blogs/bulk/template`,
+                { headers: { Authorization: `Bearer ${tokens.super}` } });
+            assert.equal(res.status, 200);
+            const wb = XLSX.read(Buffer.from(await res.arrayBuffer()), { type: 'buffer' });
+            const help = XLSX.utils.sheet_to_json(wb.Sheets.Instructions, { header: 1 })
+                .flat().filter(Boolean).join(' ');
+            assert.doesNotMatch(help, /One blog per date/i);
+            assert.match(help, /Each topic once/, 'the topic rule is still stated');
+        });
     });
 
     test('bulk planning is limited to Super Admin and Editor', async () => {

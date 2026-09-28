@@ -151,20 +151,21 @@ const validateRows = async (inputs, context) => {
         };
     });
 
-    // Duplicates: a later row repeating an earlier topic or date is the one
-    // flagged, pointing back at the row it repeats.
+    // Duplicates: a later row repeating an earlier topic is the one flagged,
+    // pointing back at the row it repeats.
+    //
+    // A date is not checked, because a date is not an identity. A plan says
+    // when to publish, and a day can carry as many blogs as the plan asks for;
+    // two rows sharing 01 Oct are two blogs that day, not one blog written
+    // twice. What must not repeat is the topic — that is what would produce the
+    // same article twice.
     const firstTopic = new Map();
-    const firstDate = new Map();
     const label = (r) => (r.sourceRow ? `row ${r.sourceRow}` : `#${r.index + 1}`);
     for (const r of rows) {
         const tk = normKey(r.topic);
         if (tk && r.topic.length >= 3) {
             if (firstTopic.has(tk)) r.errors.push({ field: 'topic', message: `Duplicate topic — same as ${label(firstTopic.get(tk))}` });
             else firstTopic.set(tk, r);
-        }
-        if (r.date) {
-            if (firstDate.has(r.date)) r.errors.push({ field: 'date', message: `Duplicate date — ${label(firstDate.get(r.date))} already uses ${displayDay(r.date)}` });
-            else firstDate.set(r.date, r);
         }
     }
 
@@ -340,7 +341,7 @@ const buildTemplate = async () => {
 
     const help = XLSX.utils.aoa_to_sheet([
         ['How to fill in the blog plan'],
-        ['Date — required. DD/MM/YYYY, e.g. 21/09/2026. One blog per date.'],
+        ['Date — required. DD/MM/YYYY, e.g. 21/09/2026. As many blogs on a date as you like.'],
         ['Blog Topic — required. 3 to 200 characters. Each topic once.'],
         ['Category — optional. Must match a name on the Categories sheet exactly; leave blank to let Gemini choose.'],
         ['Generate Image — Yes or No. Blank means Yes.'],
