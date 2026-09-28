@@ -147,6 +147,17 @@ const saveDraftValidation = [
         .withMessage('Create date must be inside the planned month')
 ];
 
+// Saving the plan. The rows are shaped exactly like the ones sent for
+// validation, plus a name for the plan itself; every rule about what the rows
+// mean lives in bulkPlan.service, and savePlan runs them again before storing
+// anything.
+const savePlanValidation = [
+    body('name')
+        .optional({ checkFalsy: true }).trim()
+        .isLength({ max: 200 }).withMessage('Plan name cannot exceed 200 characters'),
+    ...validateBulkRowsValidation
+];
+
 module.exports = {
     saveConfigValidation,
     testConnectionValidation,
@@ -156,5 +167,6 @@ module.exports = {
     generateBlogValidation,
     generateImageValidation,
     validateBulkRowsValidation,
+    savePlanValidation,
     saveDraftValidation
 };

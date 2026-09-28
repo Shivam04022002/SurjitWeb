@@ -19,6 +19,7 @@ const {
     generateBlogValidation,
     generateImageValidation,
     validateBulkRowsValidation,
+    savePlanValidation,
     saveDraftValidation
 } = require('../validators/gemini.validator');
 
@@ -82,5 +83,17 @@ router.post('/blogs/drafts', canGenerate, draftUpload, saveDraftValidation, vali
 router.get('/blogs/bulk/template', canReadGemini, geminiController.bulkTemplate);
 router.post('/blogs/bulk/parse', canGenerate, planUpload, geminiController.bulkParse);
 router.post('/blogs/bulk/validate', canGenerate, validateBulkRowsValidation, validate, geminiController.bulkValidate);
+
+// ── Saved monthly plan ────────────────────────────────────────────────────────
+// The plan the scheduler acts on. Reading it is a view of the Gemini Blogs
+// page; saving, clearing, retrying a row and running the day's rows early are
+// all the same act as generating a blog by hand, so they sit behind the same
+// edit permission. There is no unauthenticated way in: the scheduler runs
+// inside the server, on a timer, and is not reachable over HTTP at all.
+router.get('/plan', canReadGemini, geminiController.getPlan);
+router.post('/plan', canGenerate, savePlanValidation, validate, geminiController.savePlan);
+router.delete('/plan', canGenerate, geminiController.archivePlan);
+router.post('/plan/rows/:id/retry', canGenerate, geminiController.retryPlanRow);
+router.post('/plan/run', canGenerate, geminiLimiter, geminiController.runPlanNow);
 
 module.exports = router;

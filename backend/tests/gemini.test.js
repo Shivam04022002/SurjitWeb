@@ -2740,3 +2740,567 @@ describe('API key exposure', () => {
         assert.ok(captured.length > 0);
     });
 });
+
+// ── The saved plan, and generating from it ────────────────────────────────────
+//
+// A monthly plan is a schedule, not a preview: the rows outlive the browser tab
+// and the scheduler generates each one on its day. What these tests hold down is
+// that a run can be repeated — by the timer, by a restart, by a deployment
+// landing mid-run — without ever producing a blog twice, and that one row
+// failing costs only that row.
+describe('Scheduled blog generation', () => {
+    const GeminiBlogPlan = require('../src/models/GeminiBlogPlan');
+    const GeminiPlanRow = require('../src/models/GeminiPlanRow');
+    const GeminiDraftRequest = require('../src/models/GeminiDraftRequest');
+    const plans = require('../src/services/gemini/blogPlan.service');
+    const scheduler = require('../src/services/gemini/planScheduler.service');
+    const planJob = require('../src/jobs/geminiPlanScheduler');
+    const zoned = require('../src/utils/zonedDate');
+
+    const today = () => zoned.today();
+    const dayFromNow = (n) => zoned.addDays(zoned.today(), n);
+
+    const savePlan = (rows, token = tokens.super, name = 'October plan.xlsx') =>
+        call('POST', '/v1/gemini/plan', { token, body: { name, rows } });
+
+    const getPlan = (token = tokens.super) => call('GET', '/v1/gemini/plan', { token });
+
+    const row = (date, topic, { category = '', generateImage = 'Yes' } = {}) =>
+        ({ date, topic, category, generateImage });
+
+    const rowsOf = (body) => body.data.rows;
+    const byTopic = (body, topic) => rowsOf(body).find((r) => r.topic === topic);
+
+    beforeEach(async () => {
+        await GeminiPlanRow.deleteMany({});
+        await GeminiBlogPlan.deleteMany({});
+        await GeminiDraftRequest.deleteMany({});
+    });
+
+    // ── Persistence ─────────────────────────────────────────────────────────
+
+    test('a plan is saved, and is still there on the next request', async () => {
+        const res = await savePlan([
+            row(dayFromNow(3), 'Saved plan topic one'),
+            row(dayFromNow(4), 'Saved plan topic two')
+        ]);
+        assert.equal(res.status, 201, res.text);
+
+        // Nothing of the first response is reused: this is a fresh read, the
+        // way the page reads it after a refresh.
+        const again = await getPlan();
+        assert.equal(again.status, 200);
+        assert.equal(again.body.data.plan.name, 'October plan.xlsx');
+        assert.equal(rowsOf(again.body).length, 2);
+        assert.deepEqual(rowsOf(again.body).map((r) => r.topic),
+            ['Saved plan topic one', 'Saved plan topic two']);
+        assert.equal(rowsOf(again.body)[0].status, 'scheduled');
+    });
+
+    test('the plan reports the business timezone it schedules in, not UTC', async () => {
+        await savePlan([row(dayFromNow(2), 'Timezone topic')]);
+        const { body } = await getPlan();
+        assert.equal(body.data.timezone, 'Asia/Kolkata');
+        assert.equal(body.data.today, zoned.today());
+    });
+
+    test('a scheduled day keeps its calendar date exactly as written', async () => {
+        const day = dayFromNow(5);
+        await savePlan([row(day, 'Calendar day topic')]);
+        const stored = await GeminiPlanRow.findOne({ topic: 'Calendar day topic' }).lean();
+        assert.equal(stored.scheduledDay, day, 'stored as the day itself, not an instant');
+        assert.match(stored.scheduledDay, /^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    test('saving a plan archives the one before it', async () => {
+        await savePlan([row(dayFromNow(3), 'First plan topic')], tokens.super, 'September.xlsx');
+        await savePlan([row(dayFromNow(3), 'Second plan topic')], tokens.super, 'October.xlsx');
+
+        const { body } = await getPlan();
+        assert.equal(body.data.plan.name, 'October.xlsx');
+        assert.deepEqual(rowsOf(body).map((r) => r.topic), ['Second plan topic']);
+
+        // The earlier plan is kept, not deleted.
+        assert.equal(await GeminiBlogPlan.countDocuments({ status: 'archived' }), 1);
+        assert.equal(await GeminiPlanRow.countDocuments({ topic: 'First plan topic' }), 1);
+    });
+
+    test('a plan can be cleared, and the page then shows none', async () => {
+        await savePlan([row(dayFromNow(3), 'Clearable topic')]);
+        const cleared = await call('DELETE', '/v1/gemini/plan', { token: tokens.super });
+        assert.equal(cleared.status, 200, cleared.text);
+        const { body } = await getPlan();
+        assert.equal(body.data.plan, null);
+        assert.deepEqual(rowsOf(body), []);
+    });
+
+    test('an invalid row is kept so it can be fixed, and is never scheduled', async () => {
+        const res = await savePlan([
+            row(dayFromNow(3), 'A perfectly good topic'),
+            row('not a date', 'A row with a broken date'),
+            row(dayFromNow(3), 'ab')
+        ]);
+        assert.equal(res.status, 201, res.text);
+
+        const { body } = await getPlan();
+        assert.equal(body.data.summary.scheduled, 1);
+        assert.equal(body.data.summary.invalid, 2);
+        const broken = byTopic(body, 'A row with a broken date');
+        assert.equal(broken.status, 'invalid');
+        assert.ok(broken.errors.length, 'it says why');
+    });
+
+    // ── Same-date rows ──────────────────────────────────────────────────────
+
+    test('several rows on one date are all scheduled', async () => {
+        const day = dayFromNow(3);
+        await savePlan([
+            row(day, 'Same day one'), row(day, 'Same day two'),
+            row(day, 'Same day three'), row(day, 'Same day four')
+        ]);
+        const { body } = await getPlan();
+        assert.equal(body.data.summary.scheduled, 4);
+        assert.equal(body.data.summary.invalid, 0);
+        for (const r of rowsOf(body)) assert.equal(r.scheduledDay, day);
+    });
+
+    // ── Which rows are due ──────────────────────────────────────────────────
+
+    test('a future row is left alone', async () => {
+        await savePlan([row(dayFromNow(5), 'Not yet due')]);
+        const result = await scheduler.runDueRows({ day: today() });
+        assert.equal(result.due, 0);
+        assert.equal(result.generated, 0);
+        assert.equal((await GeminiPlanRow.findOne({ topic: 'Not yet due' })).status, 'scheduled');
+        assert.equal(await Blog.countDocuments({ title: /Not yet due/ }), 0);
+    });
+
+    test('a row due today is generated, as a draft', async () => {
+        await savePlan([row(today(), 'Due today topic')]);
+        const result = await scheduler.runDueRows({ day: today() });
+
+        assert.equal(result.due, 1);
+        const attempted = await GeminiPlanRow.findOne({ topic: 'Due today topic' }).lean();
+        assert.equal(result.generated, 1, `generation failed with: ${attempted?.lastError}`);
+        assert.equal(result.failed, 0);
+
+        const stored = await GeminiPlanRow.findOne({ topic: 'Due today topic' });
+        assert.equal(stored.status, 'generated');
+        assert.ok(stored.blog, 'the blog it produced is recorded');
+        assert.ok(stored.generatedAt);
+
+        const blog = await Blog.findById(stored.blog);
+        assert.equal(blog.status, 'draft', 'never published automatically');
+        assert.equal(blog.publishedAt, null);
+    });
+
+    // ── The reported case ───────────────────────────────────────────────────
+
+    // Three blogs on one day, generated on that day, becoming three separate
+    // drafts. This is the whole point of the feature and of the fix before it.
+    test('three rows on one date become three separate drafts', async () => {
+        const day = dayFromNow(3);
+        await savePlan([
+            row(day, 'Blog A', { category: 'Business Loans', generateImage: 'Yes' }),
+            row(day, 'Blog B', { category: 'Business Loans', generateImage: 'Yes' }),
+            row(day, 'Blog C', { category: '', generateImage: 'No' })
+        ]);
+
+        const before = await Blog.countDocuments();
+        const result = await scheduler.runDueRows({ day });
+
+        assert.equal(result.due, 3, 'all three are due, none refused for sharing the day');
+        assert.equal(result.generated, 3);
+        assert.equal(result.failed, 0);
+
+        const stored = await GeminiPlanRow.find({ topic: { $in: ['Blog A', 'Blog B', 'Blog C'] } }).lean();
+        assert.equal(stored.length, 3);
+        for (const r of stored) {
+            assert.equal(r.status, 'generated', r.topic);
+            assert.ok(r.blog, `${r.topic} has a blog`);
+            assert.ok(!(r.errors || []).some((e) => /Duplicate date/i.test(e.message)));
+        }
+
+        // Three different blogs, not one blog three times.
+        const ids = stored.map((r) => String(r.blog));
+        assert.equal(new Set(ids).size, 3, 'each row produced its own draft');
+        assert.equal(await Blog.countDocuments(), before + 3);
+
+        const blogs = await Blog.find({ _id: { $in: stored.map((r) => r.blog) } }).lean();
+        assert.equal(blogs.length, 3);
+        for (const b of blogs) assert.equal(b.status, 'draft');
+    });
+
+    // ── Idempotency ─────────────────────────────────────────────────────────
+
+    test('running the scheduler twice does not generate a second time', async () => {
+        const day = today();
+        await savePlan([row(day, 'Run twice topic one'), row(day, 'Run twice topic two')]);
+
+        const first = await scheduler.runDueRows({ day });
+        assert.equal(first.generated, 2);
+        const after = await Blog.countDocuments();
+
+        const second = await scheduler.runDueRows({ day });
+        assert.equal(second.due, 0, 'nothing is due any more');
+        assert.equal(second.generated, 0);
+        assert.equal(await Blog.countDocuments(), after, 'no second blog');
+    });
+
+    test('a row that already has a blog is never due again, whatever its status', async () => {
+        const day = today();
+        await savePlan([row(day, 'Already has a blog')]);
+        await scheduler.runDueRows({ day });
+
+        const stored = await GeminiPlanRow.findOne({ topic: 'Already has a blog' });
+        const blogId = String(stored.blog);
+        // Something contrives to put it back in the queue.
+        await GeminiPlanRow.updateOne({ _id: stored._id }, { $set: { status: 'scheduled' } });
+
+        const again = await scheduler.runDueRows({ day });
+        assert.equal(again.skipped, 1, 'the claim refuses a row that already has a blog');
+        assert.equal(again.generated, 0);
+        assert.equal(String((await GeminiPlanRow.findById(stored._id)).blog), blogId);
+    });
+
+    test('only one of two concurrent runs can claim a row', async () => {
+        const day = today();
+        await savePlan([row(day, 'Contested row')]);
+        const stored = await GeminiPlanRow.findOne({ topic: 'Contested row' });
+
+        const [a, b] = await Promise.all([plans.claimRow(stored._id), plans.claimRow(stored._id)]);
+        const winners = [a, b].filter(Boolean);
+        assert.equal(winners.length, 1, 'exactly one run gets it');
+        assert.equal(winners[0].status, 'generating');
+    });
+
+    test('two runs overlapping produce one blog, not two', async () => {
+        const day = today();
+        await savePlan([row(day, 'Overlapping runs topic')]);
+
+        const [first, second] = await Promise.all([
+            scheduler.runDueRows({ day }),
+            scheduler.runDueRows({ day })
+        ]);
+        assert.equal(first.generated + second.generated, 1, 'one of them did the work');
+        assert.equal(await Blog.countDocuments({ title: { $exists: true } }) >= 1, true);
+        const stored = await GeminiPlanRow.findOne({ topic: 'Overlapping runs topic' });
+        assert.equal(stored.status, 'generated');
+        assert.equal(await GeminiPlanRow.countDocuments({ topic: 'Overlapping runs topic', blog: { $ne: null } }), 1);
+    });
+
+    // ── Failure and retry ───────────────────────────────────────────────────
+
+    test('one row failing does not stop the others', async () => {
+        const day = today();
+        await savePlan([
+            row(day, 'Fails A', { generateImage: 'No' }),
+            row(day, 'Fails B', { generateImage: 'No' }),
+            row(day, 'Fails C', { generateImage: 'No' })
+        ]);
+
+        // A script of answers: the second row's call fails, the other two are
+        // answered normally. Rows are taken in order, and with no image to
+        // generate each row is exactly one call.
+        gemini.sequence = ['ok', 'serverError', 'ok'];
+        const result = await scheduler.runDueRows({ day });
+
+        assert.equal(result.due, 3);
+        assert.equal(result.generated + result.failed, 3, 'every row was attempted');
+        assert.equal(result.failed, 1, 'exactly one failed');
+        assert.equal(result.generated, 2, 'and the others still generated');
+
+        const failed = await GeminiPlanRow.findOne({ status: 'failed' });
+        assert.ok(failed, 'the failure is recorded on its row');
+        assert.equal(failed.blog, null, 'a failed row has no blog');
+        assert.ok(failed.lastError, 'and says why');
+        assert.equal(failed.attempts, 1);
+    });
+
+    test('a failed row is retried on a later run, up to a limit', async () => {
+        const day = today();
+        await savePlan([row(day, 'Retry limit topic')]);
+        const stored = await GeminiPlanRow.findOne({ topic: 'Retry limit topic' });
+
+        // Fail it up to the limit by hand, the way repeated runs would.
+        await GeminiPlanRow.updateOne({ _id: stored._id },
+            { $set: { status: 'failed', lastError: 'earlier failure' }, $inc: { attempts: plans.MAX_ATTEMPTS - 1 } });
+        let due = await plans.dueRows(day);
+        assert.equal(due.length, 1, 'still retried while attempts remain');
+
+        await GeminiPlanRow.updateOne({ _id: stored._id }, { $set: { attempts: plans.MAX_ATTEMPTS } });
+        due = await plans.dueRows(day);
+        assert.equal(due.length, 0, 'and left alone once they are used up');
+    });
+
+    test('a failed row can be retried deliberately, with a fresh set of attempts', async () => {
+        const day = today();
+        await savePlan([row(day, 'Deliberate retry topic')]);
+        const stored = await GeminiPlanRow.findOne({ topic: 'Deliberate retry topic' });
+        await GeminiPlanRow.updateOne({ _id: stored._id },
+            { $set: { status: 'failed', attempts: plans.MAX_ATTEMPTS, lastError: 'gave up' } });
+
+        const res = await call('POST', `/v1/gemini/plan/rows/${stored._id}/retry`, { token: tokens.super });
+        assert.equal(res.status, 200, res.text);
+
+        const after = await GeminiPlanRow.findById(stored._id);
+        assert.equal(after.status, 'scheduled');
+        assert.equal(after.attempts, 0);
+        assert.equal(after.lastError, null);
+    });
+
+    test('a generated row cannot be retried into a second blog', async () => {
+        const day = today();
+        await savePlan([row(day, 'No second blog topic')]);
+        await scheduler.runDueRows({ day });
+        const stored = await GeminiPlanRow.findOne({ topic: 'No second blog topic' });
+
+        const res = await call('POST', `/v1/gemini/plan/rows/${stored._id}/retry`, { token: tokens.super });
+        assert.equal(res.status, 409, res.text);
+        assert.equal(String((await GeminiPlanRow.findById(stored._id)).blog), String(stored.blog));
+    });
+
+    // ── Images ──────────────────────────────────────────────────────────────
+
+    test('generateImage = Yes attaches a featured image', async () => {
+        const day = today();
+        await savePlan([row(day, 'With an image topic', { generateImage: 'Yes' })]);
+        await scheduler.runDueRows({ day });
+
+        const stored = await GeminiPlanRow.findOne({ topic: 'With an image topic' });
+        assert.equal(stored.status, 'generated');
+        const blog = await Blog.findById(stored.blog).lean();
+        assert.ok(blog.featuredImage && blog.featuredImage.url, 'the draft has a featured image');
+    });
+
+    test('generateImage = No leaves the draft without one', async () => {
+        const day = today();
+        await savePlan([row(day, 'Without an image topic', { generateImage: 'No' })]);
+        await scheduler.runDueRows({ day });
+
+        const stored = await GeminiPlanRow.findOne({ topic: 'Without an image topic' });
+        assert.equal(stored.status, 'generated');
+        const blog = await Blog.findById(stored.blog).lean();
+        assert.ok(!blog.featuredImage || !blog.featuredImage.url, 'no image was made');
+    });
+
+    test('a failed image still leaves a draft, because the image is the optional half', async () => {
+        const day = today();
+        await savePlan([row(day, 'Image fails topic', { generateImage: 'Yes' })]);
+        gemini.imageMode = 'error';
+        pexelsFake.mode = 'error';
+
+        const result = await scheduler.runDueRows({ day });
+        assert.equal(result.generated, 1, 'the blog is still written');
+
+        const stored = await GeminiPlanRow.findOne({ topic: 'Image fails topic' });
+        assert.equal(stored.status, 'generated');
+        const blog = await Blog.findById(stored.blog).lean();
+        assert.equal(blog.status, 'draft');
+    });
+
+    // ── Manual generation ───────────────────────────────────────────────────
+
+    test('a row generated by hand is skipped by the scheduler', async () => {
+        const day = today();
+        await savePlan([row(day, 'Generated by hand topic')]);
+        const stored = await GeminiPlanRow.findOne({ topic: 'Generated by hand topic' });
+
+        // The admin generates and saves it themselves, then the plan is told.
+        const blog = await Blog.create({
+            title: 'Generated by hand topic', slug: `by-hand-${Date.now()}`,
+            content: '<p>Written by hand.</p>', summary: 'By hand', status: 'draft'
+        });
+        await scheduler.adoptManualDraft(stored._id, blog._id);
+
+        const before = await Blog.countDocuments();
+        const result = await scheduler.runDueRows({ day });
+        assert.equal(result.due, 0, 'nothing left to do');
+        assert.equal(await Blog.countDocuments(), before, 'no second blog');
+        assert.equal(String((await GeminiPlanRow.findById(stored._id)).blog), String(blog._id));
+    });
+
+    // ── Past dates ──────────────────────────────────────────────────────────
+
+    test('a day that has passed is marked missed, not generated late', async () => {
+        await savePlan([row(today(), 'Missed day topic')]);
+        // The row's day slips into the past while it sat there.
+        await GeminiPlanRow.updateOne({ topic: 'Missed day topic' }, { $set: { scheduledDay: dayFromNow(-3) } });
+
+        const before = await Blog.countDocuments();
+        const result = await scheduler.runDueRows({ day: today() });
+
+        assert.equal(result.missed, 1);
+        assert.equal(result.generated, 0);
+        assert.equal(await Blog.countDocuments(), before, 'October is not written in November');
+        assert.equal((await GeminiPlanRow.findOne({ topic: 'Missed day topic' })).status, 'missed');
+    });
+
+    test('a missed row keeps its blog if it already had one', async () => {
+        const day = today();
+        await savePlan([row(day, 'Generated then aged topic')]);
+        await scheduler.runDueRows({ day });
+        const stored = await GeminiPlanRow.findOne({ topic: 'Generated then aged topic' });
+        await GeminiPlanRow.updateOne({ _id: stored._id }, { $set: { scheduledDay: dayFromNow(-2) } });
+
+        await plans.markMissed(today());
+        const after = await GeminiPlanRow.findById(stored._id);
+        assert.equal(after.status, 'generated', 'a finished row is not un-finished by the calendar');
+        assert.equal(String(after.blog), String(stored.blog));
+    });
+
+    // ── Summary ─────────────────────────────────────────────────────────────
+
+    test('the plan summary counts each state', async () => {
+        const day = today();
+        await savePlan([
+            row(day, 'Summary one'), row(day, 'Summary two'),
+            row(dayFromNow(4), 'Summary later'), row('not a date', 'Summary broken')
+        ]);
+
+        let { body } = await getPlan();
+        assert.equal(body.data.summary.total, 4);
+        assert.equal(body.data.summary.scheduled, 3);
+        assert.equal(body.data.summary.invalid, 1);
+        assert.equal(body.data.summary.generated, 0);
+
+        await scheduler.runDueRows({ day });
+        ({ body } = await getPlan());
+        assert.equal(body.data.summary.generated, 2);
+        assert.equal(body.data.summary.scheduled, 1, 'the later row is still waiting');
+        assert.equal(body.data.summary.invalid, 1);
+    });
+
+    // ── Access ──────────────────────────────────────────────────────────────
+
+    test('the plan endpoints need a session', async () => {
+        for (const [method, path] of [
+            ['GET', '/v1/gemini/plan'], ['POST', '/v1/gemini/plan'],
+            ['DELETE', '/v1/gemini/plan'], ['POST', '/v1/gemini/plan/run']
+        ]) {
+            assert.equal((await call(method, path)).status, 401, `${method} ${path}`);
+        }
+    });
+
+    test('generating from a plan is limited to those who may generate blogs', async () => {
+        await savePlan([row(today(), 'RBAC plan topic')]);
+
+        // Content Manager holds no Gemini Blogs page at all, so none of it.
+        assert.equal((await getPlan(tokens.content)).status, 403);
+        assert.equal((await savePlan([row(today(), 'Nope')], tokens.content)).status, 403);
+        assert.equal((await call('DELETE', '/v1/gemini/plan', { token: tokens.content })).status, 403);
+        assert.equal((await call('POST', '/v1/gemini/plan/run', { token: tokens.content })).status, 403);
+
+        // Editor holds it at edit, and may run the day.
+        assert.equal((await call('POST', '/v1/gemini/plan/run', { token: tokens.editor })).status, 200);
+    });
+
+    // Reading the plan and acting on it are deliberately different rights: a
+    // role given the page to look at can see what is scheduled and nothing more.
+    test('a role with the page at view can read the plan but not generate from it', async () => {
+        const roleService = require('../src/services/role.service');
+        const Role = require('../src/models/Role');
+        const { invalidatePermissionCache } = require('../src/middleware/permission');
+
+        await savePlan([row(today(), 'View-only RBAC topic')]);
+
+        const role = await roleService.createRole({
+            name: 'Gemini Watcher',
+            description: 'fixture: Gemini Blogs at view only',
+            permissions: { geminiBlogs: 'view' },
+            status: 'Active'
+        });
+        const watcher = await Admin.create({
+            name: 'Gemini Watcher Admin',
+            email: 'gemini-watcher@test.local',
+            password: 'Password@123',
+            role: role.key,
+            isActive: true
+        });
+        invalidatePermissionCache();
+        const watcherToken = generateAccessToken({ id: watcher._id, role: role.key });
+
+        const read = await getPlan(watcherToken);
+        assert.equal(read.status, 200, read.text);
+        assert.equal(rowsOf(read.body).length, 1);
+
+        assert.equal((await savePlan([row(today(), 'Nope')], watcherToken)).status, 403);
+        assert.equal((await call('POST', '/v1/gemini/plan/run', { token: watcherToken })).status, 403);
+        assert.equal((await call('DELETE', '/v1/gemini/plan', { token: watcherToken })).status, 403);
+
+        await Admin.deleteOne({ _id: watcher._id });
+        await Role.deleteOne({ _id: role._id });
+        invalidatePermissionCache();
+    });
+
+    test('there is no unauthenticated way to make the scheduler run', async () => {
+        const before = await Blog.countDocuments();
+        for (const path of ['/v1/gemini/plan/run', '/v1/gemini/plan', '/public/gemini/plan/run']) {
+            const res = await call('POST', path);
+            assert.ok([401, 404].includes(res.status), `${path} -> ${res.status}`);
+        }
+        assert.equal(await Blog.countDocuments(), before, 'and nothing was generated by trying');
+    });
+
+    // ── The run endpoint ────────────────────────────────────────────────────
+
+    test('an admin can run the day early, and it reports what it did', async () => {
+        const day = today();
+        await savePlan([row(day, 'Run now topic one'), row(day, 'Run now topic two')]);
+
+        const res = await call('POST', '/v1/gemini/plan/run', { token: tokens.super });
+        assert.equal(res.status, 200, res.text);
+        assert.equal(res.body.data.result.generated, 2);
+        assert.equal(res.body.data.summary.generated, 2);
+
+        // And running it again changes nothing.
+        const again = await call('POST', '/v1/gemini/plan/run', { token: tokens.super });
+        assert.equal(again.body.data.result.generated, 0);
+        assert.equal(again.body.data.result.due, 0);
+    });
+
+    // ── The timer ───────────────────────────────────────────────────────────
+
+    test('the job runs the day and refuses to overlap itself', async () => {
+        const day = today();
+        await savePlan([row(day, 'Job tick topic')]);
+
+        const first = await planJob.tick('test');
+        assert.equal(first.generated, 1);
+
+        const [a, b] = await Promise.all([planJob.tick('test'), planJob.tick('test')]);
+        const ran = [a, b].filter(Boolean);
+        assert.ok(ran.length >= 1, 'at least one ran');
+        assert.equal((await GeminiPlanRow.countDocuments({ topic: 'Job tick topic', status: 'generated' })), 1);
+    });
+
+    test('nothing is generated merely because the job ticked', async () => {
+        await savePlan([row(dayFromNow(6), 'Future only topic')]);
+        const before = await Blog.countDocuments();
+        const result = await planJob.tick('test');
+        assert.equal(result.generated, 0);
+        assert.equal(await Blog.countDocuments(), before);
+    });
+
+    // ── Existing behaviour ──────────────────────────────────────────────────
+
+    test('scheduled drafts are ordinary drafts on the Blogs page', async () => {
+        const day = today();
+        await savePlan([row(day, 'Ordinary draft topic')]);
+        await scheduler.runDueRows({ day });
+        const stored = await GeminiPlanRow.findOne({ topic: 'Ordinary draft topic' });
+
+        const res = await call('GET', '/v1/blogs?status=draft&limit=100', { token: tokens.super });
+        assert.equal(res.status, 200, res.text);
+        const listed = res.body.data.data.find((b) => String(b._id) === String(stored.blog));
+        assert.ok(listed, 'it appears in the normal blog list');
+        assert.equal(listed.status, 'draft');
+    });
+
+    test('saving a plan leaves existing blogs untouched', async () => {
+        const before = await Blog.find({}).select('_id title status').lean();
+        await savePlan([row(dayFromNow(3), 'Leaves others alone topic')]);
+        const after = await Blog.find({}).select('_id title status').lean();
+        assert.deepEqual(after, before);
+    });
+});

@@ -8,6 +8,8 @@ import {
   CheckCircle, ErrorOutline, ImageOutlined, Description
 } from '@mui/icons-material'
 import { geminiService } from '../../services/gemini.service'
+import ScheduledPlanPanel from './ScheduledPlanPanel'
+import { planPayload } from './scheduledPlanModel'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import BlogQueueTable from './BlogQueueTable'
 import RowEditDialog from './RowEditDialog'
@@ -33,6 +35,10 @@ const BulkUploadTab = ({ availability, categories, showToast }) => {
   const c = counts(rows)
   const configured = !!availability?.configured
   const fileInput = useRef(null)
+
+  // Bumped whenever this tab saves a plan, so the panel re-reads it from the
+  // server rather than being handed a copy to trust.
+  const [planSaved, setPlanSaved] = useState(0)
 
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
@@ -64,6 +70,18 @@ const BulkUploadTab = ({ availability, categories, showToast }) => {
       queue.replaceRows(plan.rows.map((v) => fromValidated(v, 'excel')))
       setFileInfo(plan.file)
       showToast(res.message || 'Plan imported', plan.summary.invalid ? 'warning' : 'success')
+
+      // A plan is a schedule, so uploading one saves it: each row is generated
+      // on its own date, as a draft, without anyone having to be here. The rows
+      // are re-validated server-side before anything is stored.
+      try {
+        await geminiService.savePlan(file.name, planPayload(plan.rows))
+        setPlanSaved((n) => n + 1)
+        showToast('Saved as a schedule — each row will generate on its date', 'success')
+      } catch (err) {
+        // The plan is still usable by hand; only the scheduling failed.
+        showToast(errorMessage(err, 'The plan was imported but could not be scheduled.'), 'warning')
+      }
     } catch (err) {
       setUploadError(errorMessage(err, 'The file could not be imported.'))
     } finally {
@@ -186,6 +204,12 @@ const BulkUploadTab = ({ availability, categories, showToast }) => {
     <>
       <input ref={fileInput} type="file" accept={ACCEPT} hidden onChange={(e) => readFile(e.target.files?.[0])} />
 
+      {/* ── What is scheduled ── */}
+      {/* The saved plan, read from the server. It is above the upload because
+          it is the thing that persists: the upload below is how a new one gets
+          here, and the list under that is for generating a row by hand now. */}
+      <ScheduledPlanPanel showToast={showToast} refreshToken={planSaved} />
+
       {/* ── Upload ── */}
       <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, mb: 3 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems={{ md: 'center' }}>
@@ -233,9 +257,16 @@ const BulkUploadTab = ({ availability, categories, showToast }) => {
             <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ lg: 'center' }}>
               <Box>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="subtitle1" fontWeight={600}>Monthly Blog Plan</Typography>
+                  <Typography variant="subtitle1" fontWeight={600}>Generate now</Typography>
                   {fileInfo && <Chip size="small" icon={<Description />} label={fileInfo.name} variant="outlined" />}
                 </Stack>
+                {/* The same rows appear above as a schedule. This list is for
+                    generating one now rather than waiting for its date, so its
+                    statuses belong to this session, not to the saved plan. */}
+                <Typography variant="caption" color="text.secondary">
+                  Generate rows by hand, ahead of their scheduled date. The schedule above is what
+                  runs on its own.
+                </Typography>
                 <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
                   <Chip size="small" label={`${c.total} rows`} />
                   <Chip size="small" color="success" variant="outlined" icon={<CheckCircle />} label={`${c.valid} valid`} />

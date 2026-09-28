@@ -133,6 +133,38 @@ const saveDraft = async (formData) => {
   return response.data
 }
 
+// ── The saved monthly plan ────────────────────────────────────────────────────
+//
+// The plan the scheduler acts on. It lives in the database, not in this tab:
+// what the page shows after a refresh is whatever the server says is scheduled.
+
+const getPlan = async () => {
+  const response = await api.get(`${BASE}/plan`)
+  return response.data
+}
+
+const savePlan = async (name, rows) => {
+  const response = await api.post(`${BASE}/plan`, { name, rows })
+  return response.data
+}
+
+const clearPlan = async () => {
+  const response = await api.delete(`${BASE}/plan`)
+  return response.data
+}
+
+const retryPlanRow = async (id) => {
+  const response = await api.post(`${BASE}/plan/rows/${id}/retry`)
+  return response.data
+}
+
+// Runs whatever is due today now, rather than waiting for the scheduler's next
+// pass. The scheduler runs on its own regardless; this only brings it forward.
+const runPlanNow = async () => {
+  const response = await api.post(`${BASE}/plan/run`)
+  return response.data
+}
+
 export const geminiService = {
   getConfig,
   saveConfig,
@@ -151,5 +183,10 @@ export const geminiService = {
   saveDraft,
   downloadBulkTemplate,
   parseBulkFile,
-  validateBulkRows
+  validateBulkRows,
+  getPlan,
+  savePlan,
+  clearPlan,
+  retryPlanRow,
+  runPlanNow
 }

@@ -1,5 +1,7 @@
 const geminiConfig = require('../services/gemini/geminiConfig.service');
 const geminiBlog = require('../services/gemini/geminiBlog.service');
+const blogPlan = require('../services/gemini/blogPlan.service');
+const planScheduler = require('../services/gemini/planScheduler.service');
 const pexelsConfig = require('../services/images/pexelsConfig.service');
 const bulkPlan = require('../services/gemini/bulkPlan.service');
 const { normaliseBody, collectFiles } = require('./blog/blogs.controller');
@@ -222,10 +224,48 @@ const saveDraft = asyncHandler(async (req, res) => {
         : sendSuccess(res, 'Draft saved', { blog, duplicate: false }, HTTP_STATUS.CREATED);
 });
 
+// ── Saved monthly plan ────────────────────────────────────────────────────────
+
+// The plan a scheduler will act on. Saving replaces whichever plan was active;
+// the rows are re-validated here rather than trusted from the browser, so what
+// gets scheduled is the server's own reading of them.
+const savePlan = asyncHandler(async (req, res) => {
+    const plan = await blogPlan.savePlan(
+        { name: req.body.name, rows: req.body.rows },
+        { userId: req.user._id }
+    );
+    return sendSuccess(res, 'Plan saved', plan, HTTP_STATUS.CREATED);
+});
+
+const getPlan = asyncHandler(async (req, res) => {
+    const plan = await blogPlan.getActivePlan();
+    return sendSuccess(res, 'Plan fetched successfully', plan, HTTP_STATUS.OK);
+});
+
+const archivePlan = asyncHandler(async (req, res) => {
+    const plan = await blogPlan.archiveActivePlan();
+    return sendSuccess(res, 'Plan cleared', plan, HTTP_STATUS.OK);
+});
+
+// Puts a failed or missed row back in the queue for its day.
+const retryPlanRow = asyncHandler(async (req, res) => {
+    const plan = await blogPlan.retryRow(req.params.id);
+    return sendSuccess(res, 'Row queued for another attempt', plan, HTTP_STATUS.OK);
+});
+
+// Runs today's due rows now, instead of waiting for the timer. Behind the same
+// permission as generating a blog by hand, because that is what it does.
+const runPlanNow = asyncHandler(async (req, res) => {
+    const result = await planScheduler.runDueRows({ reason: `manual:${req.user._id}` });
+    const plan = await blogPlan.getActivePlan();
+    return sendSuccess(res, 'Scheduled generation run', { result, ...plan }, HTTP_STATUS.OK);
+});
+
 module.exports = {
     getConfig, saveConfig, removeKey, testConnection,
     getFallbacks, saveFallbacks, clearFallbacks,
     getPexelsConfig, savePexelsKey, removePexelsKey, testPexelsConnection,
     getAvailability, generateBlog, generateImage, saveDraft,
-    bulkTemplate, bulkParse, bulkValidate
+    bulkTemplate, bulkParse, bulkValidate,
+    savePlan, getPlan, archivePlan, retryPlanRow, runPlanNow
 };
