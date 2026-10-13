@@ -54,7 +54,9 @@ import {
   AutoAwesome,
   Campaign,
   AdminPanelSettings,
-  Api
+  Api,
+  Email,
+  MarkEmailRead
 } from '@mui/icons-material'
 import { useAuth } from '../hooks/useAuth'
 import { usePermissionState } from '../hooks/usePermissions'
@@ -126,6 +128,8 @@ const menuItems = [
   { title: 'Media', icon: PermMedia, path: '#' },
   { title: 'Users', icon: People, path: '/users', page: 'users' },
   { title: 'API', icon: Api, path: '/integrations/api', page: 'integrations' },
+  { title: 'Email Settings', icon: Email, path: '/integrations/email', page: 'integrations' },
+  { title: 'Email Delivery Log', icon: MarkEmailRead, path: '/integrations/email-log', page: 'integrations' },
   { title: 'Settings', icon: Settings, path: '/settings', page: 'settings' },
   { title: 'Profile', icon: AccountCircle, path: '/profile' }
 ]

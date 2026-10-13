@@ -7,6 +7,7 @@ const HTTP_STATUS = require('../constants/httpStatus');
 const asyncHandler = require('../utils/asyncHandler');
 const env = require('../config/env');
 const { loanTypeForCategorySlug } = require('../constants/loanTypes');
+const loanNotifications = require('../services/email/loanNotification.service');
 
 // Fields a public applicant is allowed to supply. Everything else the model
 // holds — applicationNumber, status, notes, deletedAt, timestamps, document
@@ -98,6 +99,11 @@ const submitLoanApplication = asyncHandler(async (req, res) => {
     applicationData.consentAcceptedAt = new Date();
 
     const application = await LoanApplication.create(applicationData);
+
+    // Only once the application is saved. Queues the staff email and returns;
+    // the email is sent after this response, and nothing that happens to it
+    // can turn this submission into a failure.
+    await loanNotifications.queueForApplication(application);
 
     // Only the reference the applicant needs. The full document holds PAN,
     // Aadhaar, DOB and address and is never echoed back over a public route.

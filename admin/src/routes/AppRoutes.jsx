@@ -32,6 +32,8 @@ import HomepageStatsPage from '../pages/homepageStats/HomepageStatsPage'
 import LegalPagesPage from '../pages/legal/LegalPagesPage'
 import NodalOfficersPage from '../pages/nodalOfficers/NodalOfficersPage'
 import ApiSettingsPage from '../pages/integrations/ApiSettingsPage'
+import EmailSettingsPage from '../pages/integrations/EmailSettingsPage'
+import EmailNotificationsPage from '../pages/integrations/EmailNotificationsPage'
 import GeminiBlogsPage from '../pages/gemini/GeminiBlogsPage'
 import AdvertisementsPage from '../pages/advertisements/AdvertisementsPage'
 import RolesPage from '../pages/roles/RolesPage'
@@ -115,6 +117,9 @@ const AppRoutes = () => {
         <Route path="users" element={<RequirePagePermission page="users"><UsersPage /></RequirePagePermission>} />
         <Route path="settings" element={<RequirePagePermission page="settings"><SettingsPage /></RequirePagePermission>} />
         <Route path="integrations/api" element={<RequirePagePermission page="integrations"><ApiSettingsPage /></RequirePagePermission>} />
+        {/* Email credentials are guarded by the same permission as the API keys. */}
+        <Route path="integrations/email" element={<RequirePagePermission page="integrations"><EmailSettingsPage /></RequirePagePermission>} />
+        <Route path="integrations/email-log" element={<RequirePagePermission page="integrations"><EmailNotificationsPage /></RequirePagePermission>} />
         <Route path="gemini-blogs" element={<RequirePagePermission page="geminiBlogs"><GeminiBlogsPage /></RequirePagePermission>} />
         <Route path="advertisements" element={<RequirePagePermission page="advertisements"><AdvertisementsPage /></RequirePagePermission>} />
         <Route path="roles" element={<RequirePagePermission page="roles"><RolesPage /></RequirePagePermission>} />

@@ -5,6 +5,7 @@ const logger = require('./src/utils/logger');
 const { seedSuperAdmin } = require('./src/utils/seed');
 const { ensureSystemRoles } = require('./src/services/role.service');
 const geminiPlanScheduler = require('./src/jobs/geminiPlanScheduler');
+const loanNotificationScheduler = require('./src/jobs/loanNotificationScheduler');
 
 const PORT = process.env.PORT || 5000;
 
@@ -26,6 +27,10 @@ const startServer = async () => {
         // this application as a single instance; the row claim would keep it
         // correct even if that changed.
         geminiPlanScheduler.start();
+
+        // Retries for new-loan-application emails, and any queued just before
+        // a restart. The first send of each happens at submission.
+        loanNotificationScheduler.start();
     } catch (error) {
         logger.error('Failed to start server:', error);
         process.exit(1);

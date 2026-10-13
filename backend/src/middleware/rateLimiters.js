@@ -119,6 +119,23 @@ const geminiLimiter = rateLimit({
     }
 });
 
+// ── Email Settings tests (per admin account) ────────────────────────────────
+// Test Connection and Send Test Email both call Microsoft, and a test email is
+// a real message from the organization's mailbox. Keyed on the signed-in
+// admin, like the Gemini limiter; mounted after `auth`.
+const emailTestLimiter = rateLimit({
+    windowMs: env.EMAIL_TEST_RATE_LIMIT_WINDOW_MS,
+    max: env.EMAIL_TEST_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => `admin:${req.user ? req.user._id : req.ip}`,
+    message: {
+        success: false,
+        message: 'Email test limit reached for this hour. Please try again later.',
+        errors: []
+    }
+});
+
 const resetLoginLimiter = (req) => {
     try {
         loginLimiter.resetKey(loginKey(req));
@@ -133,6 +150,7 @@ module.exports = {
     reviewSubmissionLimiter,
     analyticsTrackLimiter,
     geminiLimiter,
+    emailTestLimiter,
     loanApplicationLimiter,
     loanStatusLimiter,
     resetLoginLimiter,

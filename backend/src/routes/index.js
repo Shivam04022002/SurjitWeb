@@ -20,6 +20,7 @@ const analyticsRoutes = require('./analytics.routes');
 const geminiRoutes = require('./gemini.routes');
 const advertisementRoutes = require('./advertisement.routes');
 const roleRoutes = require('./role.routes');
+const emailSettingsRoutes = require('./emailSettings.routes');
 
 const router = express.Router();
 
@@ -44,5 +45,6 @@ router.use('/v1/analytics', analyticsRoutes);
 router.use('/v1/gemini', geminiRoutes);
 router.use('/v1/advertisements', advertisementRoutes);
 router.use('/v1/roles', roleRoutes);
+router.use('/v1/email-settings', emailSettingsRoutes);
 
 module.exports = router;

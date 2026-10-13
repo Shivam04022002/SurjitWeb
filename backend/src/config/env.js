@@ -78,6 +78,18 @@ const env = {
     PEXELS_API_KEY: process.env.PEXELS_API_KEY || '',
     GEMINI_RATE_LIMIT_WINDOW_MS: parseInt(process.env.GEMINI_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
     GEMINI_RATE_LIMIT_MAX: parseInt(process.env.GEMINI_RATE_LIMIT_MAX || '40', 10),
+    // Email Settings: Test Connection and Send Test Email, per admin. Each one
+    // reaches Microsoft, and a test email is real mail, so the cap is low.
+    EMAIL_TEST_RATE_LIMIT_WINDOW_MS: parseInt(process.env.EMAIL_TEST_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
+    EMAIL_TEST_RATE_LIMIT_MAX: parseInt(process.env.EMAIL_TEST_RATE_LIMIT_MAX || '20', 10),
+    // New-loan-application emails. ADMIN_PANEL_URL is the CMS address
+    // (e.g. https://cms.surjitfinance.com); when set, each email links to the
+    // Loan Applications page there. Unset, the email carries no link — the
+    // server has no other reliable way to know where the CMS is served.
+    ADMIN_PANEL_URL: process.env.ADMIN_PANEL_URL || '',
+    // Sends per application, counting the first. Only temporary Microsoft
+    // failures are retried.
+    LOAN_NOTIFICATION_MAX_ATTEMPTS: parseInt(process.env.LOAN_NOTIFICATION_MAX_ATTEMPTS || '3', 10),
     // Website analytics location: a local city database in MMDB format
     // (production: DB-IP City Lite; a MaxMind GeoLite2 City file also works).
     // Unset (or a missing file) simply means visits are recorded without a
