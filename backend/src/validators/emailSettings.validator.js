@@ -13,12 +13,35 @@ const emailField = (field, label) => body(field)
     .trim()
     .custom(rules.isEmail).withMessage('Enter a valid email address');
 
-const saveEmailSettingsValidation = [
-    body('provider').isIn(PROVIDERS).withMessage('Choose an email provider'),
-    body('authMethod')
-        .isIn(AUTH_METHODS).withMessage('Choose an authentication method').bail()
-        .custom((authMethod, { req }) => rules.isSupported(req.body.provider, authMethod))
-        .withMessage((authMethod, { req }) => rules.unsupportedMessage(req.body.provider, authMethod)),
+// The provider and method. Required by the full save; on the API page's own
+// save they may be left out (Microsoft 365 through Graph is the only option),
+// but anything sent must still be that supported pair.
+const providerRules = ({ required }) => {
+    const provider = body('provider');
+    const authMethod = body('authMethod');
+    if (!required) {
+        provider.optional({ values: 'falsy' });
+        authMethod.optional({ values: 'falsy' });
+    }
+    const checks = [
+        provider.isIn(PROVIDERS).withMessage('Choose an email provider'),
+        authMethod
+            .isIn(AUTH_METHODS).withMessage('Choose an authentication method').bail()
+            .custom((value, { req }) => rules.isSupported(req.body.provider || 'microsoft365', value))
+            .withMessage((value, { req }) => rules.unsupportedMessage(req.body.provider || 'microsoft365', value))
+    ];
+    // When the method may be left out, a provider sent alone is checked
+    // against Graph; when it is required, the method's own check covers this.
+    if (!required) {
+        checks.push(body('provider').optional({ values: 'falsy' })
+            .custom((value, { req }) => req.body.authMethod || rules.isSupported(value, 'graph'))
+            .withMessage((value) => rules.unsupportedMessage(value, 'graph')));
+    }
+    return checks;
+};
+
+// The app credentials and sender mailbox: the API page's Email API card.
+const credentialRules = [
     body('senderName')
         .optional({ values: 'null' })
         .isString().withMessage('Sender name must be text').bail()
@@ -43,7 +66,11 @@ const saveEmailSettingsValidation = [
         .optional({ values: 'falsy' })
         .isString().withMessage('Client secret must be text').bail()
         .trim()
-        .matches(rules.SECRET_RX).withMessage('Client secret must be 8-512 characters, with no spaces or line breaks'),
+        .matches(rules.SECRET_RX).withMessage('Client secret must be 8-512 characters, with no spaces or line breaks')
+];
+
+// Who hears about new loan applications, and whether they do: Email Settings.
+const recipientRules = [
     emailField('primaryRecipient', 'Primary recipient'),
     body('additionalRecipients')
         .optional()
@@ -60,6 +87,13 @@ const saveEmailSettingsValidation = [
         }),
     body('notifyNewLoanApplication').optional().isBoolean({ strict: true }).withMessage('notifyNewLoanApplication must be true or false')
 ];
+
+// PUT /api/v1/email-settings — everything at once, as before the split.
+const saveEmailSettingsValidation = [...providerRules({ required: true }), ...credentialRules, ...recipientRules];
+// PUT /provider — the API page.
+const saveProviderValidation = [...providerRules({ required: false }), ...credentialRules];
+// PUT /recipients — Email Settings.
+const saveRecipientsValidation = recipientRules;
 
 const sendTestEmailValidation = [emailField('recipient', 'Test recipient')];
 
@@ -84,4 +118,7 @@ const listNotificationsValidation = [
 
 const notificationIdValidation = [param('id').isMongoId().withMessage('Invalid notification id')];
 
-module.exports = { saveEmailSettingsValidation, sendTestEmailValidation, listNotificationsValidation, notificationIdValidation };
+module.exports = {
+    saveEmailSettingsValidation, saveProviderValidation, saveRecipientsValidation,
+    sendTestEmailValidation, listNotificationsValidation, notificationIdValidation
+};

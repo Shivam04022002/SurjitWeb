@@ -21,26 +21,46 @@ const load = (withSecret = false) => {
     return withSecret ? q.select('+encryptedClientSecret') : q;
 };
 
-// What is missing before mail can be sent, in words the page can show.
-const missingParts = (doc, secretReadable) => {
-    if (!doc) return ['Email settings have not been saved'];
+// The configuration has two halves, kept in the one document:
+//
+//   provider    the Microsoft 365 app credentials and sender mailbox, set in
+//               the Email API card on the API page. Enough to sign in and send
+//               a test email.
+//   recipients  who is told about new loan applications, and whether to tell
+//               them, set on Email Settings. Needed for those emails only.
+const PROVIDER_FIELDS = ['provider', 'authMethod', 'senderName', 'senderEmail', 'tenantId', 'clientId'];
+const RECIPIENT_FIELDS = ['primaryRecipient', 'additionalRecipients', 'notifyNewLoanApplication'];
+// What a previous test proved depends on these; changing one clears it.
+const CONNECTION_FIELDS = ['provider', 'authMethod', 'senderEmail', 'tenantId', 'clientId'];
+
+// What is missing before mail can be sent at all, in words the page can show.
+const providerMissing = (doc, secretReadable) => {
+    if (!doc) return ['The email provider has not been set up in the API section'];
     const missing = [];
     if (!rules.isSupported(doc.provider, doc.authMethod)) missing.push(rules.unsupportedMessage(doc.provider, doc.authMethod));
     if (!doc.tenantId) missing.push('Directory (tenant) ID');
     if (!doc.clientId) missing.push('Application (client) ID');
     if (!doc.encryptedClientSecret) missing.push('Client secret');
     else if (!secretReadable) missing.push('The saved client secret can no longer be read — enter it again');
+    if (!doc.senderEmail) missing.push('Sender mailbox');
     return missing;
 };
+
+// What is missing before loan-application emails have anyone to go to.
+const recipientsMissing = (doc) => (doc?.primaryRecipient ? [] : ['Primary notification recipient']);
 
 const publicStatus = async () => {
     const doc = await load(true);
     const secretReadable = !!(doc?.encryptedClientSecret && decrypt(doc.encryptedClientSecret));
-    const missing = missingParts(doc, secretReadable);
+    const provider = providerMissing(doc, secretReadable);
+    const recipients = recipientsMissing(doc);
     return {
         saved: !!doc,
-        configured: missing.length === 0,
-        missing,
+        // Both halves, as before the split; each half is also reported alone.
+        configured: provider.length === 0 && recipients.length === 0,
+        missing: [...provider, ...recipients],
+        provider: { configured: provider.length === 0, missing: provider },
+        recipients: { configured: recipients.length === 0, missing: recipients },
         supported: rules.SUPPORTED,
         settings: doc ? {
             provider: doc.provider,
@@ -65,36 +85,42 @@ const publicStatus = async () => {
 
 const fieldError = (field, message) => new AppError('Validation failed', HTTP_STATUS.BAD_REQUEST, [{ field, message }]);
 
-// Saves the validated configuration. A blank client secret keeps the one
-// already stored — the page never has it to send back — so a secret is only
-// ever replaced by a new one, never cleared by an empty field.
-const save = async (input, userId) => {
-    const existing = await load(true);
+// The validated input, normalised, for whichever half is being saved.
+const providerSettingsOf = (input) => ({
+    provider: input.provider || 'microsoft365',
+    authMethod: input.authMethod || 'graph',
+    senderName: String(input.senderName || '').trim(),
+    senderEmail: rules.normaliseEmail(input.senderEmail),
+    tenantId: String(input.tenantId).trim(),
+    clientId: String(input.clientId).trim().toLowerCase()
+});
+
+const recipientSettingsOf = (input) => ({
+    primaryRecipient: rules.normaliseEmail(input.primaryRecipient),
+    additionalRecipients: (input.additionalRecipients || []).map(rules.normaliseEmail),
+    notifyNewLoanApplication: input.notifyNewLoanApplication !== false
+});
+
+// A blank client secret keeps the one already stored — the page never has it
+// to send back — so a secret is only ever replaced by a new one, never cleared
+// by an empty field. Returns the new secret, or '' to keep the stored one.
+const secretToSave = (input, existing) => {
     const newSecret = typeof input.clientSecret === 'string' ? input.clientSecret.trim() : '';
     const storedReadable = !!(existing?.encryptedClientSecret && decrypt(existing.encryptedClientSecret));
-
     if (!newSecret && !storedReadable) {
         throw fieldError('clientSecret', existing?.encryptedClientSecret
             ? 'The saved client secret can no longer be read. Enter it again.'
             : 'Enter the client secret');
     }
+    return newSecret;
+};
 
-    const settings = {
-        provider: input.provider,
-        authMethod: input.authMethod,
-        senderName: String(input.senderName || '').trim(),
-        senderEmail: rules.normaliseEmail(input.senderEmail),
-        tenantId: String(input.tenantId).trim(),
-        clientId: String(input.clientId).trim().toLowerCase(),
-        primaryRecipient: rules.normaliseEmail(input.primaryRecipient),
-        additionalRecipients: (input.additionalRecipients || []).map(rules.normaliseEmail),
-        notifyNewLoanApplication: input.notifyNewLoanApplication !== false
-    };
-
+// Writes some fields of the one document, leaving every other field as it is.
+const persist = async (existing, settings, { userId, newSecret = '' }) => {
     // A previous test proved a connection that may no longer be the one in
     // use, so it is cleared whenever anything it depended on changes.
-    const connectionChanged = !existing || !!newSecret
-        || ['provider', 'authMethod', 'senderEmail', 'tenantId', 'clientId'].some((k) => existing[k] !== settings[k]);
+    const connectionChanged = !!newSecret
+        || CONNECTION_FIELDS.some((k) => k in settings && (!existing || existing[k] !== settings[k]));
 
     const $set = { ...settings, updatedBy: userId || null };
     if (newSecret) {
@@ -109,17 +135,45 @@ const save = async (input, userId) => {
         { upsert: true, runValidators: true }
     );
     if (connectionChanged) graph.clearTokenCache();
+    return { connectionChanged };
+};
 
+// Everything at once — the original Email Settings save, kept for any caller
+// of PUT /api/v1/email-settings.
+const save = async (input, userId) => {
+    const existing = await load(true);
+    const newSecret = secretToSave(input, existing);
+    await persist(existing, { ...providerSettingsOf(input), ...recipientSettingsOf(input) }, { userId, newSecret });
     logger.info('Email settings updated', { by: String(userId || ''), secretReplaced: !!newSecret });
     return publicStatus();
 };
 
-// The saved configuration, ready for the Microsoft client — or the reason it
-// is not. Shared by both tests, and by the loan-application emails later.
+// The Email API card on the API page: credentials and sender only. Recipients
+// and the notification preference are left exactly as they are.
+const saveProvider = async (input, userId) => {
+    const existing = await load(true);
+    const newSecret = secretToSave(input, existing);
+    await persist(existing, providerSettingsOf(input), { userId, newSecret });
+    logger.info('Email provider settings updated', { by: String(userId || ''), secretReplaced: !!newSecret });
+    return publicStatus();
+};
+
+// Email Settings: recipients and the notification preference only. The
+// credentials, the secret and the last test are left exactly as they are.
+const saveRecipients = async (input, userId) => {
+    const existing = await load(true);
+    await persist(existing, recipientSettingsOf(input), { userId });
+    logger.info('Email notification recipients updated', { by: String(userId || '') });
+    return publicStatus();
+};
+
+// The saved provider configuration, ready for the Microsoft client — or the
+// reason it is not. Shared by both tests and the loan-application emails;
+// recipients are the caller's concern (a test email names its own).
 const resolveSending = async () => {
     const doc = await load(true);
     const secret = doc?.encryptedClientSecret ? decrypt(doc.encryptedClientSecret) : null;
-    const missing = missingParts(doc, !!secret);
+    const missing = providerMissing(doc, !!secret);
     if (missing.length) {
         throw new graph.MicrosoftError('NOT_CONFIGURED', `Email is not configured: ${missing.join('; ')}.`);
     }
@@ -220,4 +274,4 @@ const sendTestEmail = async (recipient, actor) => {
     return result;
 };
 
-module.exports = { publicStatus, save, testConnection, sendTestEmail, resolveSending, TEST_SUBJECT };
+module.exports = { publicStatus, save, saveProvider, saveRecipients, testConnection, sendTestEmail, resolveSending, TEST_SUBJECT, PROVIDER_FIELDS, RECIPIENT_FIELDS };

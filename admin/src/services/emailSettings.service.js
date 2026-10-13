@@ -17,6 +17,19 @@ const saveSettings = async (data) => {
   return response.data
 }
 
+// The Email API card on the API page: credentials and sender only. Without
+// clientSecret, the stored secret is kept.
+const saveProvider = async (data) => {
+  const response = await api.put(`${BASE}/provider`, data)
+  return response.data
+}
+
+// Email Settings: recipients and the notification preference only.
+const saveRecipients = async (data) => {
+  const response = await api.put(`${BASE}/recipients`, data)
+  return response.data
+}
+
 // Both tests use the saved configuration, never what is typed on the page.
 const testConnection = async () => {
   const response = await api.post(`${BASE}/test-connection`)
@@ -44,6 +57,8 @@ const retryNotification = async (id) => {
 export const emailSettingsService = {
   getSettings,
   saveSettings,
+  saveProvider,
+  saveRecipients,
   testConnection,
   sendTestEmail,
   getNotifications,

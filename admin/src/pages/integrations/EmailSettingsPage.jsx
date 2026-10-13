@@ -1,26 +1,24 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import {
   Box, Container, Typography, Paper, Stack, TextField, Button, Chip, Alert, Divider, Grid,
-  Radio, RadioGroup, FormControl, FormControlLabel, FormLabel, FormHelperText, Switch,
-  MenuItem, IconButton, List, ListItem, ListItemText, CircularProgress
+  FormControlLabel, Switch, IconButton, List, ListItem, ListItemText, CircularProgress, Link
 } from '@mui/material'
 import {
-  Save, Close, NetworkCheck, Send, Add, DeleteOutline, Email, Dns, Key, People, NotificationsActive, Refresh
+  Save, Close, Send, Add, DeleteOutline, People, NotificationsActive, Refresh, Api
 } from '@mui/icons-material'
 import { usePagePermission } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { emailSettingsService } from '../../services/emailSettings.service'
 import {
-  PROVIDERS, PROVIDER_KEYS, AUTH_METHODS, AUTH_METHOD_LABELS, ENCRYPTION, ENCRYPTION_LABELS,
-  MAX_ADDITIONAL_RECIPIENTS, applyProvider, usesOAuth, usesSmtp, isSupported, isProviderAvailable,
-  addRecipient, removeRecipient, validateEmailSettings, firstErrorField, isDirty, oauthPermissionHint,
-  testRecipientError, formFromConfig, payloadFromForm, secretStoredIn, serverFieldErrors,
-  requestErrorMessage, connectionStatus
+  MAX_ADDITIONAL_RECIPIENTS, addRecipient, removeRecipient, validateRecipients, recipientsFromConfig,
+  recipientsPayload, testRecipientError, isDirty, firstErrorField, RECIPIENT_FIELD_ORDER,
+  serverFieldErrors, requestErrorMessage, providerStatus, notificationReadiness, EMAIL_API_PATH
 } from './emailSettings'
 
-// Email Settings sits under the API Settings permission: it holds the same
-// kind of thing — credentials for a service the CMS calls — and the server
-// applies the same rule to who may see it, change it and send tests.
+// Email Settings sits under the API Settings permission, like the Email API
+// card that holds the credentials; the server applies the same rule to who may
+// see this page, change it and send tests.
 const PAGE_KEY = 'integrations'
 
 const fieldId = (field) => `email-${field.replace('.', '-')}`
@@ -38,11 +36,6 @@ const StatusRow = ({ label, children }) => (
   </Stack>
 )
 
-// A select keeps its value on one line, and its width grows to fit it. Letting
-// the value shrink (with an ellipsis) stops a long method name from widening
-// the page on phones.
-const selectSx = { '& .MuiSelect-select': { width: 0, flexGrow: 1 } }
-
 const SectionTitle = ({ icon: Icon, children, id }) => (
   <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
     <Icon color="action" />
@@ -52,40 +45,43 @@ const SectionTitle = ({ icon: Icon, children, id }) => (
 
 const TEST_KIND_LABELS = { connection: 'Test Connection', email: 'Test email' }
 
+const ApiSectionLink = ({ children = 'API section' }) => (
+  <Link component={RouterLink} to={EMAIL_API_PATH}>{children}</Link>
+)
+
 const EmailSettingsPage = () => {
   const { canEdit } = usePagePermission(PAGE_KEY)
   const readOnly = !canEdit
 
-  // What the server last reported. The form, the status panel and what Cancel
-  // returns to are all derived from it.
+  // What the server last reported: the recipients this page edits, and the
+  // provider status the API section sets.
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const baseline = useMemo(() => formFromConfig(config), [config])
+  const baseline = useMemo(() => recipientsFromConfig(config), [config])
   const [form, setForm] = useState(baseline)
   const [touched, setTouched] = useState({})
   const [submitted, setSubmitted] = useState(false)
   const [serverErrors, setServerErrors] = useState({})
   const [newRecipient, setNewRecipient] = useState('')
   const [newRecipientError, setNewRecipientError] = useState('')
+  const [testRecipient, setTestRecipient] = useState('')
   const [testRecipientMessage, setTestRecipientMessage] = useState('')
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [saveNotice, setSaveNotice] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState('')
+  const [sending, setSending] = useState(false)
   const [testResult, setTestResult] = useState(null)
 
-  const secretStored = secretStoredIn(config)
-  const errors = useMemo(() => validateEmailSettings(form, { secretStored }), [form, secretStored])
+  const errors = useMemo(() => validateRecipients(form), [form])
   const dirty = isDirty(form, baseline)
-  const provider = PROVIDERS[form.provider]
 
   // State is set only once the request settles, so the effect below never
   // updates state synchronously.
   const fetchSettings = useCallback(() => emailSettingsService.getSettings()
     .then((res) => {
       setConfig(res.data.config)
-      setForm(formFromConfig(res.data.config))
+      setForm(recipientsFromConfig(res.data.config))
       setLoadError('')
     })
     .catch((err) => setLoadError(requestErrorMessage(err, 'Could not load the email settings.')))
@@ -127,25 +123,6 @@ const EmailSettingsPage = () => {
     setSaveNotice(null)
   }
 
-  const blur = (field) => () => setTouched((t) => ({ ...t, [field]: true }))
-
-  const fieldProps = (field) => ({
-    id: fieldId(field),
-    value: form[field],
-    onChange: update(field),
-    onBlur: blur(field),
-    error: !!errorFor(field),
-    disabled: readOnly || saving,
-    fullWidth: true
-  })
-
-  const handleProviderChange = (e) => {
-    setForm((f) => applyProvider(f, e.target.value))
-    clearServerError('provider')
-    clearServerError('authMethod')
-    setSaveNotice(null)
-  }
-
   const handleAddRecipient = () => {
     const result = addRecipient(form, newRecipient)
     if (result.error) {
@@ -171,44 +148,37 @@ const EmailSettingsPage = () => {
     const target = key.startsWith('additionalRecipients.')
       ? `${fieldId(key)}-remove`
       : key === 'additionalRecipients' ? fieldId('newRecipient') : fieldId(key)
-    // A radio group is reached through its checked option.
-    const el = document.getElementById(target)
-    const focusable = el?.matches('input, button, [tabindex]') ? el : el?.querySelector('input:checked, input, button')
-    focusable?.focus()
+    requestAnimationFrame(() => document.getElementById(target)?.focus())
   }
 
   const handleSave = async (e) => {
     e.preventDefault()
     if (readOnly || saving) return
     setSubmitted(true)
-    setTestResult(null)
-    const first = firstErrorField(errors)
+    const first = firstErrorField(errors, RECIPIENT_FIELD_ORDER)
     if (first) {
       const count = Object.keys(errors).length
       setSaveNotice({ severity: 'error', message: `Not saved: ${count === 1 ? '1 field needs' : `${count} fields need`} attention.` })
-      requestAnimationFrame(() => focusField(first))
+      focusField(first)
       return
     }
 
     setSaving(true)
     setSaveNotice(null)
     try {
-      const res = await emailSettingsService.saveSettings(payloadFromForm(form))
-      const saved = res.data.config
-      setConfig(saved)
-      // The typed secret is dropped now that the server holds it; the test
-      // address is not a setting and survives the save.
-      setForm({ ...formFromConfig(saved), testRecipient: form.testRecipient })
+      const res = await emailSettingsService.saveRecipients(recipientsPayload(form))
+      setConfig(res.data.config)
+      setForm(recipientsFromConfig(res.data.config))
       setTouched({})
       setSubmitted(false)
       setServerErrors({})
-      setSaveNotice({ severity: 'success', message: 'Email settings saved.' })
+      setSaveNotice({ severity: 'success', message: 'Notification settings saved.' })
     } catch (err) {
       const fieldErrs = serverFieldErrors(err)
       setServerErrors(fieldErrs)
       setSaveNotice({ severity: 'error', message: `Not saved: ${requestErrorMessage(err, 'the server could not save the settings.')}` })
-      const first2 = firstErrorField(fieldErrs)
-      if (first2) requestAnimationFrame(() => focusField(first2))
+      const first2 = firstErrorField(fieldErrs, RECIPIENT_FIELD_ORDER)
+      if (first2) focusField(first2)
     } finally {
       setSaving(false)
     }
@@ -229,41 +199,35 @@ const EmailSettingsPage = () => {
     if (dirty || newRecipient.trim()) setConfirmCancel(true)
   }
 
-  // Both tests run against what is saved, so they wait for a save.
+  // A test email uses the provider saved in the API section and the address
+  // typed here — not the recipients — so unsaved recipient edits do not
+  // hold it back.
+  const providerReady = !!config?.provider?.configured
   const testBlockedReason = readOnly
     ? 'Testing needs edit access to API Settings.'
-    : !config?.saved
-      ? 'Save the settings first.'
-      : dirty
-        ? 'Save or cancel your changes first — tests use the saved settings.'
-        : ''
+    : !providerReady
+      ? 'Configure the email provider in the API section first.'
+      : ''
 
-  const runTest = async (kind) => {
-    if (testBlockedReason || testing) return
-    let recipient
-    if (kind === 'email') {
-      const message = testRecipientError(form.testRecipient, { required: true })
-      setTestRecipientMessage(message)
-      if (message) {
-        requestAnimationFrame(() => document.getElementById(fieldId('testRecipient'))?.focus())
-        return
-      }
-      recipient = form.testRecipient.trim()
+  const sendTest = async () => {
+    if (testBlockedReason || sending) return
+    const message = testRecipientError(testRecipient, { required: true })
+    setTestRecipientMessage(message)
+    if (message) {
+      requestAnimationFrame(() => document.getElementById(fieldId('testRecipient'))?.focus())
+      return
     }
-
-    setTesting(kind)
+    setSending(true)
     setTestResult(null)
     try {
-      const res = kind === 'email'
-        ? await emailSettingsService.sendTestEmail(recipient)
-        : await emailSettingsService.testConnection()
+      const res = await emailSettingsService.sendTestEmail(testRecipient.trim())
       setConfig(res.data.config)
-      setTestResult({ kind, ...res.data.result })
+      setTestResult(res.data.result)
     } catch (err) {
-      if (kind === 'email') setTestRecipientMessage(serverFieldErrors(err).recipient || '')
-      setTestResult({ kind, ok: false, message: requestErrorMessage(err, 'The test could not be run.') })
+      setTestRecipientMessage(serverFieldErrors(err).recipient || '')
+      setTestResult({ ok: false, message: requestErrorMessage(err, 'The test email could not be sent.') })
     } finally {
-      setTesting('')
+      setSending(false)
     }
   }
 
@@ -284,22 +248,31 @@ const EmailSettingsPage = () => {
     )
   }
 
-  const smtpInUse = usesSmtp(form.authMethod)
-  const oauthInUse = usesOAuth(form.authMethod)
-  const fixedEndpoint = !provider?.smtp.editable
   const additionalCount = form.additionalRecipients.length
-  const status = connectionStatus(config)
-  const secretInfo = config?.clientSecret
-  const busy = saving || !!testing
+  const status = providerStatus(config)
+  const readiness = notificationReadiness(config)
+  const busy = saving || sending
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" fontWeight={700} component="h1">Email Settings</Typography>
         <Typography variant="body2" color="text.secondary">
-          Choose the Microsoft mailbox the CMS sends notifications from, and who receives them
+          Who is emailed about new loan applications, and whether they are
         </Typography>
       </Box>
+
+      {providerReady ? (
+        <Alert severity="success" sx={{ mb: 3 }} icon={<Api fontSize="inherit" />}>
+          Email is sent through Microsoft 365 as <strong>{config.settings.senderEmail}</strong>.
+          {' '}The provider credentials are managed in the <ApiSectionLink />.
+        </Alert>
+      ) : (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          The email provider is not set up, so no email can be sent. An administrator must configure Microsoft 365 in the <ApiSectionLink /> first.
+          {config?.provider?.missing?.length > 0 && config.settings?.tenantId ? ` Missing: ${config.provider.missing.join('; ')}.` : ''}
+        </Alert>
+      )}
 
       {readOnly && (
         <Alert severity="info" sx={{ mb: 3 }}>
@@ -309,220 +282,25 @@ const EmailSettingsPage = () => {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
-          <Box component="form" noValidate onSubmit={handleSave} aria-label="Email settings">
+          <Box component="form" noValidate onSubmit={handleSave} aria-label="Email notification settings">
             <Stack spacing={3}>
-              {/* ── Provider and sender ─────────────────────────────────────── */}
-              <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-                <SectionTitle icon={Email}>Provider and sender</SectionTitle>
-                <Stack spacing={2.5}>
-                  <FormControl error={!!errorFor('provider')} disabled={readOnly || saving}>
-                    <FormLabel id="email-provider-label" sx={{ mb: 1 }}>Email provider</FormLabel>
-                    <RadioGroup
-                      id={fieldId('provider')}
-                      aria-labelledby="email-provider-label"
-                      name="provider"
-                      value={form.provider}
-                      onChange={handleProviderChange}
-                    >
-                      {PROVIDER_KEYS.map((key) => {
-                        const available = isProviderAvailable(key)
-                        return (
-                          <FormControlLabel
-                            key={key}
-                            value={key}
-                            // Not offered until its sign-in and sending are built; the
-                            // server refuses it as well.
-                            disabled={!available && form.provider !== key}
-                            control={<Radio />}
-                            sx={{ alignItems: 'flex-start', mb: 1, mr: 0, '& .MuiRadio-root': { mt: -0.75 } }}
-                            label={(
-                              <Box>
-                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                                  <Typography variant="body2" fontWeight={600}>{PROVIDERS[key].label}</Typography>
-                                  {!available && <Chip size="small" variant="outlined" label="Not available yet" />}
-                                </Stack>
-                                <Typography variant="caption" color="text.secondary">{PROVIDERS[key].description}</Typography>
-                              </Box>
-                            )}
-                          />
-                        )
-                      })}
-                    </RadioGroup>
-                    {errorFor('provider') && <FormHelperText>{errorFor('provider')}</FormHelperText>}
-                  </FormControl>
-
-                  {provider && <Alert severity="info" sx={{ py: 0 }}>{provider.note}</Alert>}
-
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                    <TextField
-                      label="Sender name"
-                      {...fieldProps('senderName')}
-                      placeholder="Surjit Finance"
-                      helperText={errorFor('senderName') || 'Optional. Shown as the "From" name.'}
-                    />
-                    <TextField
-                      label="Sender email"
-                      type="email"
-                      required
-                      autoComplete="off"
-                      {...fieldProps('senderEmail')}
-                      helperText={errorFor('senderEmail') || 'A licensed Microsoft 365 mailbox in your tenant.'}
-                    />
-                  </Stack>
-
-                  <TextField
-                    select
-                    label="Authentication method"
-                    required
-                    {...fieldProps('authMethod')}
-                    sx={selectSx}
-                    helperText={errorFor('authMethod') || 'How the CMS signs in to send mail.'}
-                  >
-                    {(provider?.authMethods || []).map((m) => {
-                      const available = isSupported(form.provider, m)
-                      return (
-                        <MenuItem key={m} value={m} disabled={!available}>
-                          {AUTH_METHOD_LABELS[m]}{available ? '' : ' — not available yet'}
-                        </MenuItem>
-                      )
-                    })}
-                  </TextField>
-                </Stack>
-              </Paper>
-
-              {/* ── SMTP ────────────────────────────────────────────────────── */}
-              <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-                <SectionTitle icon={Dns}>SMTP</SectionTitle>
-                {!smtpInUse ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Not used: {AUTH_METHOD_LABELS[form.authMethod]} sends through Microsoft Graph, not SMTP.
-                  </Typography>
-                ) : (
-                  <Stack spacing={2.5}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                      <TextField
-                        label="SMTP host"
-                        required
-                        {...fieldProps('smtpHost')}
-                        placeholder="mail.example.com"
-                        helperText={errorFor('smtpHost') || (fixedEndpoint ? 'Set by Microsoft for this provider.' : 'From your Exchange administrator.')}
-                        slotProps={{ input: { readOnly: fixedEndpoint }, htmlInput: { spellCheck: false } }}
-                        sx={{ flex: 2 }}
-                      />
-                      <TextField
-                        label="Port"
-                        required
-                        {...fieldProps('smtpPort')}
-                        helperText={errorFor('smtpPort') || (form.encryption === ENCRYPTION.SSL ? 'Usually 465 for SSL/TLS.' : 'Usually 587 for STARTTLS.')}
-                        slotProps={{ input: { readOnly: fixedEndpoint }, htmlInput: { inputMode: 'numeric', pattern: '[0-9]*', maxLength: 5 } }}
-                        sx={{ flex: 1 }}
-                      />
-                    </Stack>
-
-                    {fixedEndpoint ? (
-                      <TextField
-                        label="Encryption"
-                        id={fieldId('encryption')}
-                        value={ENCRYPTION_LABELS[form.encryption]}
-                        disabled={readOnly}
-                        fullWidth
-                        helperText="Set by Microsoft for this provider."
-                        slotProps={{ input: { readOnly: true } }}
-                      />
-                    ) : (
-                      <TextField
-                        select
-                        label="Encryption"
-                        required
-                        {...fieldProps('encryption')}
-                        sx={selectSx}
-                        helperText={errorFor('encryption') || 'Unencrypted connections are not offered.'}
-                      >
-                        {Object.values(ENCRYPTION).map((v) => (
-                          <MenuItem key={v} value={v}>{ENCRYPTION_LABELS[v]}</MenuItem>
-                        ))}
-                      </TextField>
-                    )}
-
-                    <TextField
-                      label="SMTP username"
-                      required
-                      autoComplete="off"
-                      {...fieldProps('smtpUsername')}
-                      helperText={errorFor('smtpUsername') || 'Usually the sender mailbox address.'}
-                      slotProps={{ htmlInput: { spellCheck: false } }}
-                    />
-
-                    {form.authMethod === AUTH_METHODS.SMTP_BASIC && (
-                      <StatusRow label="SMTP password">
-                        <Typography variant="body2">Not available yet</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Username-and-password sending is not supported yet, so no password can be saved.
-                        </Typography>
-                      </StatusRow>
-                    )}
-                  </Stack>
-                )}
-              </Paper>
-
-              {/* ── Microsoft OAuth / Graph ─────────────────────────────────── */}
-              <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-                <SectionTitle icon={Key}>Microsoft OAuth 2.0 / Graph</SectionTitle>
-                {!oauthInUse ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Not used: {AUTH_METHOD_LABELS[form.authMethod]} does not sign in through Microsoft Entra.
-                  </Typography>
-                ) : (
-                  <Stack spacing={2.5}>
-                    <Typography variant="body2" color="text.secondary">
-                      From the app registration in Microsoft Entra ID. {oauthPermissionHint(form.provider, form.authMethod)} An administrator must grant consent.
-                    </Typography>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                      <TextField
-                        label="Directory (tenant) ID"
-                        required
-                        {...fieldProps('tenantId')}
-                        placeholder="00000000-0000-0000-0000-000000000000"
-                        helperText={errorFor('tenantId') || (provider?.fixedTenantId ? 'Personal accounts always use "consumers".' : 'A tenant ID, or a domain such as contoso.onmicrosoft.com.')}
-                        slotProps={{ input: { readOnly: !!provider?.fixedTenantId }, htmlInput: { spellCheck: false } }}
-                      />
-                      <TextField
-                        label="Application (client) ID"
-                        required
-                        autoComplete="off"
-                        {...fieldProps('clientId')}
-                        placeholder="00000000-0000-0000-0000-000000000000"
-                        helperText={errorFor('clientId') || 'Shown on the app registration\'s overview.'}
-                        slotProps={{ htmlInput: { spellCheck: false } }}
-                      />
-                    </Stack>
-                    <TextField
-                      label={secretStored ? 'Replace client secret' : 'Client secret'}
-                      type="password"
-                      required={!secretStored}
-                      autoComplete="new-password"
-                      {...fieldProps('clientSecret')}
-                      placeholder={secretStored ? `Stored, ends in ${secretInfo.hint} — leave blank to keep it` : 'The secret Value from Certificates & secrets'}
-                      helperText={errorFor('clientSecret') || (secretInfo?.configured && !secretInfo.readable
-                        ? 'The stored secret can no longer be read by the server. Enter it again.'
-                        : 'Stored encrypted on the server. It is never shown again after saving.')}
-                      slotProps={{ htmlInput: { spellCheck: false, 'data-lpignore': 'true' } }}
-                    />
-                  </Stack>
-                )}
-              </Paper>
-
               {/* ── Recipients ──────────────────────────────────────────────── */}
               <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-                <SectionTitle icon={People} id="email-recipients-title">Notification recipients</SectionTitle>
+                <SectionTitle icon={People}>Notification recipients</SectionTitle>
                 <Stack spacing={2.5}>
                   <TextField
+                    id={fieldId('primaryRecipient')}
                     label="Primary recipient"
                     type="email"
                     required
                     autoComplete="off"
-                    {...fieldProps('primaryRecipient')}
+                    value={form.primaryRecipient}
+                    onChange={update('primaryRecipient')}
+                    onBlur={() => setTouched((t) => ({ ...t, primaryRecipient: true }))}
+                    error={!!errorFor('primaryRecipient')}
                     helperText={errorFor('primaryRecipient') || 'Receives every notification.'}
+                    disabled={readOnly || saving}
+                    fullWidth
                   />
 
                   <Box>
@@ -617,7 +395,7 @@ const EmailSettingsPage = () => {
                       label="Email the recipients when a new loan application is submitted"
                     />
                     <Typography variant="caption" color="text.secondary" display="block" id="email-notify-help">
-                      Saved with these settings. Loan application emails are not sent yet — they will use this choice once connected.
+                      Sent only when the email provider is set up, this is on, and a primary recipient is saved.
                     </Typography>
                   </Box>
 
@@ -629,32 +407,35 @@ const EmailSettingsPage = () => {
                       type="email"
                       autoComplete="off"
                       id={fieldId('testRecipient')}
-                      value={form.testRecipient}
-                      onChange={(e) => { setForm((f) => ({ ...f, testRecipient: e.target.value })); setTestRecipientMessage('') }}
+                      value={testRecipient}
+                      onChange={(e) => { setTestRecipient(e.target.value); setTestRecipientMessage('') }}
                       onKeyDown={(e) => {
                         // Enter sends the test rather than saving the form.
-                        if (e.key === 'Enter') { e.preventDefault(); runTest('email') }
+                        if (e.key === 'Enter') { e.preventDefault(); sendTest() }
                       }}
                       error={!!testRecipientMessage}
-                      helperText={testRecipientMessage || 'Receives one fixed test message from the saved sender mailbox.'}
+                      helperText={testRecipientMessage || 'Receives one fixed test message from the sender mailbox.'}
                       disabled={readOnly || busy}
                       fullWidth
                     />
                     <Button
                       variant="outlined"
-                      startIcon={testing === 'email' ? <CircularProgress size={16} /> : <Send />}
-                      onClick={() => runTest('email')}
+                      startIcon={sending ? <CircularProgress size={16} /> : <Send />}
+                      onClick={sendTest}
                       disabled={!!testBlockedReason || busy}
                       aria-describedby={testBlockedReason ? 'email-test-reason' : undefined}
                       sx={{ flexShrink: 0, height: 56 }}
                     >
-                      {testing === 'email' ? 'Sending…' : 'Send Test Email'}
+                      {sending ? 'Sending…' : 'Send Test Email'}
                     </Button>
                   </Stack>
                   {testBlockedReason && (
                     <Typography variant="caption" color="text.secondary" id="email-test-reason" sx={{ mt: -1.5 }}>
                       {testBlockedReason}
                     </Typography>
+                  )}
+                  {testResult && (
+                    <Alert severity={testResult.ok ? 'success' : 'error'} role="alert">{testResult.message}</Alert>
                   )}
                 </Stack>
               </Paper>
@@ -694,32 +475,31 @@ const EmailSettingsPage = () => {
 
         <Grid item xs={12} md={4}>
           <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-            <Typography variant="subtitle1" fontWeight={600} component="h2" sx={{ mb: 1 }}>Connection status</Typography>
-            <StatusRow label="Status">
-              <Chip size="small" color={status.color} label={status.label} />
+            <Typography variant="subtitle1" fontWeight={600} component="h2" sx={{ mb: 1 }}>Status</Typography>
+            <StatusRow label="Email provider">
+              <Stack spacing={0.5}>
+                <Chip size="small" sx={{ alignSelf: 'flex-start' }} color={status.color} label={status.label} />
+                <ApiSectionLink>{providerReady ? 'Manage in API section' : 'Set up in API section'}</ApiSectionLink>
+              </Stack>
             </StatusRow>
-            <StatusRow label="Saved settings">
-              {config?.saved ? (
-                <Stack spacing={0.25}>
-                  <Typography variant="body2">{PROVIDERS[config.settings.provider]?.label}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {AUTH_METHOD_LABELS[config.settings.authMethod]} · updated {formatDateTime(config.updatedAt)}
-                  </Typography>
-                </Stack>
-              ) : <Typography variant="body2" color="text.secondary">None</Typography>}
-            </StatusRow>
-            <StatusRow label="Client secret">
-              <Typography variant="body2" sx={{ fontFamily: secretInfo?.configured ? 'monospace' : undefined }} color={secretInfo?.configured ? 'text.primary' : 'text.secondary'}>
-                {!secretInfo?.configured ? 'Not stored' : secretInfo.readable ? `••••••••${secretInfo.hint}` : 'Unreadable — enter it again'}
-              </Typography>
-            </StatusRow>
-            {config?.saved && !config.configured && (
-              <StatusRow label="Missing">
-                <Stack component="ul" sx={{ m: 0, pl: 2 }} spacing={0.25}>
-                  {config.missing.map((m) => <Typography key={m} component="li" variant="body2">{m}</Typography>)}
-                </Stack>
+            {providerReady && (
+              <StatusRow label="Sender">
+                <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>{config.settings.senderEmail}</Typography>
               </StatusRow>
             )}
+            <StatusRow label="Recipients">
+              <Typography variant="body2" color={config?.recipients?.configured ? 'text.primary' : 'text.secondary'}>
+                {config?.recipients?.configured
+                  ? `${1 + (config.settings.additionalRecipients?.length || 0)} saved`
+                  : 'None saved'}
+              </Typography>
+            </StatusRow>
+            <StatusRow label="Loan emails">
+              <Chip size="small" color={readiness.ready ? 'success' : 'default'} label={readiness.ready ? 'On' : 'Not sending'} />
+              {!readiness.ready && (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>{readiness.reason}</Typography>
+              )}
+            </StatusRow>
             <Divider sx={{ my: 1 }} />
             <StatusRow label="Last test">
               {config?.lastTest ? (
@@ -734,29 +514,11 @@ const EmailSettingsPage = () => {
                     {formatDateTime(config.lastTest.at)} — {config.lastTest.message}
                   </Typography>
                 </Stack>
-              ) : <Typography variant="body2" color="text.secondary">Not tested since the settings were saved</Typography>}
+              ) : <Typography variant="body2" color="text.secondary">Not tested since the provider was saved</Typography>}
             </StatusRow>
-
-            {testResult && (
-              <Alert severity={testResult.ok ? 'success' : 'error'} role="alert" sx={{ mt: 1 }}>
-                {testResult.message}
-              </Alert>
-            )}
-
-            <Button
-              variant="outlined"
-              fullWidth
-              startIcon={testing === 'connection' ? <CircularProgress size={16} /> : <NetworkCheck />}
-              onClick={() => runTest('connection')}
-              disabled={!!testBlockedReason || busy}
-              aria-describedby="email-connection-reason"
-              sx={{ mt: 2 }}
-            >
-              {testing === 'connection' ? 'Testing…' : 'Test Connection'}
-            </Button>
-            <Typography variant="caption" color="text.secondary" display="block" id="email-connection-reason" sx={{ mt: 1 }}>
-              {testBlockedReason || 'Signs in to Microsoft with the saved app credentials and checks the Mail.Send permission. Nothing is sent.'}
-            </Typography>
+            <StatusRow label="Last updated">
+              <Typography variant="body2">{formatDateTime(config?.updatedAt)}</Typography>
+            </StatusRow>
           </Paper>
         </Grid>
       </Grid>

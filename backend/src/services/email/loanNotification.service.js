@@ -84,6 +84,8 @@ const attempt = async (record) => {
     if (!application) return { status: 'skipped', outcomeCode: 'APPLICATION_NOT_FOUND' };
 
     const to = recipientsOf(sending.doc);
+    // The provider can be set up before anyone is named on Email Settings.
+    if (!to.length) return { status: 'skipped', outcomeCode: 'NO_RECIPIENTS' };
     const email = buildLoanApplicationEmail({ application, productName: application.product?.name || null });
     const mime = buildMime({
         from: { address: sending.doc.senderEmail, name: sending.doc.senderName },

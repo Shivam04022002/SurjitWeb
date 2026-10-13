@@ -5,7 +5,8 @@ const validate = require('../middleware/validate');
 const { emailTestLimiter } = require('../middleware/rateLimiters');
 const controller = require('../controllers/emailSettings.controller');
 const {
-    saveEmailSettingsValidation, sendTestEmailValidation, listNotificationsValidation, notificationIdValidation
+    saveEmailSettingsValidation, saveProviderValidation, saveRecipientsValidation,
+    sendTestEmailValidation, listNotificationsValidation, notificationIdValidation
 } = require('../validators/emailSettings.validator');
 
 const router = express.Router();
@@ -19,6 +20,11 @@ const canManage = [auth, editPage('integrations')];
 
 router.get('/', canRead, controller.getSettings);
 router.put('/', canManage, saveEmailSettingsValidation, validate, controller.saveSettings);
+// The two halves of the same configuration, saved from their own pages: the
+// Microsoft credentials from the API page, the recipients from Email Settings.
+// Each leaves the other half untouched.
+router.put('/provider', canManage, saveProviderValidation, validate, controller.saveProvider);
+router.put('/recipients', canManage, saveRecipientsValidation, validate, controller.saveRecipients);
 router.post('/test-connection', canManage, emailTestLimiter, controller.testConnection);
 router.post('/test-email', canManage, emailTestLimiter, sendTestEmailValidation, validate, controller.sendTestEmail);
 

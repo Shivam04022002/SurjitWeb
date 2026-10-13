@@ -17,6 +17,18 @@ const saveSettings = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Email settings saved', { config });
 });
 
+// The API page's Email API card: credentials and sender only.
+const saveProvider = asyncHandler(async (req, res) => {
+    const config = await emailConfig.saveProvider(req.body, req.user._id);
+    return sendSuccess(res, 'Email provider settings saved', { config });
+});
+
+// Email Settings: recipients and the notification preference only.
+const saveRecipients = asyncHandler(async (req, res) => {
+    const config = await emailConfig.saveRecipients(req.body, req.user._id);
+    return sendSuccess(res, 'Email notification settings saved', { config });
+});
+
 // A failed test is a result, not an error: the request worked and the answer
 // is "no". The page reads result.ok, as it does for the Gemini test.
 const testConnection = asyncHandler(async (req, res) => {
@@ -54,4 +66,4 @@ const retryNotification = asyncHandler(async (req, res) => {
     return sendSuccess(res, notification.status === 'sent' ? 'Email accepted by Microsoft' : 'Retry attempted', { notification });
 });
 
-module.exports = { getSettings, saveSettings, testConnection, sendTestEmail, listNotifications, retryNotification };
+module.exports = { getSettings, saveSettings, saveProvider, saveRecipients, testConnection, sendTestEmail, listNotifications, retryNotification };

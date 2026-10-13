@@ -15,10 +15,13 @@ const AUTH_METHODS = ['graph', 'smtp_oauth', 'smtp_basic'];
 
 const emailSettingSchema = new mongoose.Schema({
     key: { type: String, default: SINGLETON_KEY, unique: true, immutable: true },
-    provider: { type: String, enum: PROVIDERS, required: true },
-    authMethod: { type: String, enum: AUTH_METHODS, required: true },
+    // The provider credentials (set on the API page) and the recipients (set
+    // on Email Settings) are saved separately, so neither half is required for
+    // the document to exist. Only Microsoft 365 through Graph can be saved.
+    provider: { type: String, enum: PROVIDERS, default: 'microsoft365' },
+    authMethod: { type: String, enum: AUTH_METHODS, default: 'graph' },
     senderName: { type: String, trim: true, default: '', maxlength: 100 },
-    senderEmail: { type: String, trim: true, lowercase: true, required: true, maxlength: 254 },
+    senderEmail: { type: String, trim: true, lowercase: true, default: '', maxlength: 254 },
     // Microsoft Entra app registration. Identifiers, not secrets.
     tenantId: { type: String, trim: true, default: '', maxlength: 253 },
     clientId: { type: String, trim: true, default: '', maxlength: 36 },
@@ -33,7 +36,7 @@ const emailSettingSchema = new mongoose.Schema({
         select: false
     },
     clientSecretHint: { type: String, default: '', maxlength: 8 },
-    primaryRecipient: { type: String, trim: true, lowercase: true, required: true, maxlength: 254 },
+    primaryRecipient: { type: String, trim: true, lowercase: true, default: '', maxlength: 254 },
     additionalRecipients: {
         type: [{ type: String, trim: true, lowercase: true, maxlength: 254 }],
         default: [],

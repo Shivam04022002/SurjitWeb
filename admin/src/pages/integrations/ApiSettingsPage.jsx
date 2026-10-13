@@ -11,6 +11,7 @@ import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 import PexelsSettingsCard from './PexelsSettingsCard'
+import EmailProviderCard from './EmailProviderCard'
 import { parseModelList, formatModelList } from './modelList'
 
 const FALLBACK_SOURCE_LABELS = {
@@ -412,6 +413,10 @@ const ApiSettingsPage = () => {
 
         <Grid item xs={12}>
           <PexelsSettingsCard showToast={showToast} onChanged={refreshConfig} />
+        </Grid>
+
+        <Grid item xs={12}>
+          <EmailProviderCard showToast={showToast} />
         </Grid>
       </Grid>
 

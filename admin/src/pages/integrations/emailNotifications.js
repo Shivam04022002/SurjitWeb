@@ -49,7 +49,8 @@ export const STATUS_ORDER = ['sent', 'pending', 'sending', 'retrying', 'skipped'
 export const OUTCOME_LABELS = {
   SENT: 'Accepted by Microsoft for delivery',
   DISABLED: 'Loan application emails were turned off in Email Settings',
-  NOT_CONFIGURED: 'Email Settings were missing or incomplete',
+  NOT_CONFIGURED: 'The email provider was not set up in the API section',
+  NO_RECIPIENTS: 'No notification recipient was saved in Email Settings',
   APPLICATION_NOT_FOUND: 'The application no longer exists',
   SEND_UNCONFIRMED: 'The send did not complete — delivery is uncertain',
   THROTTLED: 'Microsoft asked the CMS to slow down',
