@@ -12,7 +12,7 @@ import './ProductHeroCarousel.css';
 //
 // The surrounding <section> belongs to ProductHero, which owns the background
 // image and the scrim; this renders only the swipeable copy inside it.
-const ProductHeroCarousel = ({ products, category, currentSlug }) => {
+const ProductHeroCarousel = ({ products, category, currentSlug, showFeaturesLink = true }) => {
     const navigate = useNavigate();
     const [swiper, setSwiper] = useState(null);
 
@@ -62,7 +62,13 @@ const ProductHeroCarousel = ({ products, category, currentSlug }) => {
                 >
                     {products.map((product) => (
                         <SwiperSlide key={product._id || product.slug}>
-                            <ProductHeroBody product={product} category={category} />
+                            <ProductHeroBody
+                                product={product}
+                                category={category}
+                                // Only the product on screen has its sections
+                                // loaded; the others keep the link until they are.
+                                showFeaturesLink={product.slug === currentSlug ? showFeaturesLink : true}
+                            />
                         </SwiperSlide>
                     ))}
                 </Swiper>

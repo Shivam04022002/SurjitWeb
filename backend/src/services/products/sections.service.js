@@ -31,9 +31,15 @@ const getFeatures = async (productId) => {
     return product.features.sort((a, b) => a.displayOrder - b.displayOrder);
 };
 
+// A feature added without an explicit position goes to the end of the list.
+// Left at the schema default of 0 it would sort ahead of every existing card.
+const nextDisplayOrder = (arr) =>
+    arr.reduce((max, item) => Math.max(max, item.displayOrder || 0), 0) + 1;
+
 const createFeature = async (productId, data) => {
     const product = await getProduct(productId);
-    product.features.push(data);
+    const hasOrder = data.displayOrder !== undefined && data.displayOrder !== '';
+    product.features.push(hasOrder ? data : { ...data, displayOrder: nextDisplayOrder(product.features) });
     await product.save();
     return product.features[product.features.length - 1];
 };
@@ -56,6 +62,11 @@ const deleteFeature = async (productId, featureId) => {
 
 const reorderFeatures = async (productId, orderedIds) => {
     const product = await getProduct(productId);
+    // Every id must be one of this product's features: an id from another
+    // product would otherwise be skipped silently and the request reported done.
+    if (orderedIds.some((id) => !product.features.id(id))) {
+        throw new AppError('Feature does not belong to this product', HTTP_STATUS.BAD_REQUEST);
+    }
     orderedIds.forEach((id, index) => {
         const item = product.features.id(id);
         if (item) item.displayOrder = index + 1;

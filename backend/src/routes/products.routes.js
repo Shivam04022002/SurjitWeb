@@ -131,8 +131,11 @@ router.patch('/features/reorder', auth, editPage('products'), sectionReorderVali
 
 router.put(
     '/features/:id',
-    auth, editPage('products'), blockProtectedFields,
+    auth, editPage('products'),
+    // The CMS sends this form as multipart, whose fields only exist once the
+    // upload has been parsed — guarding before it would see an empty body.
     featureUpload.single('icon'),
+    blockProtectedFields,
     updateFeatureValidation, validate,
     sectionsController.updateFeature
 );

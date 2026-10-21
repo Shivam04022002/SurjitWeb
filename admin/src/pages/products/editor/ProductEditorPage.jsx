@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box, Container, Typography, Tabs, Tab, Paper, Button,
   CircularProgress, Breadcrumbs, Link, Chip
@@ -19,7 +19,7 @@ import ReadOnlyNotice from '../../../components/ReadOnlyNotice'
 
 const TAB_LABELS = [
   'General',
-  'Features',
+  'Features & Benefits',
   'Eligibility',
   'Documents',
   'Interest Rates',
@@ -28,13 +28,18 @@ const TAB_LABELS = [
   'SEO'
 ]
 
+// Lets another page link straight to a tab, e.g. ?tab=features after creating
+// a product, so the next step is on screen rather than behind a second click.
+const TAB_KEYS = ['general', 'features', 'eligibility', 'documents', 'interest-rates', 'faqs', 'emi', 'seo']
+
 const ProductEditorPage = () => {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [product, setProduct] = useState(null)
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState(0)
+  const [activeTab, setActiveTab] = useState(() => Math.max(0, TAB_KEYS.indexOf(searchParams.get('tab'))))
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
 
   const showToast = useCallback((message, severity = 'success') => {

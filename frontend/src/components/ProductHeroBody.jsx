@@ -8,7 +8,7 @@ import Breadcrumbs from './Breadcrumbs';
 // Shared by the single-product hero and by every carousel slide. The two used
 // to be hand-kept copies of each other; sharing the component is what actually
 // guarantees a slide is indistinguishable from the standalone page.
-const ProductHeroBody = ({ product, category }) => {
+const ProductHeroBody = ({ product, category, showFeaturesLink = true }) => {
     const cat = category || product?.category;
 
     return (
@@ -37,7 +37,11 @@ const ProductHeroBody = ({ product, category }) => {
                     </Link>
                 </div>
                 <div className="product-quick-links">
-                    <a href="#features-and-benefits">Features &amp; Benefits</a>
+                    {/* The page leaves the section out for a product with no
+                        features, so it says when the link would lead nowhere. */}
+                    {showFeaturesLink && (
+                        <a href="#features-and-benefits">Features &amp; Benefits</a>
+                    )}
                     <a href="#eligibility">Eligibility</a>
                     <a href="#interest-rate-and-charges">Interest Rate &amp; Charges</a>
                     <a href="#emi-calculator">EMI Calculator</a>

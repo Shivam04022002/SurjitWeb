@@ -7,7 +7,7 @@ import {
 } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import {
-  Add, Edit, Delete, Search, CheckCircle, Cancel, OpenInNew
+  Add, Edit, Delete, Search, CheckCircle, Cancel
 } from '@mui/icons-material'
 import { productsService } from '../../services/products.service'
 import { usePermissions } from '../../hooks/usePermissions'
@@ -26,7 +26,6 @@ const ProductsPage = () => {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [formOpen, setFormOpen] = useState(false)
-  const [selectedProduct, setSelectedProduct] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null, name: '' })
   const [deleting, setDeleting] = useState(false)
@@ -61,18 +60,15 @@ const ProductsPage = () => {
     setFiltered(result)
   }, [search, categoryFilter, products])
 
+  // The dialog only creates. Editing happens in the product editor, which holds
+  // every section — a new product is taken straight to its Features & Benefits
+  // tab, since that is the next thing it needs.
   const handleSave = async (formData) => {
     setSaving(true)
     try {
-      if (selectedProduct) {
-        await productsService.updateProduct(selectedProduct._id, formData)
-        showToast('Product updated successfully')
-      } else {
-        await productsService.createProduct(formData)
-        showToast('Product created successfully')
-      }
+      const res = await productsService.createProduct(formData)
       setFormOpen(false)
-      fetchData()
+      navigate(`/products/${res.data.product._id}/edit?tab=features`)
     } catch (err) {
       showToast(err?.response?.data?.message || 'Operation failed', 'error')
     } finally {
@@ -152,14 +148,9 @@ const ProductsPage = () => {
               {row.isActive ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
             </IconButton>
           </Tooltip>)}
-          <Tooltip title="Edit General Info">
-            <IconButton size="small" color="primary" onClick={() => { setSelectedProduct(row); setFormOpen(true) }}>
+          <Tooltip title="Edit product (general info, features & benefits, eligibility, FAQs…)">
+            <IconButton size="small" color="primary" aria-label={`Edit ${row.name}`} onClick={() => navigate(`/products/${row._id}/edit`)}>
               <Edit fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Open Editor">
-            <IconButton size="small" color="secondary" onClick={() => navigate(`/products/${row._id}/edit`)}>
-              <OpenInNew fontSize="small" />
             </IconButton>
           </Tooltip>
           {perms.canDelete && (<Tooltip title="Delete">
@@ -184,7 +175,7 @@ const ProductsPage = () => {
           <Button
             variant="contained"
             startIcon={<Add />}
-            onClick={() => { setSelectedProduct(null); setFormOpen(true) }}
+            onClick={() => setFormOpen(true)}
           >
             Add Product
           </Button>
@@ -233,7 +224,7 @@ const ProductsPage = () => {
 
       <ProductFormDialog
         open={formOpen}
-        product={selectedProduct}
+        product={null}
         categories={categories}
         onSave={handleSave}
         onClose={() => setFormOpen(false)}

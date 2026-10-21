@@ -403,6 +403,27 @@
     padding-top: 10px;
 }
 
+.feature-text {
+    min-width: 0;
+}
+
+.feature-text span {
+    display: block;
+}
+
+.feature-description {
+    margin: 6px 0 0;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--gray-500);
+}
+
+.feature-icon-img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+}
+
 .features-cta {
     text-align: center;
 }

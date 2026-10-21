@@ -98,7 +98,11 @@ const ProductDetail = () => {
 
     const siblingProducts = categoryData?.category ? (categoryData.products || []) : [];
 
-    const displayFeatures = features && features.length > 0 ? features : (product.features || []);
+    // The API already sorts features; sorting again keeps the fallback (the
+    // product's own copy, which arrives unsorted) in the saved order too.
+    const displayFeatures = [...(features && features.length > 0 ? features : (product.features || []))]
+        .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+    const hasFeatures = featuresLoading || displayFeatures.length > 0;
     const displayEligibility = eligibility && eligibility.length > 0 ? eligibility : (product.eligibility || []);
     const displayDocuments = documents && documents.length > 0 ? documents : (product.documents || []);
     const displayFaqs = faqs && faqs.length > 0
@@ -131,10 +135,11 @@ const ProductDetail = () => {
                         products={siblingProducts}
                         category={categoryData?.category}
                         currentSlug={productSlug}
+                        showFeaturesLink={hasFeatures}
                     />
                 ) : (
                     <div className="container">
-                        <ProductHeroBody product={product} category={product.category} />
+                        <ProductHeroBody product={product} category={product.category} showFeaturesLink={hasFeatures} />
                     </div>
                 )}
 
@@ -153,7 +158,9 @@ const ProductDetail = () => {
                 )}
             </ProductHero>
 
-            {/* Features */}
+            {/* Features. A product with none saved has no section at all, rather
+                than a heading over an empty grid. */}
+            {hasFeatures && (
             <section id="features-and-benefits" className="product-features section">
                 <div className="container">
                     <div className="section-header">
@@ -163,8 +170,15 @@ const ProductDetail = () => {
                         <div className="features-grid-new">
                             {displayFeatures.map((feature, index) => (
                                 <div key={feature._id || index} className="feature-card">
-                                    <div className="feature-icon-box"><Check size={20} /></div>
-                                    <span>{feature.title}</span>
+                                    <div className="feature-icon-box">
+                                        {feature.icon?.url
+                                            ? <img src={feature.icon.url} alt="" className="feature-icon-img" loading="lazy" />
+                                            : <Check size={20} />}
+                                    </div>
+                                    <div className="feature-text">
+                                        <span>{feature.title}</span>
+                                        {feature.description && <p className="feature-description">{feature.description}</p>}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -176,6 +190,7 @@ const ProductDetail = () => {
                     </div>
                 </div>
             </section>
+            )}
 
             {/* Eligibility */}
             <section id="eligibility" className="product-eligibility section">
