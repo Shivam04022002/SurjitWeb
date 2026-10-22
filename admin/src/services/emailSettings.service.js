@@ -49,6 +49,13 @@ const getNotifications = async (params) => {
 
 // Only a retry the server already scheduled can be brought forward; the server
 // refuses anything else.
+// One record in full. Applicant details and the regenerated email preview
+// come back only when the admin also holds Loan Applications view.
+const getNotification = async (id) => {
+  const response = await api.get(`${BASE}/notifications/${encodeURIComponent(id)}`)
+  return response.data
+}
+
 const retryNotification = async (id) => {
   const response = await api.post(`${BASE}/notifications/${encodeURIComponent(id)}/retry`)
   return response.data
@@ -62,5 +69,6 @@ export const emailSettingsService = {
   testConnection,
   sendTestEmail,
   getNotifications,
+  getNotification,
   retryNotification
 }

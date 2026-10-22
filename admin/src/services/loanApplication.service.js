@@ -22,8 +22,18 @@ const updateLoanApplicationStatus = async (id, status) => {
   return response.data
 }
 
+// One document, streamed by the server from its own storage after checking
+// the admin's Loan Applications access. Fetched through the API client (so an
+// expired session is refreshed like any other request) and returned as a
+// Blob; documents are never opened from a direct storage address.
+const getDocument = async (id, type) => {
+  const response = await api.get(`${BASE}/${id}/documents/${type}`, { responseType: 'blob' })
+  return response.data
+}
+
 export const loanApplicationService = {
   getAllApplications,
   getApplicationById,
+  getDocument,
   updateLoanApplicationStatus
 }

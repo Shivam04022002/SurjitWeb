@@ -8,6 +8,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const env = require('../config/env');
 const { loanTypeForCategorySlug } = require('../constants/loanTypes');
 const loanNotifications = require('../services/email/loanNotification.service');
+const { fileMetaOf, openDocument, describeDocuments, DOCUMENT_TYPES } = require('../services/loanApplications/applicationDocuments');
+const logger = require('../utils/logger');
 
 // Fields a public applicant is allowed to supply. Everything else the model
 // holds — applicationNumber, status, notes, deletedAt, timestamps, document
@@ -62,11 +64,16 @@ const buildApplicationData = (body, files) => {
     });
 
     if (files) {
+        const documentFiles = {};
         Object.entries(DOCUMENT_FIELDS).forEach(([fileField, urlField]) => {
             if (files[fileField] && files[fileField][0]) {
                 applicationData[urlField] = storedUrlOf(files[fileField][0]);
+                // What was uploaded, for staff: the sanitised original name,
+                // size and accepted type. The file itself is unchanged.
+                documentFiles[urlField] = fileMetaOf(files[fileField][0]);
             }
         });
+        if (Object.keys(documentFiles).length) applicationData.documentFiles = documentFiles;
     }
 
     return applicationData;
@@ -179,7 +186,52 @@ const getApplicationById = asyncHandler(async (req, res) => {
     if (!application) {
         throw new AppError('Application not found', HTTP_STATUS.NOT_FOUND);
     }
-    return sendSuccess(res, 'Loan application fetched successfully', { application }, HTTP_STATUS.OK);
+    // Each document's name and status, without its storage address, so the
+    // CMS can open documents through the signed-in route below.
+    const documents = await describeDocuments(application);
+    // The stored addresses are left out: documents open only through the
+    // signed-in route, so the browser never holds a direct storage link.
+    const body = application.toObject();
+    DOCUMENT_TYPES.forEach((d) => { delete body[d.field]; });
+    delete body.documentFiles;
+    return sendSuccess(res, 'Loan application fetched successfully', { application: body, documents }, HTTP_STATUS.OK);
+});
+
+// Streams one of an application's documents to a signed-in admin with Loan
+// Applications access. The file is read with the server's own storage
+// credentials from the address recorded on the application — only if that
+// address is inside this application's loan-documents storage — so no public
+// or client-supplied link is involved. Types a browser renders safely open
+// inline; everything else downloads. Never cached.
+const DOCUMENT_TYPE_KEYS = new Set(DOCUMENT_TYPES.map((d) => d.type));
+
+const downloadDocument = asyncHandler(async (req, res) => {
+    const { id, type } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id) || !DOCUMENT_TYPE_KEYS.has(type)) {
+        throw new AppError('Document not found', HTTP_STATUS.NOT_FOUND);
+    }
+    const application = await LoanApplication.findById(id);
+    if (!application) throw new AppError('Document not found', HTTP_STATUS.NOT_FOUND);
+
+    const doc = await openDocument(application, type);
+    if (!doc) throw new AppError('This application has no such document in the CMS storage', HTTP_STATUS.NOT_FOUND);
+    if (doc.missing) throw new AppError('The document file is missing from storage', HTTP_STATUS.NOT_FOUND);
+
+    // RFC 6266: an ASCII fallback plus the UTF-8 name.
+    const ascii = doc.fileName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_') || 'document';
+    res.set({
+        'Content-Type': doc.contentType,
+        'Content-Disposition': `${doc.inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(doc.fileName || 'document')}`,
+        'Cache-Control': 'no-store, private',
+        'X-Content-Type-Options': 'nosniff',
+        // Nothing in a document may run script or reach anything else.
+        'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+        'Referrer-Policy': 'no-referrer'
+    });
+    if (doc.length) res.set('Content-Length', String(doc.length));
+    logger.info('Loan application document opened', { applicationNumber: application.applicationNumber, type, by: String(req.user?._id || '') });
+    doc.stream.on('error', () => res.destroy());
+    return doc.stream.pipe(res);
 });
 
 // Status change. Mirrors the job-application status endpoint: the status value
@@ -230,5 +282,6 @@ module.exports = {
     getApplicationStatus,
     getAllApplications,
     getApplicationById,
+    downloadDocument,
     updateApplicationStatus
 };

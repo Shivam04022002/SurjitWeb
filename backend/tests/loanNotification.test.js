@@ -148,6 +148,8 @@ const submit = async (overrides) => {
 };
 
 const recordFor = async (applicationNumber) => LoanApplicationNotification.findOne({ applicationNumber }).lean();
+// A MIME header as a reader sees it (RFC 2047 base64 words decoded).
+const decodeHeader = (value) => String(value).replace(/=\?UTF-8\?B\?([^?]+)\?=/g, (_, b64) => Buffer.from(b64, 'base64').toString('utf8'));
 
 const configure = (overrides = {}) => emailConfig.save({
     provider: 'microsoft365',
@@ -279,7 +281,7 @@ describe('a configured mailbox', () => {
         assert.equal(contentType, 'text/plain', 'sent as MIME');
         assert.equal(mime.headers.to, 'ops@surjitfinance.com, credit@surjitfinance.com, branch@surjitfinance.com');
         assert.equal(mime.headers.from, '"Surjit Finance" <loans@surjitfinance.com>');
-        assert.equal(mime.headers.subject, 'New Loan Application Received');
+        assert.equal(decodeHeader(mime.headers.subject), `New Loan Application Received – Business Loan – ${ref}`);
         assert.match(mime.headers['content-type'], /^multipart\/alternative/);
         assert.ok(mime.parts['text/plain'].includes(ref), 'plain-text part carries the reference');
         assert.ok(mime.parts['text/html'].includes(ref), 'HTML part carries the reference');
@@ -299,7 +301,7 @@ describe('a configured mailbox', () => {
         assert.ok(!ms.sends[0].mime.raw.includes('evil.test'));
     });
 
-    test('values are escaped in HTML, and sensitive fields are left out', async () => {
+    test('values are escaped in HTML; staff details are included; PAN and Aadhaar are masked', async () => {
         await configure();
         const res = await submit({ fullName: '<script>alert(1)</script> O\'Brien & "Sons"', email: 'secret.person@example.com' });
         assert.equal(res.status, 201);
@@ -310,18 +312,29 @@ describe('a configured mailbox', () => {
         assert.ok(parts['text/plain'].includes('<script>alert(1)</script> O\'Brien & "Sons"'), 'plain text is not HTML-escaped');
 
         const decoded = `${raw}\n${parts['text/plain']}\n${html}`;
-        for (const sensitive of ['ABCDE1234F', '123412341234', '98765 43210', 'secret.person@example.com', '1990', 'MG Road', '226001', '85000', '500000', 'Working capital']) {
+        // Never in full.
+        for (const sensitive of ['ABCDE1234F', '123412341234', '1234 1234 1234']) {
             assert.ok(!decoded.includes(sensitive), `"${sensitive}" must not be in the email`);
         }
+        assert.ok(parts['text/plain'].includes('PAN (masked): XXXXXX234F'));
+        assert.ok(parts['text/plain'].includes('Aadhaar (masked): XXXX XXXX 1234'));
+        // What staff need to process the application.
+        for (const expected of ['+91 98765 43210', 'secret.person@example.com', '12 Apr 1990', '12 MG Road, Sector 4', '226001', '₹85,000', '₹5,00,000', 'Working capital', '24 months', 'Business owner', '6 years']) {
+            assert.ok(parts['text/plain'].includes(expected), `"${expected}" should be in the email`);
+        }
+        assert.ok(parts['text/plain'].includes('No documents were attached to this application.'));
     });
 
     test('the CMS link appears only when ADMIN_PANEL_URL is a real http(s) address', async () => {
         await configure();
         env.ADMIN_PANEL_URL = 'https://cms.surjitfinance.com/';
-        await submit();
+        const made = await submit();
+        const saved = await LoanApplication.findOne({ applicationNumber: made.body.data.applicationNumber });
+        const link = `https://cms.surjitfinance.com/loan-applications?application=${saved._id}`;
         let html = ms.sends.at(-1).mime.parts['text/html'];
-        assert.ok(html.includes('href="https://cms.surjitfinance.com/loan-applications"'));
-        assert.ok(ms.sends.at(-1).mime.parts['text/plain'].includes('https://cms.surjitfinance.com/loan-applications'));
+        assert.ok(html.includes(`href="${link}"`), 'the button opens this application');
+        assert.ok(html.includes('View Application in Admin Panel'));
+        assert.ok(ms.sends.at(-1).mime.parts['text/plain'].includes(link));
 
         env.ADMIN_PANEL_URL = '';
         await submit();
@@ -477,17 +490,19 @@ describe('the template on its own', () => {
 
     test('subject, reference, applicant, loan and time', () => {
         const email = buildLoanApplicationEmail({ application, adminUrl: null });
-        assert.equal(email.subject, 'New Loan Application Received');
-        assert.match(email.text, /Reference: SF12345678/);
-        assert.match(email.text, /Applicant: Ravi <b>Kumar<\/b>/);
-        assert.match(email.text, /Loan: Loan Against Property/);
+        assert.equal(email.subject, 'New Loan Application Received – Loan Against Property – SF12345678');
+        assert.match(email.text, /Application number: SF12345678/);
+        assert.match(email.text, /Full name: Ravi <b>Kumar<\/b>/);
+        assert.match(email.text, /Loan product: Loan Against Property \(no specific product selected\)/);
         assert.match(email.text, /Submitted: 13 Oct 2026/);
         assert.ok(email.html.includes('Ravi &lt;b&gt;Kumar&lt;/b&gt;'));
         assert.ok(!email.html.includes('<b>Kumar'));
     });
 
     test('a product name, when there is one, names the loan', () => {
-        assert.match(buildLoanApplicationEmail({ application, productName: 'Shop Expansion Loan', adminUrl: null }).text, /Loan: Shop Expansion Loan/);
+        const email = buildLoanApplicationEmail({ application: { ...application, product: { name: 'Shop Expansion Loan' } }, adminUrl: null });
+        assert.match(email.text, /Loan product: Shop Expansion Loan/);
+        assert.equal(email.subject, 'New Loan Application Received – Shop Expansion Loan – SF12345678');
     });
 
     test('escapeHtml and the admin URL rules', () => {

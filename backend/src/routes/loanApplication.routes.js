@@ -44,6 +44,9 @@ router.get('/status/:applicationNumber', loanStatusLimiter, loanApplicationContr
 
 router.get('/', canViewApplications, loanApplicationController.getAllApplications);
 router.get('/:id', canViewApplications, loanApplicationController.getApplicationById);
+// One document, streamed by the server from its own storage. Same permission
+// as reading the application.
+router.get('/:id/documents/:type', canViewApplications, loanApplicationController.downloadDocument);
 
 // Status decision. Only `status` is read from the body; every other applicant
 // field is untouchable through this route.

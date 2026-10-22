@@ -3,6 +3,13 @@ const notificationHistory = require('../services/email/notificationHistory.servi
 const { sendSuccess } = require('../utils/response');
 const { matchedData } = require('express-validator');
 const asyncHandler = require('../utils/asyncHandler');
+const { holds } = require('../middleware/permission');
+const { viewPermission } = require('../constants/permissions');
+
+// Applicant data in the delivery log (name, product, the email preview) needs
+// Loan Applications view as well as the log's own API Settings view. Decided
+// here from the signed-in admin's role, never from the request.
+const mayReadApplicants = (req) => holds(req.user, viewPermission('loanApplications'));
 
 // Every response here is built by emailConfig — the client secret's last four
 // characters at most, never the secret or its ciphertext.
@@ -56,9 +63,15 @@ const listNotifications = asyncHandler(async (req, res) => {
         from: q.from || undefined,
         to: q.to || undefined,
         page: q.page || 1,
-        limit: q.limit || 20
+        limit: q.limit || 20,
+        includeApplicant: await mayReadApplicants(req)
     });
     return sendSuccess(res, 'Email notifications fetched', result);
+});
+
+const getNotification = asyncHandler(async (req, res) => {
+    const result = await notificationHistory.detail(req.params.id, { includeApplicant: await mayReadApplicants(req) });
+    return sendSuccess(res, 'Email notification fetched', result);
 });
 
 const retryNotification = asyncHandler(async (req, res) => {
@@ -66,4 +79,4 @@ const retryNotification = asyncHandler(async (req, res) => {
     return sendSuccess(res, notification.status === 'sent' ? 'Email accepted by Microsoft' : 'Retry attempted', { notification });
 });
 
-module.exports = { getSettings, saveSettings, saveProvider, saveRecipients, testConnection, sendTestEmail, listNotifications, retryNotification };
+module.exports = { getSettings, saveSettings, saveProvider, saveRecipients, testConnection, sendTestEmail, listNotifications, getNotification, retryNotification };

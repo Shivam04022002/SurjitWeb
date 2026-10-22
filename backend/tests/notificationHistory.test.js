@@ -167,11 +167,29 @@ describe('a populated log', () => {
         assert.deepEqual(res.body.data.counts, { pending: 1, sending: 0, retrying: 1, sent: 2, skipped: 1, failed: 1, unconfirmed: 1 });
     });
 
-    test('rows carry only delivery facts — no applicant data, addresses or secrets', async () => {
+    test('without Loan Applications access, rows carry only delivery facts — no applicant data or secrets', async () => {
+        const res = await list('', tokens.viewer);
+        assert.equal(res.body.data.applicantDetails, false);
+        const keys = ['applicant', 'applicantHidden', 'applicationNumber', 'attempts', 'createdAt', 'documentCount', 'id', 'lastAttemptAt', 'maxAttempts', 'nextAttemptAt', 'outcomeCode', 'recipientCount', 'recipientSummary', 'retryable', 'sentAt', 'status'];
+        for (const row of res.body.data.notifications) {
+            assert.deepEqual(Object.keys(row).sort(), keys);
+            assert.equal(row.applicant, null);
+        }
+        for (const s of ['Private Person', 'example.com', 'ABCDE1234F', '123412341234', 'Secret Street', SECRET, '"application"', 'lockedUntil']) {
+            assert.ok(!res.text.includes(s), `"${s}" must not be in the response`);
+        }
+    });
+
+    test('with Loan Applications access, rows add the applicant name, product and document count — still no identifiers or secrets', async () => {
         const res = await list();
-        const keys = ['applicationNumber', 'attempts', 'createdAt', 'id', 'lastAttemptAt', 'maxAttempts', 'nextAttemptAt', 'outcomeCode', 'recipientCount', 'retryable', 'sentAt', 'status'];
-        for (const row of res.body.data.notifications) assert.deepEqual(Object.keys(row).sort(), keys);
-        for (const s of ['Private Person', 'example.com', 'ABCDE1234F', '123412341234', 'Secret Street', 'surjitfinance.com', SECRET, '"application"', 'lockedUntil']) {
+        assert.equal(res.body.data.applicantDetails, true);
+        const named = res.body.data.notifications.filter((r) => r.applicant);
+        assert.ok(named.length > 0);
+        for (const row of named) {
+            assert.deepEqual(Object.keys(row.applicant).sort(), ['documentCount', 'name', 'product']);
+            assert.equal(typeof row.applicant.documentCount, 'number');
+        }
+        for (const s of ['ABCDE1234F', '123412341234', 'Secret Street', SECRET, 'lockedUntil', 'amazonaws']) {
             assert.ok(!res.text.includes(s), `"${s}" must not be in the response`);
         }
     });

@@ -31,6 +31,9 @@ router.post('/test-email', canManage, emailTestLimiter, sendTestEmailValidation,
 // Email Delivery Log. Reading it is a view; bringing a scheduled retry
 // forward is an edit, and calls Microsoft, so it shares the test limiter.
 router.get('/notifications', canRead, listNotificationsValidation, validate, controller.listNotifications);
+// One record in full: delivery history always; the application and a
+// regenerated email preview only with Loan Applications view as well.
+router.get('/notifications/:id', canRead, notificationIdValidation, validate, controller.getNotification);
 router.post('/notifications/:id/retry', canManage, emailTestLimiter, notificationIdValidation, validate, controller.retryNotification);
 
 module.exports = router;

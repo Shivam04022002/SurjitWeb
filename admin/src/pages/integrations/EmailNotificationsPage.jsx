@@ -3,15 +3,17 @@ import {
   Box, Container, Typography, Stack, Chip, TextField, MenuItem, Button, Alert, Tooltip, Paper
 } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
-import { Refresh, Replay } from '@mui/icons-material'
+import { Refresh, Replay, Visibility } from '@mui/icons-material'
 import { usePagePermission } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 import { emailSettingsService } from '../../services/emailSettings.service'
 import { requestErrorMessage } from './emailSettings'
 import {
-  STATUS_META, STATUS_ORDER, statusMeta, outcomeLabel, filtersToParams, attemptsLabel, canRetry
+  STATUS_META, STATUS_ORDER, statusMeta, outcomeLabel, filtersToParams, attemptsLabel, canRetry,
+  applicantLine, documentCountOf, recipientsLabel
 } from './emailNotifications'
+import NotificationDetailsDrawer from './NotificationDetailsDrawer'
 
 // Same permission as Email Settings: reading the log is a view of API Settings,
 // bringing a retry forward is an edit. The server enforces both.
@@ -38,6 +40,8 @@ const EmailNotificationsPage = () => {
   const [confirmRow, setConfirmRow] = useState(null)
   const [retrying, setRetrying] = useState(false)
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
+  // The record open in the details drawer, if any. Opening it only reads.
+  const [detailId, setDetailId] = useState(null)
 
   const { params, error: filterError } = filtersToParams({ status, from, to, ...paginationModel })
   const query = params ? JSON.stringify(params) : ''
@@ -96,11 +100,22 @@ const EmailNotificationsPage = () => {
 
   const columns = [
     {
-      field: 'applicationNumber', headerName: 'Application #', width: 150, sortable: false,
-      renderCell: (p) => <Typography variant="body2" fontWeight={600}>{p.row.applicationNumber}</Typography>
+      // The applicant and product appear under the number when the viewer
+      // also holds Loan Applications view; the server decides.
+      field: 'applicationNumber', headerName: 'Application', width: 230, sortable: false,
+      renderCell: (p) => {
+        const who = applicantLine(p.row)
+        return (
+          <Stack spacing={0} sx={{ overflow: 'hidden', py: 0.5, minWidth: 0 }}>
+            <Typography variant="body2" fontWeight={600}>{p.row.applicationNumber}</Typography>
+            {who.name && <Typography variant="caption" noWrap title={who.name} color={p.row.applicant ? 'text.primary' : 'text.secondary'}>{who.name}</Typography>}
+            {who.product && <Typography variant="caption" noWrap title={who.product} color="text.secondary">{who.product}</Typography>}
+          </Stack>
+        )
+      }
     },
     {
-      field: 'status', headerName: 'Status', width: 190, sortable: false,
+      field: 'status', headerName: 'Status', width: 175, sortable: false,
       renderCell: (p) => {
         const meta = statusMeta(p.row.status)
         return (
@@ -111,7 +126,7 @@ const EmailNotificationsPage = () => {
       }
     },
     {
-      field: 'outcomeCode', headerName: 'Outcome', flex: 1, minWidth: 260, sortable: false,
+      field: 'outcomeCode', headerName: 'Outcome', flex: 1, minWidth: 220, sortable: false,
       renderCell: (p) => (
         <Stack spacing={0} sx={{ overflow: 'hidden', py: 0.5 }}>
           <Typography variant="body2" noWrap>{outcomeLabel(p.row.outcomeCode) || '—'}</Typography>
@@ -122,22 +137,34 @@ const EmailNotificationsPage = () => {
       )
     },
     { field: 'attempts', headerName: 'Attempts', width: 100, sortable: false, valueGetter: (v, row) => attemptsLabel(row) },
-    { field: 'recipientCount', headerName: 'Recipients', width: 100, sortable: false, valueGetter: (v, row) => (row.status === 'sent' ? row.recipientCount : '—') },
-    { field: 'createdAt', headerName: 'Created', width: 175, sortable: false, valueGetter: (v) => fmt(v) },
-    { field: 'lastAttemptAt', headerName: 'Last attempt', width: 175, sortable: false, valueGetter: (v) => fmt(v) },
     {
-      field: 'nextAttemptAt', headerName: 'Next attempt', width: 175, sortable: false,
+      field: 'recipientCount', headerName: 'Recipients', width: 170, sortable: false,
+      renderCell: (p) => <Typography variant="body2" noWrap title={recipientsLabel(p.row)}>{recipientsLabel(p.row)}</Typography>
+    },
+    {
+      field: 'documents', headerName: 'Docs', width: 70, sortable: false,
+      valueGetter: (v, row) => { const n = documentCountOf(row); return n === null ? '—' : n }
+    },
+    { field: 'createdAt', headerName: 'Created', width: 150, sortable: false, valueGetter: (v) => fmt(v) },
+    { field: 'lastAttemptAt', headerName: 'Last attempt', width: 150, sortable: false, valueGetter: (v) => fmt(v) },
+    {
+      field: 'nextAttemptAt', headerName: 'Next attempt', width: 150, sortable: false,
       valueGetter: (v, row) => (row.status === 'retrying' || row.status === 'pending' ? fmt(v) : '—')
     },
     {
-      field: 'actions', headerName: '', width: 130, sortable: false, filterable: false,
-      renderCell: (p) => (canRetry(p.row, { canEdit })
-        ? (
-          <Button size="small" startIcon={<Replay />} onClick={() => setConfirmRow(p.row)} aria-label={`Retry now ${p.row.applicationNumber}`}>
-            Retry now
+      field: 'actions', headerName: '', width: 210, sortable: false, filterable: false,
+      renderCell: (p) => (
+        <Stack direction="row" spacing={0.5}>
+          <Button size="small" startIcon={<Visibility />} onClick={() => setDetailId(p.row.id)} aria-label={`View details ${p.row.applicationNumber}`}>
+            Details
           </Button>
-        )
-        : null)
+          {canRetry(p.row, { canEdit }) && (
+            <Button size="small" startIcon={<Replay />} onClick={() => setConfirmRow(p.row)} aria-label={`Retry now ${p.row.applicationNumber}`}>
+              Retry now
+            </Button>
+          )}
+        </Stack>
+      )
     }
   ]
 
@@ -207,7 +234,7 @@ const EmailNotificationsPage = () => {
           autoHeight
           getRowHeight={() => 'auto'}
           localeText={{ noRowsLabel: 'No loan application emails match these filters.' }}
-          sx={{ bgcolor: 'background.paper', minWidth: 900 }}
+          sx={{ bgcolor: 'background.paper', minWidth: 1180 }}
         />
       </Box>
 
@@ -220,6 +247,11 @@ const EmailNotificationsPage = () => {
         onConfirm={runRetry}
         onCancel={() => setConfirmRow(null)}
         loading={retrying}
+      />
+      <NotificationDetailsDrawer
+        notificationId={detailId}
+        onClose={() => setDetailId(null)}
+        showToast={(message, severity = 'success') => setToast({ open: true, message, severity })}
       />
       <Toast {...toast} onClose={() => setToast((t) => ({ ...t, open: false }))} />
     </Container>

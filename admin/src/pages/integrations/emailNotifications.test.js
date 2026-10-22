@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  STATUS_META, STATUS_ORDER, OUTCOME_LABELS, statusMeta, outcomeLabel, filtersToParams, attemptsLabel, canRetry
+  STATUS_META, STATUS_ORDER, OUTCOME_LABELS, statusMeta, outcomeLabel, filtersToParams, attemptsLabel, canRetry,
+  applicantLine, documentCountOf, recipientsLabel, previewNotice, eventLabel
 } from './emailNotifications.js'
 
 test('every status the server reports has a label, colour and explanation', () => {
@@ -59,4 +60,37 @@ test('Retry now needs both the server\'s say-so and edit access', () => {
   assert.equal(canRetry({ retryable: true }, { canEdit: false }), false)
   assert.equal(canRetry({ retryable: false, status: 'unconfirmed' }, { canEdit: true }), false)
   assert.equal(canRetry(null, { canEdit: true }), false)
+})
+
+test('applicant line: name and product, hidden, or missing', () => {
+  assert.deepEqual(applicantLine({ applicant: { name: 'Asha', product: 'E-Rickshaw Loan' } }), { name: 'Asha', product: 'E-Rickshaw Loan' })
+  assert.equal(applicantLine({ applicantHidden: true }).name, 'Applicant hidden')
+  assert.equal(applicantLine({ applicationMissing: true }).name, 'Application no longer exists')
+})
+
+test('document count and recipients columns', () => {
+  assert.equal(documentCountOf({ applicant: { documentCount: 2 } }), 2)
+  assert.equal(documentCountOf({ applicantHidden: true, documentCount: 3 }), 3)
+  assert.equal(documentCountOf({ applicantHidden: true, documentCount: null }), null)
+  assert.equal(recipientsLabel({ status: 'sent', recipientSummary: 'ops@x.com +1', recipientCount: 2 }), 'ops@x.com +1')
+  assert.equal(recipientsLabel({ status: 'sent', recipientSummary: '', recipientCount: 2 }), '2')
+  assert.equal(recipientsLabel({ status: 'failed', recipientSummary: 'ops@x.com' }), '—')
+})
+
+test('the preview is always labelled as rebuilt, and warns when it may differ from what was sent', () => {
+  assert.equal(previewNotice(null), null)
+  const same = previewNotice({ templateVersion: 'loan-application/v2', sentTemplateVersion: 'loan-application/v2', applicationChangedSinceSent: false })
+  assert.equal(same.severity, 'info')
+  assert.match(same.notes[0], /not a stored copy/)
+  const old = previewNotice({ templateVersion: 'loan-application/v2', sentTemplateVersion: null, applicationChangedSinceSent: false })
+  assert.equal(old.severity, 'warning')
+  assert.match(old.notes[1], /earlier, shorter layout/)
+  const changed = previewNotice({ templateVersion: 'v2', sentTemplateVersion: 'v2', applicationChangedSinceSent: true })
+  assert.match(changed.notes[1], /changed since/)
+})
+
+test('history events read as attempts', () => {
+  assert.equal(eventLabel({ attempt: 1, status: 'retrying', code: 'MICROSOFT_UNAVAILABLE' }), 'Attempt 1: Retry scheduled — Microsoft was temporarily unavailable')
+  assert.equal(eventLabel({ attempt: 2, status: 'sent', code: 'SENT' }), 'Attempt 2: Accepted by Microsoft')
+  assert.equal(eventLabel({ attempt: null, status: 'unconfirmed', code: 'SEND_UNCONFIRMED' }), 'Delivery uncertain — The send did not complete — delivery is uncertain')
 })

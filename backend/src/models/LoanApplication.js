@@ -56,6 +56,19 @@ const loanApplicationSchema = new mongoose.Schema({
     panCardUrl: { type: String, trim: true },
     bankStatementUrl: { type: String, trim: true },
     businessProofUrl: { type: String, trim: true },
+    // What was uploaded for each document, recorded at submission: the
+    // sanitised original filename, its size and the type multer accepted.
+    // Keyed by the URL field above. Absent on applications submitted before it
+    // was recorded — those show the stored file name instead.
+    documentFiles: {
+        type: Map,
+        of: new mongoose.Schema({
+            originalName: { type: String, trim: true, maxlength: 150 },
+            size: { type: Number, min: 0 },
+            mimeType: { type: String, trim: true, maxlength: 100 }
+        }, { _id: false }),
+        default: undefined
+    },
 
     // Consent captured at submission. The UI has always required the tick; it
     // was simply never transmitted. Recorded here with the moment it was given.

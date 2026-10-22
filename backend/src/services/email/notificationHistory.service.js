@@ -1,4 +1,8 @@
 const LoanApplicationNotification = require('../../models/LoanApplicationNotification');
+const LoanApplication = require('../../models/LoanApplication');
+const { DOCUMENT_TYPES, describeDocuments } = require('../loanApplications/applicationDocuments');
+const { productOf } = require('../loanApplications/applicationFields');
+const { buildLoanApplicationEmail, adminApplicationUrl } = require('./loanApplicationEmail');
 const { AppError } = require('../../middleware/errorHandler');
 const HTTP_STATUS = require('../../constants/httpStatus');
 const logger = require('../../utils/logger');
@@ -8,9 +12,10 @@ const notifications = require('./loanNotification.service');
 // The Email Delivery Log: what happened to each "New Loan Application
 // Received" email, read from the delivery records Phase 3 writes.
 //
-// Every row is built by viewOf() from a fixed list of fields. The records hold
-// no applicant data or recipient addresses to begin with; the whitelist keeps
-// it that way if the model ever grows.
+// Every row is built by viewOf() from a fixed list of fields. The delivery
+// records hold no applicant data; the applicant's name, product and document
+// count are read from the application itself, and only for a viewer who also
+// holds Loan Applications view (the log on its own needs API Settings view).
 
 // A failed record closed as SEND_UNCONFIRMED is its own state here: Microsoft
 // may or may not have accepted the message, which is different from a refusal.
@@ -29,6 +34,14 @@ const isRetryable = (record) => record.status === 'retrying'
     && record.outcomeCode !== 'THROTTLED'
     && record.attempts < notifications.maxAttempts();
 
+// Staff addresses as "first@… +2": enough to recognise, short enough for a
+// table cell. Records from before addresses were kept show only the count.
+const recipientSummaryOf = (record) => {
+    const list = record.recipients || [];
+    if (!list.length) return record.recipientCount ? `${record.recipientCount} recipient${record.recipientCount === 1 ? '' : 's'}` : '';
+    return list.length === 1 ? list[0] : `${list[0]} +${list.length - 1}`;
+};
+
 const viewOf = (record) => ({
     id: String(record._id),
     applicationNumber: record.applicationNumber,
@@ -37,6 +50,7 @@ const viewOf = (record) => ({
     attempts: record.attempts,
     maxAttempts: notifications.maxAttempts(),
     recipientCount: record.recipientCount,
+    recipientSummary: recipientSummaryOf(record),
     createdAt: record.createdAt,
     lastAttemptAt: record.lastAttemptAt,
     nextAttemptAt: record.status === 'pending' || record.status === 'retrying' ? record.nextAttemptAt : null,
@@ -44,7 +58,37 @@ const viewOf = (record) => ({
     retryable: isRetryable(record)
 });
 
-const FIELDS = 'applicationNumber status outcomeCode attempts recipientCount createdAt lastAttemptAt nextAttemptAt sentAt';
+const FIELDS = 'application applicationNumber status outcomeCode attempts recipientCount recipients content.documents createdAt lastAttemptAt nextAttemptAt sentAt';
+
+// The application columns for a page of records — one query (plus one for
+// products) whatever the page size. Only for viewers who also hold Loan
+// Applications view: the applicant's name is applicant data.
+const APPLICATION_COLUMNS = `applicationNumber fullName loanType product createdAt ${DOCUMENT_TYPES.map((d) => d.field).join(' ')}`;
+
+const applicationColumnsFor = async (records) => {
+    const ids = [...new Set(records.map((r) => String(r.application)).filter(Boolean))];
+    if (!ids.length) return new Map();
+    const apps = await LoanApplication.find({ _id: { $in: ids } })
+        .select(APPLICATION_COLUMNS)
+        .populate('product', 'name')
+        .lean();
+    return new Map(apps.map((a) => [String(a._id), a]));
+};
+
+const documentCountOf = (app) => DOCUMENT_TYPES.filter((d) => !!app[d.field]).length;
+
+const withApplication = (view, app) => {
+    if (!app) return { ...view, applicant: null, applicationMissing: true };
+    return {
+        ...view,
+        applicationMissing: false,
+        applicant: {
+            name: app.fullName,
+            product: productOf(app).label,
+            documentCount: documentCountOf(app)
+        }
+    };
+};
 
 // The query for a display status. `failed` excludes the unconfirmed ones.
 const statusQuery = (status) => {
@@ -62,7 +106,7 @@ const dateQuery = ({ from, to }) => {
     return Object.keys(createdAt).length ? { createdAt } : {};
 };
 
-const list = async ({ status, from, to, page = 1, limit = 20 }) => {
+const list = async ({ status, from, to, page = 1, limit = 20, includeApplicant = false }) => {
     const range = dateQuery({ from, to });
     const query = { ...range, ...statusQuery(status) };
 
@@ -88,10 +132,91 @@ const list = async ({ status, from, to, page = 1, limit = 20 }) => {
         if (key in counts) counts[key] += g.n;
     }
 
+    let notifications = records.map(viewOf);
+    if (includeApplicant) {
+        const apps = await applicationColumnsFor(records);
+        notifications = notifications.map((v, i) => withApplication(v, apps.get(String(records[i].application))));
+    } else {
+        // Without Loan Applications access: no applicant data, only how many
+        // documents the email listed (from the delivery record itself).
+        notifications = notifications.map((v, i) => ({
+            ...v,
+            applicant: null,
+            applicantHidden: true,
+            documentCount: (records[i].content?.documents || []).filter((d) => d.status !== 'not_provided').length || null
+        }));
+    }
+
     return {
-        notifications: records.map(viewOf),
+        notifications,
         counts,
+        applicantDetails: includeApplicant,
         pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) }
+    };
+};
+
+// One record in full, for the log's detail view. The delivery history is
+// always included; the application, its documents and the email preview only
+// for viewers who also hold Loan Applications view.
+//
+// The preview is regenerated from the application as it is now, with the
+// current template. The delivery record keeps what the email contained (its
+// template version, subject, field list and document statuses), not the
+// applicant's values, so the exact historical email is not stored; the
+// response says so, and says whether the template or the application has
+// changed since it was built.
+const detail = async (id, { includeApplicant = false } = {}) => {
+    const record = await LoanApplicationNotification.findById(id).lean();
+    if (!record) throw new AppError('Notification not found', HTTP_STATUS.NOT_FOUND);
+
+    const delivery = {
+        ...viewOf(record),
+        recipients: record.recipients || null,
+        events: (record.events || []).map((e) => ({ at: e.at, attempt: e.attempt, status: e.status === 'failed' && e.code === UNCONFIRMED ? 'unconfirmed' : e.status, code: e.code })),
+        sent: record.content
+            ? {
+                templateVersion: record.content.templateVersion,
+                subject: record.content.subject,
+                generatedAt: record.content.generatedAt,
+                fields: record.content.fields || [],
+                documents: record.content.documents || []
+            }
+            : null
+    };
+    if (!includeApplicant) return { delivery, applicantHidden: true, application: null, documents: null, preview: null };
+
+    const application = await LoanApplication.findById(record.application).populate('product', 'name');
+    if (!application) return { delivery, applicantHidden: false, applicationMissing: true, application: null, documents: null, preview: null };
+
+    const documents = await describeDocuments(application);
+    const email = buildLoanApplicationEmail({ application, documents });
+    const builtAt = record.content?.generatedAt || record.sentAt || record.lastAttemptAt;
+    return {
+        delivery,
+        applicantHidden: false,
+        applicationMissing: false,
+        application: {
+            id: String(application._id),
+            applicationNumber: application.applicationNumber,
+            applicantName: application.fullName,
+            product: email.description.product.label,
+            submittedAt: application.createdAt,
+            status: application.status,
+            adminUrl: adminApplicationUrl(application._id),
+            summary: email.description.summary,
+            sections: email.description.sections
+        },
+        documents,
+        preview: {
+            exact: false,
+            kind: 'regenerated',
+            subject: email.subject,
+            html: email.html,
+            text: email.text,
+            templateVersion: email.templateVersion,
+            sentTemplateVersion: record.content?.templateVersion || null,
+            applicationChangedSinceSent: !!(builtAt && application.updatedAt && application.updatedAt > builtAt)
+        }
     };
 };
 
@@ -124,4 +249,4 @@ const retryNow = async (id, userId) => {
     return viewOf(after);
 };
 
-module.exports = { list, retryNow, DISPLAY_STATUSES, isRetryable, viewOf };
+module.exports = { list, detail, retryNow, DISPLAY_STATUSES, isRetryable, viewOf };

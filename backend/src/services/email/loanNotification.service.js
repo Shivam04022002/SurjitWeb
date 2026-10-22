@@ -6,6 +6,8 @@ const logger = require('../../utils/logger');
 const graph = require('./microsoftGraph');
 const emailConfig = require('./emailConfig.service');
 const { buildLoanApplicationEmail, buildMime } = require('./loanApplicationEmail');
+const { describeDocuments } = require('../loanApplications/applicationDocuments');
+const { fieldKeysOf } = require('../loanApplications/applicationFields');
 const { normaliseEmail } = require('./emailRules');
 
 // "New Loan Application Received" emails.
@@ -56,9 +58,14 @@ const whenIdle = async () => { while (inFlight.size) await Promise.allSettled([.
 // The recipients, from the saved Email Settings only — never from a request.
 const recipientsOf = (doc) => [...new Set([doc.primaryRecipient, ...(doc.additionalRecipients || [])].map(normaliseEmail).filter(Boolean))];
 
+const MAX_EVENTS = 20;
+
 const finish = (record, $set) => LoanApplicationNotification.updateOne(
     { _id: record._id, status: 'sending' },
-    { $set: { lockedUntil: null, ...$set } }
+    {
+        $set: { lockedUntil: null, ...$set },
+        $push: { events: { $each: [{ at: new Date(), attempt: record.attempts, status: $set.status, code: $set.outcomeCode || '' }], $slice: -MAX_EVENTS } }
+    }
 );
 
 // One claimed attempt. Returns the outcome it recorded.
@@ -78,30 +85,47 @@ const attempt = async (record) => {
         throw err;
     }
 
+    // The whole saved application, by the id on the record — the email is
+    // built from what was persisted, never from the request.
     const application = await LoanApplication.findById(record.application)
-        .select('applicationNumber fullName loanType product createdAt')
         .populate('product', 'name');
     if (!application) return { status: 'skipped', outcomeCode: 'APPLICATION_NOT_FOUND' };
 
     const to = recipientsOf(sending.doc);
     // The provider can be set up before anyone is named on Email Settings.
     if (!to.length) return { status: 'skipped', outcomeCode: 'NO_RECIPIENTS' };
-    const email = buildLoanApplicationEmail({ application, productName: application.product?.name || null });
+    // Document statuses ask storage whether each file is there; a storage
+    // problem marks that document unverified rather than stopping the email.
+    const documents = await describeDocuments(application);
+    const email = buildLoanApplicationEmail({ application, documents });
     const mime = buildMime({
         from: { address: sending.doc.senderEmail, name: sending.doc.senderName },
         to,
-        ...email
+        subject: email.subject,
+        text: email.text,
+        html: email.html
     });
+    // What was built, recorded whatever happens to the send.
+    const built = {
+        recipients: to,
+        content: {
+            templateVersion: email.templateVersion,
+            subject: email.subject,
+            generatedAt: new Date(),
+            fields: fieldKeysOf(email.description),
+            documents: documents.map((d) => ({ type: d.type, label: d.label, status: d.status }))
+        }
+    };
 
     try {
         await graph.sendMime(sending.credentials, { sender: sending.doc.senderEmail, mime });
-        return { status: 'sent', outcomeCode: 'SENT', sentAt: new Date(), recipientCount: to.length };
+        return { status: 'sent', outcomeCode: 'SENT', sentAt: new Date(), recipientCount: to.length, ...built };
     } catch (err) {
         if (!(err instanceof graph.MicrosoftError)) throw err;
         const retry = RETRYABLE.has(err.code) && record.attempts < maxAttempts();
         return retry
-            ? { status: 'retrying', outcomeCode: err.code, nextAttemptAt: new Date(Date.now() + backoffFor(record.attempts, err.retryAfter)) }
-            : { status: 'failed', outcomeCode: err.code };
+            ? { status: 'retrying', outcomeCode: err.code, nextAttemptAt: new Date(Date.now() + backoffFor(record.attempts, err.retryAfter)), ...built }
+            : { status: 'failed', outcomeCode: err.code, ...built };
     }
 };
 
@@ -166,7 +190,10 @@ const sweep = async () => {
     const now = new Date();
     const stale = await LoanApplicationNotification.updateMany(
         { status: 'sending', lockedUntil: { $lt: now } },
-        { $set: { status: 'failed', outcomeCode: 'SEND_UNCONFIRMED', lockedUntil: null } }
+        {
+            $set: { status: 'failed', outcomeCode: 'SEND_UNCONFIRMED', lockedUntil: null },
+            $push: { events: { $each: [{ at: now, attempt: null, status: 'failed', code: 'SEND_UNCONFIRMED' }], $slice: -MAX_EVENTS } }
+        }
     );
     if (stale.modifiedCount) logger.warn('Loan application emails interrupted mid-send were not retried', { count: stale.modifiedCount });
 

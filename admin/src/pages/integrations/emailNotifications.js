@@ -96,3 +96,41 @@ export const attemptsLabel = (row) => `${row.attempts} of ${row.maxAttempts}`
 // The Retry now button: shown only when the server marked the row retryable
 // and the viewer may edit. The server checks both again.
 export const canRetry = (row, { canEdit }) => !!(canEdit && row?.retryable)
+
+// ── Applicant columns and the details view ────────────────────────────────────
+
+// The applicant line under the application number: name and product when the
+// viewer may see applicant data, otherwise why not.
+export const applicantLine = (row) => {
+  if (row?.applicant) return { name: row.applicant.name, product: row.applicant.product }
+  if (row?.applicationMissing) return { name: 'Application no longer exists', product: '' }
+  if (row?.applicantHidden) return { name: 'Applicant hidden', product: 'Needs Loan Applications access' }
+  return { name: '', product: '' }
+}
+
+export const documentCountOf = (row) => {
+  const n = row?.applicant ? row.applicant.documentCount : row?.documentCount
+  return typeof n === 'number' ? n : null
+}
+
+// Recipients as shown in the table: only for an email Microsoft accepted.
+export const recipientsLabel = (row) => (row?.status === 'sent' ? (row.recipientSummary || String(row.recipientCount ?? '')) : '—')
+
+// What the preview in the details view is — said plainly, because it is
+// rebuilt now and is not a stored copy of the email that went out.
+export const previewNotice = (preview) => {
+  if (!preview) return null
+  const notes = ['This preview is rebuilt now from the application with the current template. It is not a stored copy of the email that was sent.']
+  if (!preview.sentTemplateVersion) notes.push('This email was sent before the template version was recorded (it used the earlier, shorter layout), so the email sent looked different.')
+  else if (preview.sentTemplateVersion !== preview.templateVersion) notes.push(`The email was sent with template ${preview.sentTemplateVersion}; the preview uses ${preview.templateVersion}.`)
+  if (preview.applicationChangedSinceSent) notes.push('The application has changed since the email was built (for example its status), so some values may differ from what was sent.')
+  return { severity: notes.length > 1 ? 'warning' : 'info', notes }
+}
+
+// One attempt in the delivery history.
+export const eventLabel = (event) => {
+  const what = statusMeta(event.status).label
+  const attempt = event.attempt ? `Attempt ${event.attempt}: ` : ''
+  const code = event.code && event.status !== 'sent' ? ` — ${outcomeLabel(event.code)}` : ''
+  return `${attempt}${what}${code}`
+}

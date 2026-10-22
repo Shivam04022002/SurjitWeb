@@ -2,10 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Box, Container, Typography, IconButton, Tooltip, Stack, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-  InputAdornment, Button, Divider, Link
+  InputAdornment, Button, Divider
 } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
-import { Search, Visibility, OpenInNew } from '@mui/icons-material'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Search, Visibility } from '@mui/icons-material'
+import DocumentList from './DocumentList'
+import { applicationIdFromSearch } from './loanDocuments'
 import { loanApplicationService } from '../../services/loanApplication.service'
 import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -43,13 +46,6 @@ const money = (n) => (typeof n === 'number' ? '₹' + n.toLocaleString('en-IN') 
 // They are shown as unassociated rather than guessed at.
 const NOT_ASSOCIATED = 'Not associated'
 
-// Documents live in S3 and are stored as absolute URLs on the application.
-const DOCUMENTS = [
-  { key: 'aadhaarCardUrl', label: 'Aadhaar Card' },
-  { key: 'panCardUrl', label: 'PAN Card' },
-  { key: 'bankStatementUrl', label: 'Bank Statement' },
-  { key: 'businessProofUrl', label: 'Business Proof' }
-]
 
 const Row = ({ label, value }) => (
   <Typography variant="body2" sx={{ mb: 0.5 }}>
@@ -68,6 +64,11 @@ const LoanApplicationsPage = () => {
   const [product, setProduct] = useState('')
   const [products, setProducts] = useState([])
   const [viewing, setViewing] = useState(null)
+  // Each document's name and status, from the detail endpoint (which no
+  // longer returns storage addresses).
+  const [viewingDocs, setViewingDocs] = useState([])
+  const location = useLocation()
+  const navigate = useNavigate()
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
   const perms = usePermissions()
   const [statusDialog, setStatusDialog] = useState({ open: false, next: '', application: null })
@@ -114,13 +115,39 @@ const LoanApplicationsPage = () => {
 
   // The list deliberately omits PAN, Aadhaar, DOB and address; the detail
   // endpoint supplies them only when a row is opened.
-  const openDetail = async (id) => {
+  const openDetail = useCallback(async (id) => {
     try {
       const res = await loanApplicationService.getApplicationById(id)
       setViewing(res?.data?.application || null)
+      setViewingDocs(res?.data?.documents || [])
     } catch (err) {
-      showToast(err?.response?.data?.message || 'Failed to load application', 'error')
+      setToast({ open: true, message: err?.response?.data?.message || 'Failed to load application', severity: 'error' })
     }
+  }, [])
+
+  // The notification email's "View Application" link lands here with
+  // ?application=<id>; the page itself is behind the Loan Applications
+  // permission, and the detail request is checked again by the server.
+  const linkedId = applicationIdFromSearch(location.search)
+  useEffect(() => {
+    if (!linkedId) return undefined
+    let cancelled = false
+    loanApplicationService.getApplicationById(linkedId)
+      .then((res) => {
+        if (cancelled) return
+        setViewing(res?.data?.application || null)
+        setViewingDocs(res?.data?.documents || [])
+      })
+      .catch((err) => {
+        if (!cancelled) setToast({ open: true, message: err?.response?.data?.message || 'That application could not be opened.', severity: 'error' })
+      })
+    return () => { cancelled = true }
+  }, [linkedId])
+
+  const closeDetail = () => {
+    setViewing(null)
+    setViewingDocs([])
+    if (linkedId) navigate(location.pathname, { replace: true })
   }
 
   // Confirmed status change. The row is updated in place so pagination,
@@ -261,7 +288,7 @@ const LoanApplicationsPage = () => {
         sx={{ bgcolor: 'background.paper' }}
       />
 
-      <Dialog open={!!viewing} onClose={() => setViewing(null)} maxWidth="md" fullWidth>
+      <Dialog open={!!viewing} onClose={closeDetail} maxWidth="md" fullWidth>
         {viewing && (
           <>
             <DialogTitle>
@@ -347,26 +374,14 @@ const LoanApplicationsPage = () => {
               <Divider sx={{ my: 2 }} />
 
               <Typography variant="subtitle2" sx={{ mb: 1 }}>Documents</Typography>
-              {DOCUMENTS.every((d) => !viewing[d.key]) && (
-                <Typography variant="body2" color="text.disabled">No documents uploaded</Typography>
-              )}
-              <Stack spacing={0.5}>
-                {DOCUMENTS.filter((d) => viewing[d.key]).map((d) => (
-                  <Link
-                    key={d.key}
-                    href={viewing[d.key]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    variant="body2"
-                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
-                  >
-                    {d.label} <OpenInNew fontSize="inherit" />
-                  </Link>
-                ))}
-              </Stack>
+              <DocumentList
+                applicationId={viewing._id}
+                documents={viewingDocs}
+                onError={(message) => showToast(message, 'error')}
+              />
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2 }}>
-              <Button onClick={() => setViewing(null)}>Close</Button>
+              <Button onClick={closeDetail}>Close</Button>
             </DialogActions>
           </>
         )}
