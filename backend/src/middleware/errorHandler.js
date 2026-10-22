@@ -1,6 +1,7 @@
 const HTTP_STATUS = require('../constants/httpStatus');
 const logger = require('../utils/logger');
 const { sendError } = require('../utils/response');
+const { redactUrl } = require('../utils/redactUrl');
 
 class AppError extends Error {
     constructor(message, statusCode, errors = []) {
@@ -20,7 +21,7 @@ const errorHandler = (err, req, res, next) => {
     logger.error(err.message, {
         stack: err.stack,
         statusCode: err.statusCode,
-        path: req.originalUrl,
+        path: redactUrl(req.originalUrl),
         method: req.method
     });
 
@@ -32,7 +33,7 @@ const errorHandler = (err, req, res, next) => {
 };
 
 const notFound = (req, res, next) => {
-    next(new AppError(`Route not found: ${req.originalUrl}`, HTTP_STATUS.NOT_FOUND));
+    next(new AppError(`Route not found: ${redactUrl(req.originalUrl)}`, HTTP_STATUS.NOT_FOUND));
 };
 
 module.exports = { errorHandler, notFound, AppError };

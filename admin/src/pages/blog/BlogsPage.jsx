@@ -7,12 +7,13 @@ import {
 import { DataGrid } from '@mui/x-data-grid'
 import {
   Add, Edit, Delete, Search, Article, Public, Unpublished,
-  ContentCopy, OpenInNew
+  ContentCopy, OpenInNew, LinkedIn
 } from '@mui/icons-material'
 import { blogService } from '../../services/blog.service'
 import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
+import LinkedInShareDialog from './LinkedInShareDialog'
 
 const SITE_URL = 'https://surjitfinance.com'
 
@@ -44,6 +45,8 @@ const BlogsPage = () => {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null, title: '' })
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
+  // The blog being shared to LinkedIn, if the dialog is open.
+  const [shareBlog, setShareBlog] = useState(null)
 
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity })
 
@@ -168,7 +171,7 @@ const BlogsPage = () => {
       renderCell: (params) => <Typography variant="body2">{fmt(params.row.updatedAt)}</Typography>
     },
     {
-      field: 'actions', headerName: 'Actions', width: 220, sortable: false, filterable: false,
+      field: 'actions', headerName: 'Actions', width: 260, sortable: false, filterable: false,
       renderCell: (params) => (
         <Stack direction="row" spacing={0}>
           <Tooltip title="Edit">
@@ -196,6 +199,19 @@ const BlogsPage = () => {
               </IconButton>
             </span>
           </Tooltip>
+          {perms.canEdit && (<Tooltip title={params.row.status === 'published' ? 'Share to LinkedIn' : 'Publish to share on LinkedIn'}>
+            <span>
+              <IconButton
+                size="small"
+                aria-label="Share to LinkedIn"
+                disabled={params.row.status !== 'published'}
+                onClick={() => setShareBlog(params.row)}
+                sx={{ color: params.row.status === 'published' ? '#0a66c2' : undefined }}
+              >
+                <LinkedIn fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>)}
           <Tooltip title="Duplicate">
             <IconButton size="small" onClick={() => handleDuplicate(params.row)}>
               <ContentCopy fontSize="small" />
@@ -283,6 +299,13 @@ const BlogsPage = () => {
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setDeleteDialog({ open: false, id: null, title: '' })}
+      />
+
+      <LinkedInShareDialog
+        open={!!shareBlog}
+        blog={shareBlog}
+        onClose={() => setShareBlog(null)}
+        showToast={showToast}
       />
 
       <Toast {...toast} onClose={() => setToast((t) => ({ ...t, open: false }))} />

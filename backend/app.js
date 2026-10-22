@@ -10,6 +10,7 @@ const routes = require('./src/routes');
 const { errorHandler, notFound } = require('./src/middleware/errorHandler');
 const { apiLimiter } = require('./src/middleware/rateLimiters');
 const logger = require('./src/utils/logger');
+const { redactUrl } = require('./src/utils/redactUrl');
 
 const app = express();
 
@@ -44,8 +45,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// HTTP request logging
-app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
+// HTTP request logging. Morgan's combined format, with the URL passed through
+// redactUrl so an OAuth callback's code and state never reach the log.
+morgan.token('safe-url', (req) => redactUrl(req.originalUrl || req.url));
+app.use(morgan(
+    ':remote-addr - :remote-user [:date[clf]] ":method :safe-url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"',
+    { stream: { write: (message) => logger.info(message.trim()) } }
+));
 
 // Static uploads for local fallback
 app.use('/uploads', express.static(path.join(__dirname, 'src', 'uploads')));

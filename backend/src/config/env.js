@@ -96,6 +96,40 @@ const env = {
     // location. No visitor IP is ever stored or sent anywhere.
     GEOIP_CITY_DB_PATH: process.env.GEOIP_CITY_DB_PATH || '',
 
+    // LinkedIn company-page publishing (Share to LinkedIn on the Blogs page).
+    //
+    // The app credentials, page ID, API version and role check are normally
+    // entered on the CMS API Settings page and stored there (the secret
+    // encrypted). Each of these variables, when set, takes precedence and the
+    // CMS shows that field as managed by the server environment — so a value
+    // configured here is never silently overridden from the browser. Empty
+    // means "use the CMS setting, or the default" (see
+    // services/linkedin/linkedinConfig.service.js).
+    LINKEDIN_CLIENT_ID: process.env.LINKEDIN_CLIENT_ID || '',
+    LINKEDIN_CLIENT_SECRET: process.env.LINKEDIN_CLIENT_SECRET || '',
+    // The numeric ID of the Surjit Finance Company Page (the digits in
+    // urn:li:organization:{id}). Posts can only ever be authored as this page.
+    LINKEDIN_ORGANIZATION_ID: process.env.LINKEDIN_ORGANIZATION_ID || '',
+    // LinkedIn-Version header, YYYYMM (default in the config service).
+    LINKEDIN_API_VERSION: process.env.LINKEDIN_API_VERSION || '',
+    // Space-separated OAuth scopes; when set, replaces the CMS's role-check
+    // switch. w_organization_social is always required.
+    LINKEDIN_SCOPES: process.env.LINKEDIN_SCOPES || '',
+    // Deployment setting, environment only: this API's own callback address,
+    // registered exactly on the LinkedIn app. Never editable from the CMS, so
+    // the browser can never choose where LinkedIn sends an authorization code.
+    LINKEDIN_REDIRECT_URI: process.env.LINKEDIN_REDIRECT_URI || '',
+    LINKEDIN_TIMEOUT_MS: parseInt(process.env.LINKEDIN_TIMEOUT_MS || '20000', 10),
+    // After uploading the featured image LinkedIn processes it; the post is
+    // created only once it is AVAILABLE. Polls this often, this many times.
+    LINKEDIN_IMAGE_POLL_MS: parseInt(process.env.LINKEDIN_IMAGE_POLL_MS || '2000', 10),
+    LINKEDIN_IMAGE_POLL_ATTEMPTS: parseInt(process.env.LINKEDIN_IMAGE_POLL_ATTEMPTS || '15', 10),
+    LINKEDIN_PUBLISH_RATE_LIMIT_WINDOW_MS: parseInt(process.env.LINKEDIN_PUBLISH_RATE_LIMIT_WINDOW_MS || '3600000', 10), // 1 hour
+    LINKEDIN_PUBLISH_RATE_LIMIT_MAX: parseInt(process.env.LINKEDIN_PUBLISH_RATE_LIMIT_MAX || '20', 10),
+    // The public website, e.g. https://surjitfinance.com. A blog's canonical
+    // address is {PUBLIC_SITE_URL}/blogs/{slug}; sharing is refused while unset.
+    PUBLIC_SITE_URL: process.env.PUBLIC_SITE_URL || '',
+
     // Encrypts integration secrets at rest. Falls back to a key derived from
     // JWT_ACCESS_SECRET, so rotating that secret without setting this one
     // means stored integration keys must be re-entered.

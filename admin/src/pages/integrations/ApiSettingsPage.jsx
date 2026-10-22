@@ -12,6 +12,8 @@ import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
 import PexelsSettingsCard from './PexelsSettingsCard'
 import EmailProviderCard from './EmailProviderCard'
+import LinkedInSettingsCard from './LinkedInSettingsCard'
+import { callbackMessage } from '../blog/linkedinShare'
 import { parseModelList, formatModelList } from './modelList'
 
 const FALLBACK_SOURCE_LABELS = {
@@ -58,9 +60,25 @@ const ApiSettingsPage = () => {
   const [fallbackText, setFallbackText] = useState('')
   const [fallbackBusy, setFallbackBusy] = useState('')
   const [fallbackError, setFallbackError] = useState('')
-  const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
+  // LinkedIn sends the admin back here with ?linkedin=<result>. Only known
+  // result words produce a message, shown on arrival.
+  const [toast, setToast] = useState(() => {
+    const message = callbackMessage(new URLSearchParams(window.location.search).get('linkedin'))
+    return message
+      ? { open: true, message: message[1], severity: message[0] }
+      : { open: false, message: '', severity: 'success' }
+  })
 
   const showToast = useCallback((message, severity = 'success') => setToast({ open: true, message, severity }), [])
+
+  // ...and the result word is then dropped from the address, so a reload
+  // does not show the message again.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has('linkedin')) return
+    url.searchParams.delete('linkedin')
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [])
 
   const applyConfig = (c) => {
     setConfig(c)
@@ -417,6 +435,10 @@ const ApiSettingsPage = () => {
 
         <Grid item xs={12}>
           <EmailProviderCard showToast={showToast} />
+        </Grid>
+
+        <Grid item xs={12}>
+          <LinkedInSettingsCard showToast={showToast} />
         </Grid>
       </Grid>
 

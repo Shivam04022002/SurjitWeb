@@ -136,6 +136,22 @@ const emailTestLimiter = rateLimit({
     }
 });
 
+// ── LinkedIn (per admin account) ─────────────────────────────────────────────
+// Publishing posts publicly as the company page, and starting a LinkedIn
+// sign-in. Keyed on the signed-in admin; mounted after `auth`.
+const linkedinPublishLimiter = rateLimit({
+    windowMs: env.LINKEDIN_PUBLISH_RATE_LIMIT_WINDOW_MS,
+    max: env.LINKEDIN_PUBLISH_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => `admin:${req.user ? req.user._id : req.ip}`,
+    message: {
+        success: false,
+        message: 'LinkedIn request limit reached for this hour. Please try again later.',
+        errors: []
+    }
+});
+
 const resetLoginLimiter = (req) => {
     try {
         loginLimiter.resetKey(loginKey(req));
@@ -151,6 +167,7 @@ module.exports = {
     analyticsTrackLimiter,
     geminiLimiter,
     emailTestLimiter,
+    linkedinPublishLimiter,
     loanApplicationLimiter,
     loanStatusLimiter,
     resetLoginLimiter,
