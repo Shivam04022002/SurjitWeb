@@ -5,6 +5,10 @@ import './Navbar.css';
 import fallbackLogo from "../assets/logo-4-2048x319.png";
 import { useSettings, useActiveProductCategories } from '../hooks';
 
+// Must match the breakpoint in Navbar.css where the menu becomes a panel.
+const MOBILE_NAV_QUERY = '(max-width: 1024px)';
+const isMobileNav = () => window.matchMedia(MOBILE_NAV_QUERY).matches;
+
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -42,6 +46,44 @@ const Navbar = () => {
     setIsOpen(false);
     setActiveDropdown(null);
   }, [location]);
+
+  // While the panel is open the page behind it stays put: a swipe scrolls the
+  // menu, never the page. Overflow is hidden rather than the body being fixed,
+  // so the reader's place on the page is kept and nothing jumps to the top.
+  // The scrollbar's width is padded back where there is one (a narrow desktop
+  // window), so the page does not shift sideways.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const { documentElement: html, body } = document;
+    const previous = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      bodyPaddingRight: body.style.paddingRight,
+    };
+    const scrollbar = window.innerWidth - html.clientWidth;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+    return () => {
+      html.style.overflow = previous.htmlOverflow;
+      body.style.overflow = previous.bodyOverflow;
+      body.style.paddingRight = previous.bodyPaddingRight;
+    };
+  }, [isOpen]);
+
+  // Widening past the breakpoint hides the panel, so close it rather than
+  // leave the page locked behind a menu that is no longer shown.
+  useEffect(() => {
+    const query = window.matchMedia(MOBILE_NAV_QUERY);
+    const handleChange = (e) => {
+      if (!e.matches) {
+        setIsOpen(false);
+        setActiveDropdown(null);
+      }
+    };
+    query.addEventListener('change', handleChange);
+    return () => query.removeEventListener('change', handleChange);
+  }, []);
 
   const navLinks = [
     { name: 'Home', path: '/' },
@@ -81,6 +123,23 @@ const Navbar = () => {
     setActiveDropdown(activeDropdown === index ? null : index);
   };
 
+  // In the mobile panel the label still opens its page, and the chevron opens
+  // the sub-links instead — otherwise a tap would always navigate away and the
+  // dropdown links could never be reached on a phone. On desktop the chevron
+  // is part of the link, as before.
+  const handleChevron = (e, index) => {
+    if (!isMobileNav()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toggleDropdown(index);
+  };
+
+  // Hover opens dropdowns on desktop only. A tap fires an emulated mouseenter,
+  // which would open the dropdown a moment before the chevron toggled it shut.
+  const handleHover = (index) => {
+    if (!isMobileNav()) setActiveDropdown(index);
+  };
+
   return (
     <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`}>
       <div className="navbar-container">
@@ -118,8 +177,8 @@ const Navbar = () => {
             <div
               key={index}
               className={`nav-item ${activeDropdown === index ? 'dropdown-open' : ''}`}
-              onMouseEnter={() => link.dropdown && setActiveDropdown(index)}
-              onMouseLeave={() => setActiveDropdown(null)}
+              onMouseEnter={() => link.dropdown && handleHover(index)}
+              onMouseLeave={() => handleHover(null)}
             >
               {/* If the item has a dropdown but no direct page, use a span trigger */}
               {link.dropdown && !link.hasPage ? (
@@ -137,7 +196,17 @@ const Navbar = () => {
                   onClick={() => link.dropdown && toggleDropdown(index)}
                 >
                   {link.name}
-                  {link.dropdown && <ChevronDown size={16} className={`chevron-icon ${activeDropdown === index ? 'rotated' : ''}`} />}
+                  {link.dropdown && (
+                    <span
+                      className="chevron-hit"
+                      role="button"
+                      aria-label={`${activeDropdown === index ? 'Hide' : 'Show'} ${link.name} links`}
+                      aria-expanded={activeDropdown === index}
+                      onClick={(e) => handleChevron(e, index)}
+                    >
+                      <ChevronDown size={16} className={`chevron-icon ${activeDropdown === index ? 'rotated' : ''}`} />
+                    </span>
+                  )}
                 </Link>
               )}
 
@@ -190,7 +259,8 @@ const Navbar = () => {
           <button
             className="navbar-toggle"
             onClick={() => setIsOpen(!isOpen)}
-            aria-label="Toggle menu"
+            aria-label={isOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isOpen}
           >
             {isOpen ? <X size={24} /> : <Menu size={24} />}
           </button>

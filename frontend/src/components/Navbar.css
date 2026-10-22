@@ -102,6 +102,12 @@
     transform: rotate(180deg);
 }
 
+/* Wraps the chevron so it can be its own tap target on mobile. On desktop it
+   generates no box, so the icon lays out exactly as it did unwrapped. */
+.chevron-hit {
+    display: contents;
+}
+
 /* ================= DROPDOWN ================= */
 
 .dropdown-menu {
@@ -191,19 +197,47 @@
 
 @media (max-width: 1024px) {
 
+    /* The panel hangs off the bottom of the header rather than the viewport.
+       It used to be position: fixed with top: 70px / bottom: 0, but once the
+       page scrolls .navbar.scrolled gains a backdrop-filter, which makes the
+       navbar the containing block for fixed children: the panel was then
+       sized against the 68px header and collapsed to a strip. Absolute
+       positioning is relative to the navbar on purpose, so top: 100% always
+       meets the header's real edge (79px at the top, 68px scrolled) and the
+       height is whatever of the viewport is left below it. */
     .navbar-menu {
-        position: fixed;
-        top: 70px;
+        position: absolute;
+        top: 100%;
         left: 0;
         right: 0;
-        bottom: 0;
+        height: calc(100vh - 100%);
+        height: calc(100dvh - 100%);
         flex-direction: column;
         align-items: stretch;
         padding: 30px;
+        padding-bottom: calc(30px + env(safe-area-inset-bottom, 0px));
         background: white;
         transform: translateX(-100%);
         transition: transform 0.3s ease;
+        overflow-x: hidden;
         overflow-y: auto;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* A long list must not be squeezed to fit: each row keeps its height and
+       the panel scrolls instead. */
+    .navbar-menu > .nav-item {
+        flex-shrink: 0;
+    }
+
+    /* Expands the dropdown without following the link. The padding is the
+       touch target; the negative margin keeps the chevron where it was. */
+    .chevron-hit {
+        display: inline-flex;
+        padding: 12px;
+        margin: -12px -12px -12px -6px;
+        cursor: pointer;
     }
 
     .navbar-menu.active {
