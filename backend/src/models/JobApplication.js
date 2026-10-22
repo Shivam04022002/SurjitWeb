@@ -8,6 +8,10 @@ const jobApplicationSchema = new mongoose.Schema({
     phone: { type: String, required: true, trim: true },
     resumeUrl: { type: String, trim: true, default: '' },
     resumeFileName: { type: String, trim: true, default: '' },
+    // The name the applicant's file had, sanitised, recorded at submission.
+    // Empty on applications from before it was kept; those show the stored
+    // file's generated name instead.
+    resumeOriginalName: { type: String, trim: true, default: '', maxlength: 150 },
     appliedPosition: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'JobOpening',

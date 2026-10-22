@@ -9,6 +9,7 @@ const env = require('../config/env');
 const { loanTypeForCategorySlug } = require('../constants/loanTypes');
 const loanNotifications = require('../services/email/loanNotification.service');
 const { fileMetaOf, openDocument, describeDocuments, DOCUMENT_TYPES } = require('../services/loanApplications/applicationDocuments');
+const { sendOpenedFile } = require('../services/storage/privateFiles');
 const logger = require('../utils/logger');
 
 // Fields a public applicant is allowed to supply. Everything else the model
@@ -217,21 +218,8 @@ const downloadDocument = asyncHandler(async (req, res) => {
     if (!doc) throw new AppError('This application has no such document in the CMS storage', HTTP_STATUS.NOT_FOUND);
     if (doc.missing) throw new AppError('The document file is missing from storage', HTTP_STATUS.NOT_FOUND);
 
-    // RFC 6266: an ASCII fallback plus the UTF-8 name.
-    const ascii = doc.fileName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_') || 'document';
-    res.set({
-        'Content-Type': doc.contentType,
-        'Content-Disposition': `${doc.inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(doc.fileName || 'document')}`,
-        'Cache-Control': 'no-store, private',
-        'X-Content-Type-Options': 'nosniff',
-        // Nothing in a document may run script or reach anything else.
-        'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
-        'Referrer-Policy': 'no-referrer'
-    });
-    if (doc.length) res.set('Content-Length', String(doc.length));
     logger.info('Loan application document opened', { applicationNumber: application.applicationNumber, type, by: String(req.user?._id || '') });
-    doc.stream.on('error', () => res.destroy());
-    return doc.stream.pipe(res);
+    return sendOpenedFile(res, doc);
 });
 
 // Status change. Mirrors the job-application status endpoint: the status value

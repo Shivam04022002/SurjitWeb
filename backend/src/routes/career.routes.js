@@ -46,6 +46,9 @@ router.post('/jobs/:id/duplicate', [auth, editPage('jobs')], jobsController.dupl
 router.get('/applications/export', [auth, viewPage('jobApplications')], applicationsController.exportApplications);
 router.get('/applications', [auth, viewPage('jobApplications')], applicationsController.getAllApplications);
 router.get('/applications/:id', [auth, viewPage('jobApplications')], applicationsController.getApplicationById);
+// The application's CV, streamed by the server from its own storage. Same
+// permission as reading the application.
+router.get('/applications/:id/resume', [auth, viewPage('jobApplications')], applicationsController.downloadResume);
 router.post('/applications', resumeUpload, submitApplicationValidation, validate, applicationsController.submitApplication);
 router.patch('/applications/:id/status', [auth, editPage('jobApplications')], updateStatusValidation, validate, applicationsController.updateApplicationStatus);
 router.delete('/applications/:id', [auth, editPage('jobApplications')], applicationsController.deleteApplication);

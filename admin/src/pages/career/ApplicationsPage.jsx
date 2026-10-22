@@ -3,16 +3,17 @@ import {
   Box, Container, Typography, Chip, IconButton, Tooltip,
   TextField, InputAdornment, Stack, MenuItem,
   Select, FormControl, InputLabel, Dialog, DialogTitle,
-  DialogContent, DialogActions, Button, Grid, Divider
+  DialogContent, DialogActions, Button, Grid, Divider, CircularProgress
 } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import {
-  Search, Delete, Download, Visibility, FileDownload
+  Search, Delete, Download, Visibility, FileDownload, OpenInNew
 } from '@mui/icons-material'
 import { careerService } from '../../services/career.service'
 import { usePermissions } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Toast from '../../components/Toast'
+import { fileStatus, fileErrorMessage, opensInline, showFile } from '../../utils/privateFiles'
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -42,6 +43,29 @@ const STATUS_LABELS = {
   rejected: 'Rejected'
 }
 
+// The CV line in the details dialog: its name, whether it is in storage, and
+// an Open button when it can be opened.
+const ResumeField = ({ resume, opening, disabled, onOpen }) => {
+  if (!resume || resume.status === 'not_provided') {
+    return <Typography variant="body2" color="text.secondary">No CV was attached.</Typography>
+  }
+  const meta = fileStatus(resume.status)
+  const viewable = ['PDF', 'JPG', 'JPEG', 'PNG', 'WEBP', 'GIF'].includes(resume.fileType)
+  return (
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mt: 0.5 }}>
+      <Typography variant="body2" sx={{ overflowWrap: 'anywhere', flex: 1, minWidth: 0 }}>
+        {resume.fileName || 'CV'}{resume.fileType ? ` (${resume.fileType})` : ''}
+      </Typography>
+      <Chip size="small" color={meta.color} label={meta.label} />
+      {meta.openable && (
+        <Button size="small" onClick={onOpen} disabled={disabled} startIcon={opening ? <CircularProgress size={14} /> : (viewable ? <OpenInNew fontSize="small" /> : <Download fontSize="small" />)}>
+          {viewable ? 'Open' : 'Download'}
+        </Button>
+      )}
+    </Stack>
+  )
+}
+
 const ApplicationsPage = () => {
   const perms = usePermissions()
   const [applications, setApplications] = useState([])
@@ -55,6 +79,7 @@ const ApplicationsPage = () => {
   const [deleting, setDeleting] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' })
+  const [openingResume, setOpeningResume] = useState('')
 
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity })
 
@@ -108,6 +133,34 @@ const ApplicationsPage = () => {
     }
   }
 
+  // The details dialog shows the row at once, then the server's fuller view,
+  // which also says whether the CV is still in storage.
+  const openDetails = async (row) => {
+    setViewDialog({ open: true, app: row })
+    try {
+      const res = await careerService.getApplicationById(row._id)
+      setViewDialog((v) => (v.open && v.app?._id === row._id ? { open: true, app: res.data.application } : v))
+    } catch {
+      // The row already shown is enough; opening the CV reports its own errors.
+    }
+  }
+
+  // Fetches the CV through the API (Job Applications access is checked
+  // there) and only then shows it — no tab is opened for a refused or failed
+  // request, and no storage address reaches the browser.
+  const openResume = async (app) => {
+    setOpeningResume(app._id)
+    try {
+      const blob = await careerService.getResume(app._id)
+      const shown = showFile(blob, app.resume?.fileName)
+      if (shown === 'downloaded' && opensInline(blob.type)) showToast('Pop-ups are blocked, so the CV was downloaded instead.', 'info')
+    } catch (err) {
+      showToast(fileErrorMessage(err?.response?.status, 'CV'), 'error')
+    } finally {
+      setOpeningResume('')
+    }
+  }
+
   const handleExport = () => {
     const url = careerService.getExportUrl()
     const params = new URLSearchParams()
@@ -152,7 +205,7 @@ const ApplicationsPage = () => {
       renderCell: ({ row }) => (
         <Stack direction="row" spacing={0.5}>
           <Tooltip title="View Details">
-            <IconButton size="small" color="primary" onClick={() => setViewDialog({ open: true, app: row })}>
+            <IconButton size="small" color="primary" onClick={() => openDetails(row)}>
               <Visibility fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -161,11 +214,13 @@ const ApplicationsPage = () => {
               <Chip label="Status" size="small" variant="outlined" sx={{ cursor: 'pointer', fontSize: '0.7rem' }} />
             </IconButton>
           </Tooltip>
-          {row.resumeUrl && (
-            <Tooltip title="Download Resume">
-              <IconButton size="small" color="success" onClick={() => window.open(row.resumeUrl, '_blank')}>
-                <Download fontSize="small" />
-              </IconButton>
+          {fileStatus(row.resume?.status).openable && (
+            <Tooltip title="Open CV">
+              <span>
+                <IconButton size="small" color="success" onClick={() => openResume(row)} disabled={!!openingResume} aria-label={`Open CV of ${row.applicantName}`}>
+                  {openingResume === row._id ? <CircularProgress size={16} /> : <Download fontSize="small" />}
+                </IconButton>
+              </span>
             </Tooltip>
           )}
           {perms.canDelete && (<Tooltip title="Delete">
@@ -254,16 +309,10 @@ const ApplicationsPage = () => {
                 <Typography variant="caption" color="text.secondary">Applied On</Typography>
                 <Typography variant="body2">{new Date(viewDialog.app.createdAt).toLocaleString('en-IN')}</Typography>
               </Grid>
-              {viewDialog.app.resumeUrl && (
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">Resume</Typography>
-                  <Box>
-                    <Button size="small" startIcon={<Download />} onClick={() => window.open(viewDialog.app.resumeUrl, '_blank')}>
-                      Download
-                    </Button>
-                  </Box>
-                </Grid>
-              )}
+              <Grid item xs={12}>
+                <Typography variant="caption" color="text.secondary">CV</Typography>
+                <ResumeField resume={viewDialog.app.resume} opening={openingResume === viewDialog.app._id} disabled={!!openingResume} onOpen={() => openResume(viewDialog.app)} />
+              </Grid>
               {viewDialog.app.coverLetter && (
                 <Grid item xs={12}>
                   <Divider sx={{ my: 1 }} />

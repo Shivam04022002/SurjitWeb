@@ -85,6 +85,14 @@ const deleteApplication = async (id) => {
   return response.data
 }
 
+// The application's CV, fetched through the API (which checks Job
+// Applications access) as a file in memory. Its storage address never
+// reaches the browser.
+const getResume = async (id) => {
+  const response = await api.get(`${BASE}/applications/${id}/resume`, { responseType: 'blob' })
+  return response.data
+}
+
 const getExportUrl = () => {
   return `${api.defaults.baseURL}${BASE}/applications/export`
 }
@@ -105,5 +113,6 @@ export const careerService = {
   getApplicationById,
   updateApplicationStatus,
   deleteApplication,
+  getResume,
   getExportUrl
 }
