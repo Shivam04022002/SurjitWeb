@@ -30,7 +30,7 @@ const load = (withSecret = false) => {
 //   recipients  who is told about new loan applications, and whether to tell
 //               them, set on Email Settings. Needed for those emails only.
 const PROVIDER_FIELDS = ['provider', 'authMethod', 'senderName', 'senderEmail', 'tenantId', 'clientId'];
-const RECIPIENT_FIELDS = ['primaryRecipient', 'additionalRecipients', 'notifyNewLoanApplication'];
+const RECIPIENT_FIELDS = ['primaryRecipient', 'additionalRecipients', 'notifyNewLoanApplication', 'recipientProducts'];
 // What a previous test proved depends on these; changing one clears it.
 const CONNECTION_FIELDS = ['provider', 'authMethod', 'senderEmail', 'tenantId', 'clientId'];
 
@@ -50,26 +50,28 @@ const providerMissing = (doc, secretReadable) => {
 // What is missing before loan-application emails have anyone to go to.
 const recipientsMissing = (doc) => (doc?.primaryRecipient ? [] : ['Primary notification recipient']);
 
-// Product Notification Rules as the page shows them: each selected product's
-// name, category and whether it is active, from the catalogue as it is now. A
-// product deleted since it was selected is listed by id alone.
-const productRulesOf = async (doc) => {
-    const productIds = (doc?.notifyProductIds || []).map(String);
-    if (!productIds.length) return { productIds, products: [] };
-    const found = await Product.find({ _id: { $in: productIds } })
-        .select('name isActive category')
-        .populate('category', 'name')
-        .lean();
+// Each additional recipient's product assignment as the page shows it, with
+// every assigned product's name, category and whether it is active, from the
+// catalogue as it is now. A product deleted since it was assigned is listed by
+// id alone. `legacy`: added before assignments existed, so emailed about every
+// application until products are assigned.
+const recipientProductsView = async (doc) => {
+    const additional = doc?.additionalRecipients || [];
+    const assignments = additional.map((email) => ({ email, ...rules.assignmentFor(doc, email) }));
+    const ids = [...new Set(assignments.flatMap((a) => a.productIds))];
+    const found = ids.length
+        ? await Product.find({ _id: { $in: ids } }).select('name isActive category').populate('category', 'name').lean()
+        : [];
     const byId = new Map(found.map((p) => [String(p._id), p]));
-    return {
-        productIds,
-        products: productIds.map((id) => {
+    return assignments.map((a) => ({
+        ...a,
+        products: a.productIds.map((id) => {
             const p = byId.get(id);
             return p
                 ? { _id: id, name: p.name, isActive: !!p.isActive, category: p.category?.name || '', exists: true }
                 : { _id: id, name: '', isActive: false, category: '', exists: false };
         })
-    };
+    }));
 };
 
 const publicStatus = async () => {
@@ -94,10 +96,10 @@ const publicStatus = async () => {
             clientId: doc.clientId,
             primaryRecipient: doc.primaryRecipient,
             additionalRecipients: doc.additionalRecipients,
-            notifyNewLoanApplication: doc.notifyNewLoanApplication
+            notifyNewLoanApplication: doc.notifyNewLoanApplication,
+            // One per additional recipient, in the same order.
+            recipientProducts: await recipientProductsView(doc)
         } : null,
-        // Empty productIds: every application is emailed (no product filter).
-        productRules: await productRulesOf(doc),
         clientSecret: {
             configured: !!doc?.encryptedClientSecret,
             readable: secretReadable,
@@ -120,11 +122,44 @@ const providerSettingsOf = (input) => ({
     clientId: String(input.clientId).trim().toLowerCase()
 });
 
-const recipientSettingsOf = (input) => ({
-    primaryRecipient: rules.normaliseEmail(input.primaryRecipient),
-    additionalRecipients: (input.additionalRecipients || []).map(rules.normaliseEmail),
-    notifyNewLoanApplication: input.notifyNewLoanApplication !== false
-});
+// The recipients and, for each additional recipient, its products. A recipient
+// the request says nothing about keeps its saved assignment — or, if it has
+// none, stays emailed about every application, as before assignments existed.
+// Assignments for removed recipients are dropped. Every product id must name a
+// product in the catalogue: the page's list is a convenience, this check is
+// what counts.
+const recipientSettingsOf = async (input, existing) => {
+    const additionalRecipients = (input.additionalRecipients || []).map(rules.normaliseEmail);
+    const submitted = new Map((input.recipientProducts || []).map((e) => [rules.normaliseEmail(e.email), e]));
+    const saved = new Map((existing?.recipientProducts || []).map((e) => [rules.normaliseEmail(e.email), e]));
+    const recipientProducts = additionalRecipients.flatMap((email) => {
+        const e = submitted.get(email) || saved.get(email);
+        if (!e) return [];
+        return [{
+            email,
+            allProducts: e.allProducts === true,
+            productIds: [...new Set((e.productIds || []).map((id) => String(id).toLowerCase()))]
+        }];
+    });
+
+    const ids = [...new Set(recipientProducts.flatMap((e) => e.productIds))];
+    if (ids.length) {
+        const found = await Product.find({ _id: { $in: ids } }).select('_id').lean();
+        const known = new Set(found.map((p) => String(p._id)));
+        const unknown = ids.filter((id) => !known.has(id));
+        if (unknown.length) {
+            const one = unknown.length === 1;
+            throw fieldError('recipientProducts', `${one ? 'This product does' : 'These products do'} not exist: ${unknown.join(', ')}. Remove ${one ? 'it' : 'them'} and save again.`);
+        }
+    }
+
+    return {
+        primaryRecipient: rules.normaliseEmail(input.primaryRecipient),
+        additionalRecipients,
+        notifyNewLoanApplication: input.notifyNewLoanApplication !== false,
+        recipientProducts
+    };
+};
 
 // A blank client secret keeps the one already stored — the page never has it
 // to send back — so a secret is only ever replaced by a new one, never cleared
@@ -168,7 +203,7 @@ const persist = async (existing, settings, { userId, newSecret = '' }) => {
 const save = async (input, userId) => {
     const existing = await load(true);
     const newSecret = secretToSave(input, existing);
-    await persist(existing, { ...providerSettingsOf(input), ...recipientSettingsOf(input) }, { userId, newSecret });
+    await persist(existing, { ...providerSettingsOf(input), ...(await recipientSettingsOf(input, existing)) }, { userId, newSecret });
     logger.info('Email settings updated', { by: String(userId || ''), secretReplaced: !!newSecret });
     return publicStatus();
 };
@@ -183,32 +218,13 @@ const saveProvider = async (input, userId) => {
     return publicStatus();
 };
 
-// Email Settings: recipients and the notification preference only. The
-// credentials, the secret and the last test are left exactly as they are.
+// Email Settings: recipients, their products and the notification preference
+// only. The credentials, the secret and the last test are left exactly as they
+// are, and nothing is sent or queued.
 const saveRecipients = async (input, userId) => {
     const existing = await load(true);
-    await persist(existing, recipientSettingsOf(input), { userId });
+    await persist(existing, await recipientSettingsOf(input, existing), { userId });
     logger.info('Email notification recipients updated', { by: String(userId || '') });
-    return publicStatus();
-};
-
-// Product Notification Rules: which products' new applications are emailed.
-// Every id must name a product in the catalogue — the page's list is a
-// convenience, this check is what counts. Recipients, credentials and the
-// last test are left as they are, and nothing is sent or queued.
-const saveProductRules = async (input, userId) => {
-    const productIds = [...new Set((input.productIds || []).map((id) => String(id).toLowerCase()))];
-    if (productIds.length) {
-        const found = await Product.find({ _id: { $in: productIds } }).select('_id').lean();
-        const known = new Set(found.map((p) => String(p._id)));
-        const unknown = productIds.filter((id) => !known.has(id));
-        if (unknown.length) {
-            throw fieldError('productIds', `${unknown.length === 1 ? 'This product does' : 'These products do'} not exist: ${unknown.join(', ')}. Remove ${unknown.length === 1 ? 'it' : 'them'} and save again.`);
-        }
-    }
-    const existing = await load(true);
-    await persist(existing, { notifyProductIds: productIds }, { userId });
-    logger.info('Loan email product rules updated', { by: String(userId || ''), products: productIds.length });
     return publicStatus();
 };
 
@@ -319,4 +335,4 @@ const sendTestEmail = async (recipient, actor) => {
     return result;
 };
 
-module.exports = { publicStatus, save, saveProvider, saveRecipients, saveProductRules, testConnection, sendTestEmail, resolveSending, TEST_SUBJECT, PROVIDER_FIELDS, RECIPIENT_FIELDS };
+module.exports = { publicStatus, save, saveProvider, saveRecipients, testConnection, sendTestEmail, resolveSending, TEST_SUBJECT, PROVIDER_FIELDS, RECIPIENT_FIELDS };

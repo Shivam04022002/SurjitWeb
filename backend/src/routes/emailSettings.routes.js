@@ -5,7 +5,7 @@ const validate = require('../middleware/validate');
 const { emailTestLimiter } = require('../middleware/rateLimiters');
 const controller = require('../controllers/emailSettings.controller');
 const {
-    saveEmailSettingsValidation, saveProviderValidation, saveRecipientsValidation, saveProductRulesValidation,
+    saveEmailSettingsValidation, saveProviderValidation, saveRecipientsValidation,
     sendTestEmailValidation, listNotificationsValidation, notificationIdValidation
 } = require('../validators/emailSettings.validator');
 
@@ -25,8 +25,6 @@ router.put('/', canManage, saveEmailSettingsValidation, validate, controller.sav
 // Each leaves the other half untouched.
 router.put('/provider', canManage, saveProviderValidation, validate, controller.saveProvider);
 router.put('/recipients', canManage, saveRecipientsValidation, validate, controller.saveRecipients);
-// Which products' new loan applications are emailed (empty: all of them).
-router.put('/product-rules', canManage, saveProductRulesValidation, validate, controller.saveProductRules);
 router.post('/test-connection', canManage, emailTestLimiter, controller.testConnection);
 router.post('/test-email', canManage, emailTestLimiter, sendTestEmailValidation, validate, controller.sendTestEmail);
 

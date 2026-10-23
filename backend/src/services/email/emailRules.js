@@ -30,16 +30,34 @@ const unsupportedMessage = (provider, authMethod) => {
 };
 
 const MAX_ADDITIONAL_RECIPIENTS = 10;
-const MAX_NOTIFY_PRODUCTS = 100;
+const MAX_RECIPIENT_PRODUCTS = 100;
 
-// Product Notification Rules: whether an application for this product is
-// emailed. An empty list is no filter. `productId` is the product saved on the
-// application (an id, a populated product, or nothing).
-const productSelected = (notifyProductIds, productId) => {
-    const ids = (notifyProductIds || []).map(String);
-    if (!ids.length) return true;
-    const id = productId?._id ?? productId;
-    return !!id && ids.includes(String(id));
+// An additional recipient's product assignment. A recipient with no saved
+// entry predates assignments and keeps receiving every application.
+const assignmentFor = (settings, email) => {
+    const entry = (settings?.recipientProducts || []).find((e) => normaliseEmail(e.email) === normaliseEmail(email));
+    if (!entry) return { allProducts: true, productIds: [], legacy: true };
+    return { allProducts: !!entry.allProducts, productIds: (entry.productIds || []).map(String), legacy: false };
+};
+
+// Who is emailed about one application, from the saved settings and the
+// product saved on the application (an id, a populated product, or nothing):
+//
+//   - the primary recipient, always — whatever the product, or none;
+//   - each additional recipient whose assignment covers the product. An
+//     application without a product reaches only the primary recipient and
+//     any recipient emailed about every application.
+//
+// Addresses are compared without regard to case and each appears once.
+const recipientsFor = (settings, product) => {
+    const productId = product?._id ?? product;
+    const id = productId ? String(productId) : '';
+    const candidates = [settings?.primaryRecipient];
+    for (const email of settings?.additionalRecipients || []) {
+        const a = assignmentFor(settings, email);
+        if (a.allProducts || (id && a.productIds.includes(id))) candidates.push(email);
+    }
+    return [...new Set(candidates.map(normaliseEmail).filter(Boolean))];
 };
 
 // Deliberately the same plain rule as the page: one @, no spaces or control
@@ -67,8 +85,9 @@ module.exports = {
     isSupported,
     unsupportedMessage,
     MAX_ADDITIONAL_RECIPIENTS,
-    MAX_NOTIFY_PRODUCTS,
-    productSelected,
+    MAX_RECIPIENT_PRODUCTS,
+    assignmentFor,
+    recipientsFor,
     isEmail,
     normaliseEmail,
     isTenantId,

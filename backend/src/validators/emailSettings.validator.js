@@ -85,7 +85,34 @@ const recipientRules = [
             }
             return true;
         }),
-    body('notifyNewLoanApplication').optional().isBoolean({ strict: true }).withMessage('notifyNewLoanApplication must be true or false')
+    body('notifyNewLoanApplication').optional().isBoolean({ strict: true }).withMessage('notifyNewLoanApplication must be true or false'),
+    // Optional: a recipient left out keeps its saved products. Whether each id
+    // names a real product is checked by the service against the catalogue.
+    body('recipientProducts')
+        .optional()
+        .isArray({ max: rules.MAX_ADDITIONAL_RECIPIENTS }).withMessage(`recipientProducts must be a list of at most ${rules.MAX_ADDITIONAL_RECIPIENTS} entries`).bail()
+        .custom((list, { req }) => {
+            const additional = new Set((Array.isArray(req.body.additionalRecipients) ? req.body.additionalRecipients : []).map(rules.normaliseEmail));
+            const seen = new Set();
+            for (const entry of list) {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('Each product assignment must name a recipient and its products');
+                const email = rules.normaliseEmail(entry.email);
+                if (!rules.isEmail(entry.email)) throw new Error('Each product assignment must name a valid recipient email address');
+                if (!additional.has(email)) throw new Error('Products can only be assigned to additional recipients in the list');
+                if (seen.has(email)) throw new Error('A recipient has more than one product assignment');
+                seen.add(email);
+                if (entry.allProducts !== undefined && typeof entry.allProducts !== 'boolean') throw new Error('allProducts must be true or false');
+                const ids = entry.productIds ?? [];
+                if (!Array.isArray(ids) || ids.length > rules.MAX_RECIPIENT_PRODUCTS) throw new Error(`Each recipient can have at most ${rules.MAX_RECIPIENT_PRODUCTS} products`);
+                const own = new Set();
+                for (const id of ids) {
+                    if (typeof id !== 'string' || !/^[a-f0-9]{24}$/i.test(id)) throw new Error('Every product must be chosen from the product list');
+                    if (own.has(id.toLowerCase())) throw new Error('A product is assigned to the same recipient more than once');
+                    own.add(id.toLowerCase());
+                }
+            }
+            return true;
+        })
 ];
 
 // PUT /api/v1/email-settings — everything at once, as before the split.
@@ -94,25 +121,6 @@ const saveEmailSettingsValidation = [...providerRules({ required: true }), ...cr
 const saveProviderValidation = [...providerRules({ required: false }), ...credentialRules];
 // PUT /recipients — Email Settings.
 const saveRecipientsValidation = recipientRules;
-
-// PUT /product-rules — Email Settings' Product Notification Rules. An empty
-// list is allowed: it means no product filter. Whether each id names a real
-// product is checked by the service against the catalogue.
-const saveProductRulesValidation = [
-    body('productIds')
-        .exists().withMessage('productIds is required').bail()
-        .isArray({ max: rules.MAX_NOTIFY_PRODUCTS }).withMessage(`productIds must be a list of at most ${rules.MAX_NOTIFY_PRODUCTS} product ids`).bail()
-        .custom((list) => {
-            const seen = new Set();
-            for (const id of list) {
-                if (typeof id !== 'string' || !/^[a-f0-9]{24}$/i.test(id)) throw new Error('Every product must be chosen from the product list');
-                const n = id.toLowerCase();
-                if (seen.has(n)) throw new Error('A product is listed more than once');
-                seen.add(n);
-            }
-            return true;
-        })
-];
 
 const sendTestEmailValidation = [emailField('recipient', 'Test recipient')];
 
@@ -138,6 +146,6 @@ const listNotificationsValidation = [
 const notificationIdValidation = [param('id').isMongoId().withMessage('Invalid notification id')];
 
 module.exports = {
-    saveEmailSettingsValidation, saveProviderValidation, saveRecipientsValidation, saveProductRulesValidation,
+    saveEmailSettingsValidation, saveProviderValidation, saveRecipientsValidation,
     sendTestEmailValidation, listNotificationsValidation, notificationIdValidation
 };

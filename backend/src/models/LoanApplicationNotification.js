@@ -59,8 +59,7 @@ const loanApplicationNotificationSchema = new mongoose.Schema({
     content: { type: contentSchema, default: undefined },
     // One entry per finished attempt, newest last, capped.
     events: { type: [eventSchema], default: undefined },
-    // SENT, DISABLED, NOT_CONFIGURED, PRODUCT_NOT_SELECTED, or the Microsoft
-    // error code.
+    // SENT, DISABLED, NOT_CONFIGURED, or the Microsoft error code.
     outcomeCode: { type: String, default: '', maxlength: 60 }
 }, {
     timestamps: true

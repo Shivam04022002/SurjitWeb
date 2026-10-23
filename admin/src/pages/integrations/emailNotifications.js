@@ -51,7 +51,6 @@ export const OUTCOME_LABELS = {
   DISABLED: 'Loan application emails were turned off in Email Settings',
   NOT_CONFIGURED: 'The email provider was not set up in the API section',
   NO_RECIPIENTS: 'No notification recipient was saved in Email Settings',
-  PRODUCT_NOT_SELECTED: 'Its product is not one of those selected in Product Notification Rules',
   APPLICATION_NOT_FOUND: 'The application no longer exists',
   SEND_UNCONFIRMED: 'The send did not complete — delivery is uncertain',
   THROTTLED: 'Microsoft asked the CMS to slow down',

@@ -9,12 +9,15 @@ import {
 } from '@mui/icons-material'
 import { usePagePermission } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
-import ProductRulesCard from './ProductRulesCard'
+import ProductPicker from './ProductPicker'
+import { productsService } from '../../services/products.service'
 import { emailSettingsService } from '../../services/emailSettings.service'
 import {
   MAX_ADDITIONAL_RECIPIENTS, addRecipient, removeRecipient, validateRecipients, recipientsFromConfig,
   recipientsPayload, testRecipientError, isDirty, firstErrorField, RECIPIENT_FIELD_ORDER,
-  serverFieldErrors, requestErrorMessage, providerStatus, notificationReadiness, EMAIL_API_PATH
+  serverFieldErrors, requestErrorMessage, providerStatus, notificationReadiness, EMAIL_API_PATH,
+  assignmentOf, assignmentSummary, withNewRecipientAssignment, withoutRecipientAssignment, withRecipientProducts,
+  productOptions, productCatalogueError, PRODUCTS_ACCESS_NEEDED
 } from './emailSettings'
 
 // Email Settings sits under the API Settings permission, like the Email API
@@ -46,6 +49,40 @@ const SectionTitle = ({ icon: Icon, children, id }) => (
 
 const TEST_KIND_LABELS = { connection: 'Test Connection', email: 'Test email' }
 
+// One additional recipient's products: what it is emailed about, and the
+// picker. A recipient saved before assignments existed shows "Every loan
+// application" until products are assigned or that chip is removed.
+const RecipientProducts = ({ email, index, assignment, options, loading, unavailable, disabled, onChange }) => (
+  <Stack spacing={1} sx={{ mt: 0.5 }}>
+    <Typography variant="caption" color={!assignment.allProducts && !assignment.productIds.length ? 'warning.main' : 'text.secondary'}>
+      {assignmentSummary(assignment)}
+    </Typography>
+    {assignment.allProducts && (
+      <Box>
+        <Chip
+          size="small"
+          color="info"
+          variant="outlined"
+          label={assignment.legacy ? 'Every loan application — kept from before' : 'Every loan application'}
+          onDelete={disabled ? undefined : () => onChange([])}
+          aria-label={`${email} receives every loan application. Remove to assign products instead.`}
+        />
+      </Box>
+    )}
+    <ProductPicker
+      id={`email-recipient-${index}-products`}
+      label={`Products for ${email}`}
+      value={assignment.allProducts ? [] : assignment.productIds}
+      options={options}
+      onChange={onChange}
+      disabled={disabled}
+      loading={loading}
+      unavailable={unavailable}
+      helperText={assignment.allProducts ? 'Choosing products replaces "every loan application".' : ''}
+    />
+  </Stack>
+)
+
 const ApiSectionLink = ({ children = 'API section' }) => (
   <Link component={RouterLink} to={EMAIL_API_PATH}>{children}</Link>
 )
@@ -74,6 +111,18 @@ const EmailSettingsPage = () => {
   const [sending, setSending] = useState(false)
   const [testResult, setTestResult] = useState(null)
 
+  // The product list is the Products page's own API, so it needs Products
+  // view. Without it the list is not requested at all: a refused request would
+  // make the CMS re-read this session's permissions and reload the page.
+  const productsPermission = usePagePermission('products')
+  const catalogueBlocked = !productsPermission.loading && !productsPermission.canView
+  const [catalogue, setCatalogue] = useState([])
+  const [catalogueRequestPending, setCatalogueLoading] = useState(true)
+  const [catalogueRequestError, setCatalogueError] = useState('')
+  const catalogueLoading = !catalogueBlocked && catalogueRequestPending
+  const catalogueError = catalogueBlocked ? PRODUCTS_ACCESS_NEEDED : catalogueRequestError
+  const options = useMemo(() => productOptions(catalogue, config), [catalogue, config])
+
   const errors = useMemo(() => validateRecipients(form), [form])
   const dirty = isDirty(form, baseline)
 
@@ -90,6 +139,26 @@ const EmailSettingsPage = () => {
 
   // The route guard has already refused anyone without integrations.view.
   useEffect(() => { fetchSettings() }, [fetchSettings])
+
+  // The same product list the Loan Applications filter uses. State is set only
+  // once the request settles.
+  const loadCatalogue = useCallback(() => productsService.getAllProducts()
+    .then((res) => {
+      setCatalogue(res?.data?.products || [])
+      setCatalogueError('')
+    })
+    .catch((err) => setCatalogueError(productCatalogueError(err)))
+    .finally(() => setCatalogueLoading(false)), [])
+
+  useEffect(() => {
+    if (productsPermission.loading || !productsPermission.canView) return
+    loadCatalogue()
+  }, [loadCatalogue, productsPermission.loading, productsPermission.canView])
+
+  const retryCatalogue = () => {
+    setCatalogueLoading(true)
+    loadCatalogue()
+  }
 
   const retryLoad = () => {
     setLoading(true)
@@ -130,7 +199,12 @@ const EmailSettingsPage = () => {
       setNewRecipientError(result.error)
       return
     }
-    setForm((f) => ({ ...f, additionalRecipients: result.additionalRecipients }))
+    const added = result.additionalRecipients[result.additionalRecipients.length - 1]
+    setForm((f) => ({
+      ...f,
+      additionalRecipients: result.additionalRecipients,
+      recipientProducts: withNewRecipientAssignment(f.recipientProducts, added)
+    }))
     clearServerError('additionalRecipients')
     setNewRecipient('')
     setNewRecipientError('')
@@ -138,11 +212,24 @@ const EmailSettingsPage = () => {
   }
 
   const handleRemoveRecipient = (index) => {
-    setForm((f) => ({ ...f, additionalRecipients: removeRecipient(f.additionalRecipients, index) }))
+    setForm((f) => ({
+      ...f,
+      additionalRecipients: removeRecipient(f.additionalRecipients, index),
+      recipientProducts: withoutRecipientAssignment(f.recipientProducts, f.additionalRecipients[index])
+    }))
     clearServerError('additionalRecipients')
+    clearServerError('recipientProducts')
     setSaveNotice(null)
     // The button that had focus is gone; the add field is the natural next stop.
     requestAnimationFrame(() => document.getElementById(fieldId('newRecipient'))?.focus())
+  }
+
+  // Choosing products for a recipient — or removing "every application" —
+  // limits that recipient to the products chosen.
+  const handleRecipientProducts = (email, productIds) => {
+    setForm((f) => ({ ...f, recipientProducts: withRecipientProducts(f.recipientProducts, email, productIds) }))
+    clearServerError('recipientProducts')
+    setSaveNotice(null)
   }
 
   const focusField = (key) => {
@@ -283,45 +370,68 @@ const EmailSettingsPage = () => {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
-          <Stack spacing={3}>
-            <Box component="form" noValidate onSubmit={handleSave} aria-label="Email notification settings">
-              <Stack spacing={3}>
-                {/* ── Recipients ──────────────────────────────────────────────── */}
-                <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-                  <SectionTitle icon={People}>Notification recipients</SectionTitle>
-                  <Stack spacing={2.5}>
-                    <TextField
-                      id={fieldId('primaryRecipient')}
-                      label="Primary recipient"
-                      type="email"
-                      required
-                      autoComplete="off"
-                      value={form.primaryRecipient}
-                      onChange={update('primaryRecipient')}
-                      onBlur={() => setTouched((t) => ({ ...t, primaryRecipient: true }))}
-                      error={!!errorFor('primaryRecipient')}
-                      helperText={errorFor('primaryRecipient') || 'Receives every notification.'}
-                      disabled={readOnly || saving}
-                      fullWidth
-                    />
+          <Box component="form" noValidate onSubmit={handleSave} aria-label="Email notification settings">
+            <Stack spacing={3}>
+              {/* ── Recipients ──────────────────────────────────────────────── */}
+              <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
+                <SectionTitle icon={People}>Notification recipients</SectionTitle>
+                <Stack spacing={2.5}>
+                  <TextField
+                    id={fieldId('primaryRecipient')}
+                    label="Primary recipient"
+                    type="email"
+                    required
+                    autoComplete="off"
+                    value={form.primaryRecipient}
+                    onChange={update('primaryRecipient')}
+                    onBlur={() => setTouched((t) => ({ ...t, primaryRecipient: true }))}
+                    error={!!errorFor('primaryRecipient')}
+                    helperText={errorFor('primaryRecipient') || 'Receives every new loan application, for every product and for applications submitted without one.'}
+                    disabled={readOnly || saving}
+                    fullWidth
+                  />
 
-                    <Box>
-                      <Typography variant="body2" fontWeight={600} id="email-additional-label">
-                        Additional recipients ({additionalCount} of {MAX_ADDITIONAL_RECIPIENTS})
-                      </Typography>
-                      {additionalCount === 0 ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>None added.</Typography>
-                      ) : (
-                        <List dense aria-labelledby="email-additional-label" sx={{ py: 0.5 }}>
-                          {form.additionalRecipients.map((r, i) => {
-                            // Shown at once: an entry passed its check when added, so
-                            // an error here means the primary recipient changed to match it.
-                            const err = errors[`additionalRecipients.${i}`]
-                            return (
-                              <ListItem
-                                key={r}
-                                disableGutters
-                                secondaryAction={(
+                  <Box>
+                    <Typography variant="body2" fontWeight={600} id="email-additional-label">
+                      Additional recipients ({additionalCount} of {MAX_ADDITIONAL_RECIPIENTS})
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                      Each additional recipient is emailed only about applications for the loan products assigned to them. Applications submitted without a product go to the primary recipient only.
+                    </Typography>
+                    {additionalCount > 0 && catalogueError && (
+                      <Alert
+                        severity="warning"
+                        sx={{ mt: 1 }}
+                        action={catalogueBlocked ? null : <Button color="inherit" size="small" startIcon={<Refresh />} onClick={retryCatalogue} disabled={catalogueLoading}>Retry</Button>}
+                      >
+                        {catalogueError}
+                      </Alert>
+                    )}
+                    {errorFor('recipientProducts') && (
+                      <Alert severity="error" role="alert" sx={{ mt: 1 }}>{errorFor('recipientProducts')}</Alert>
+                    )}
+                    {additionalCount === 0 ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>None added.</Typography>
+                    ) : (
+                      <List dense aria-labelledby="email-additional-label" sx={{ py: 0.5 }}>
+                        {form.additionalRecipients.map((r, i) => {
+                          // Shown at once: an entry passed its check when added, so
+                          // an error here means the primary recipient changed to match it.
+                          const err = errors[`additionalRecipients.${i}`]
+                          return (
+                            <ListItem key={r} disableGutters sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                              <Box sx={{ width: '100%', minWidth: 0, py: 0.5 }}>
+                                {/* Remove sits beside the address, so the products below get the full width. */}
+                                <Stack direction="row" alignItems="flex-start" spacing={1}>
+                                  <ListItemText
+                                    primary={r}
+                                    secondary={err || null}
+                                    sx={{ minWidth: 0 }}
+                                    slotProps={{
+                                      primary: { sx: { wordBreak: 'break-all', fontWeight: 500 } },
+                                      secondary: { color: 'error', role: 'alert' }
+                                    }}
+                                  />
                                   <IconButton
                                     edge="end"
                                     id={`${fieldId(`additionalRecipients.${i}`)}-remove`}
@@ -331,152 +441,149 @@ const EmailSettingsPage = () => {
                                   >
                                     <DeleteOutline />
                                   </IconButton>
-                                )}
-                                sx={{ borderBottom: 1, borderColor: 'divider', pr: 6 }}
-                              >
-                                <ListItemText
-                                  primary={r}
-                                  secondary={err || null}
-                                  slotProps={{
-                                    primary: { sx: { wordBreak: 'break-all' } },
-                                    secondary: { color: 'error', role: 'alert' }
-                                  }}
+                                </Stack>
+                                <RecipientProducts
+                                  email={r}
+                                  index={i}
+                                  assignment={assignmentOf(form, r)}
+                                  options={options}
+                                  loading={catalogueLoading}
+                                  unavailable={!!catalogueError}
+                                  disabled={readOnly || saving}
+                                  onChange={(ids) => handleRecipientProducts(r, ids)}
                                 />
-                              </ListItem>
-                            )
-                          })}
-                        </List>
-                      )}
-                    </Box>
-
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
-                      <TextField
-                        id={fieldId('newRecipient')}
-                        label="Add recipient"
-                        type="email"
-                        autoComplete="off"
-                        value={newRecipient}
-                        onChange={(e) => { setNewRecipient(e.target.value); setNewRecipientError('') }}
-                        onKeyDown={(e) => {
-                          // Enter adds the address rather than submitting the form.
-                          if (e.key === 'Enter') { e.preventDefault(); handleAddRecipient() }
-                        }}
-                        error={!!(newRecipientError || errorFor('additionalRecipients'))}
-                        helperText={newRecipientError || errorFor('additionalRecipients') || 'Press Enter or select Add.'}
-                        disabled={readOnly || saving || additionalCount >= MAX_ADDITIONAL_RECIPIENTS}
-                        fullWidth
-                      />
-                      <Button
-                        variant="outlined"
-                        startIcon={<Add />}
-                        onClick={handleAddRecipient}
-                        disabled={readOnly || saving || additionalCount >= MAX_ADDITIONAL_RECIPIENTS}
-                        sx={{ flexShrink: 0, height: 56 }}
-                      >
-                        Add
-                      </Button>
-                    </Stack>
-                  </Stack>
-                </Paper>
-
-                {/* ── Notifications and test ──────────────────────────────────── */}
-                <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-                  <SectionTitle icon={NotificationsActive}>Notifications</SectionTitle>
-                  <Stack spacing={2.5}>
-                    <Box>
-                      <FormControlLabel
-                        control={(
-                          <Switch
-                            id={fieldId('notifyNewLoanApplication')}
-                            checked={form.notifyNewLoanApplication}
-                            onChange={update('notifyNewLoanApplication')}
-                            disabled={readOnly || saving}
-                            slotProps={{ input: { 'aria-describedby': 'email-notify-help' } }}
-                          />
-                        )}
-                        label="Email the recipients when a new loan application is submitted"
-                      />
-                      <Typography variant="caption" color="text.secondary" display="block" id="email-notify-help">
-                        Sent only when the email provider is set up, this is on, and a primary recipient is saved.
-                      </Typography>
-                    </Box>
-
-                    <Divider />
-
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
-                      <TextField
-                        label="Test email recipient"
-                        type="email"
-                        autoComplete="off"
-                        id={fieldId('testRecipient')}
-                        value={testRecipient}
-                        onChange={(e) => { setTestRecipient(e.target.value); setTestRecipientMessage('') }}
-                        onKeyDown={(e) => {
-                          // Enter sends the test rather than saving the form.
-                          if (e.key === 'Enter') { e.preventDefault(); sendTest() }
-                        }}
-                        error={!!testRecipientMessage}
-                        helperText={testRecipientMessage || 'Receives one fixed test message from the sender mailbox.'}
-                        disabled={readOnly || busy}
-                        fullWidth
-                      />
-                      <Button
-                        variant="outlined"
-                        startIcon={sending ? <CircularProgress size={16} /> : <Send />}
-                        onClick={sendTest}
-                        disabled={!!testBlockedReason || busy}
-                        aria-describedby={testBlockedReason ? 'email-test-reason' : undefined}
-                        sx={{ flexShrink: 0, height: 56 }}
-                      >
-                        {sending ? 'Sending…' : 'Send Test Email'}
-                      </Button>
-                    </Stack>
-                    {testBlockedReason && (
-                      <Typography variant="caption" color="text.secondary" id="email-test-reason" sx={{ mt: -1.5 }}>
-                        {testBlockedReason}
-                      </Typography>
+                              </Box>
+                            </ListItem>
+                          )
+                        })}
+                      </List>
                     )}
-                    {testResult && (
-                      <Alert severity={testResult.ok ? 'success' : 'error'} role="alert">{testResult.message}</Alert>
-                    )}
-                  </Stack>
-                </Paper>
+                  </Box>
 
-                {saveNotice && (
-                  <Alert severity={saveNotice.severity} role="alert">{saveNotice.message}</Alert>
-                )}
-
-                {!readOnly && (
-                  <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-                    <Button
-                      type="submit"
-                      variant="contained"
-                      startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save />}
-                      disabled={busy}
-                    >
-                      {saving ? 'Saving…' : 'Save'}
-                    </Button>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
+                    <TextField
+                      id={fieldId('newRecipient')}
+                      label="Add recipient"
+                      type="email"
+                      autoComplete="off"
+                      value={newRecipient}
+                      onChange={(e) => { setNewRecipient(e.target.value); setNewRecipientError('') }}
+                      onKeyDown={(e) => {
+                        // Enter adds the address rather than submitting the form.
+                        if (e.key === 'Enter') { e.preventDefault(); handleAddRecipient() }
+                      }}
+                      error={!!(newRecipientError || errorFor('additionalRecipients'))}
+                      helperText={newRecipientError || errorFor('additionalRecipients') || 'Press Enter or select Add.'}
+                      disabled={readOnly || saving || additionalCount >= MAX_ADDITIONAL_RECIPIENTS}
+                      fullWidth
+                    />
                     <Button
                       variant="outlined"
-                      startIcon={<Close />}
-                      onClick={handleCancel}
-                      disabled={busy || (!dirty && !newRecipient.trim())}
+                      startIcon={<Add />}
+                      onClick={handleAddRecipient}
+                      disabled={readOnly || saving || additionalCount >= MAX_ADDITIONAL_RECIPIENTS}
+                      sx={{ flexShrink: 0, height: 56 }}
                     >
-                      Cancel
+                      Add
                     </Button>
-                    {dirty && (
-                      <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                        Unsaved changes
-                      </Typography>
-                    )}
                   </Stack>
-                )}
-              </Stack>
-            </Box>
+                </Stack>
+              </Paper>
 
-            {/* ── Product Notification Rules: saved on its own ──────────────── */}
-            <ProductRulesCard config={config} readOnly={readOnly} onSaved={setConfig} />
-          </Stack>
+              {/* ── Notifications and test ──────────────────────────────────── */}
+              <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
+                <SectionTitle icon={NotificationsActive}>Notifications</SectionTitle>
+                <Stack spacing={2.5}>
+                  <Box>
+                    <FormControlLabel
+                      control={(
+                        <Switch
+                          id={fieldId('notifyNewLoanApplication')}
+                          checked={form.notifyNewLoanApplication}
+                          onChange={update('notifyNewLoanApplication')}
+                          disabled={readOnly || saving}
+                          slotProps={{ input: { 'aria-describedby': 'email-notify-help' } }}
+                        />
+                      )}
+                      label="Email the recipients when a new loan application is submitted"
+                    />
+                    <Typography variant="caption" color="text.secondary" display="block" id="email-notify-help">
+                      Sent only when the email provider is set up, this is on, and a primary recipient is saved.
+                    </Typography>
+                  </Box>
+
+                  <Divider />
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
+                    <TextField
+                      label="Test email recipient"
+                      type="email"
+                      autoComplete="off"
+                      id={fieldId('testRecipient')}
+                      value={testRecipient}
+                      onChange={(e) => { setTestRecipient(e.target.value); setTestRecipientMessage('') }}
+                      onKeyDown={(e) => {
+                        // Enter sends the test rather than saving the form.
+                        if (e.key === 'Enter') { e.preventDefault(); sendTest() }
+                      }}
+                      error={!!testRecipientMessage}
+                      helperText={testRecipientMessage || 'Receives one fixed test message from the sender mailbox.'}
+                      disabled={readOnly || busy}
+                      fullWidth
+                    />
+                    <Button
+                      variant="outlined"
+                      startIcon={sending ? <CircularProgress size={16} /> : <Send />}
+                      onClick={sendTest}
+                      disabled={!!testBlockedReason || busy}
+                      aria-describedby={testBlockedReason ? 'email-test-reason' : undefined}
+                      sx={{ flexShrink: 0, height: 56 }}
+                    >
+                      {sending ? 'Sending…' : 'Send Test Email'}
+                    </Button>
+                  </Stack>
+                  {testBlockedReason && (
+                    <Typography variant="caption" color="text.secondary" id="email-test-reason" sx={{ mt: -1.5 }}>
+                      {testBlockedReason}
+                    </Typography>
+                  )}
+                  {testResult && (
+                    <Alert severity={testResult.ok ? 'success' : 'error'} role="alert">{testResult.message}</Alert>
+                  )}
+                </Stack>
+              </Paper>
+
+              {saveNotice && (
+                <Alert severity={saveNotice.severity} role="alert">{saveNotice.message}</Alert>
+              )}
+
+              {!readOnly && (
+                <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save />}
+                    disabled={busy}
+                  >
+                    {saving ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<Close />}
+                    onClick={handleCancel}
+                    disabled={busy || (!dirty && !newRecipient.trim())}
+                  >
+                    Cancel
+                  </Button>
+                  {dirty && (
+                    <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                      Unsaved changes
+                    </Typography>
+                  )}
+                </Stack>
+              )}
+            </Stack>
+          </Box>
         </Grid>
 
         <Grid item xs={12} md={4}>
@@ -498,13 +605,6 @@ const EmailSettingsPage = () => {
                 {config?.recipients?.configured
                   ? `${1 + (config.settings.additionalRecipients?.length || 0)} saved`
                   : 'None saved'}
-              </Typography>
-            </StatusRow>
-            <StatusRow label="Product filter">
-              <Typography variant="body2">
-                {config?.productRules?.productIds?.length
-                  ? `${config.productRules.productIds.length} product${config.productRules.productIds.length === 1 ? '' : 's'} selected`
-                  : 'All products (no filter)'}
               </Typography>
             </StatusRow>
             <StatusRow label="Loan emails">

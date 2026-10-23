@@ -74,7 +74,8 @@ export const removeRecipient = (list, index) => (list || []).filter((_, i) => i 
 export const defaultRecipients = () => ({
   primaryRecipient: '',
   additionalRecipients: [],
-  notifyNewLoanApplication: true
+  notifyNewLoanApplication: true,
+  recipientProducts: {}
 })
 
 // Field errors keyed by field name. Additional recipients are reported per
@@ -102,15 +103,26 @@ export const recipientsFromConfig = (config) => {
   return {
     primaryRecipient: s.primaryRecipient || '',
     additionalRecipients: [...(s.additionalRecipients || [])],
-    notifyNewLoanApplication: s.notifyNewLoanApplication !== false
+    notifyNewLoanApplication: s.notifyNewLoanApplication !== false,
+    recipientProducts: assignmentsFromConfig(config)
   }
 }
 
-export const recipientsPayload = (form) => ({
-  primaryRecipient: normaliseEmail(form.primaryRecipient),
-  additionalRecipients: (form.additionalRecipients || []).map(normaliseEmail),
-  notifyNewLoanApplication: !!form.notifyNewLoanApplication
-})
+// Assignments are sent for recipients added or changed on this page. One still
+// emailed about every application from before assignments existed (`legacy`)
+// is left out, so it stays that way until products are assigned to it.
+export const recipientsPayload = (form) => {
+  const additionalRecipients = (form.additionalRecipients || []).map(normaliseEmail)
+  return {
+    primaryRecipient: normaliseEmail(form.primaryRecipient),
+    additionalRecipients,
+    notifyNewLoanApplication: !!form.notifyNewLoanApplication,
+    recipientProducts: additionalRecipients
+      .map((email) => ({ email, a: assignmentOf(form, email) }))
+      .filter(({ a }) => !a.legacy)
+      .map(({ email, a }) => ({ email, allProducts: !!a.allProducts, productIds: [...a.productIds] }))
+  }
+}
 
 // The test recipient is not a setting: it never stops a save, and is required
 // only for Send Test Email.
@@ -190,11 +202,18 @@ export const secretStoredIn = (config) => !!(config?.clientSecret?.configured &&
 // Whether a form differs from what it started as — trimmed, with addresses and
 // identifiers compared case-insensitively, so retyping a value identically is
 // not a change. A typed secret is a change.
+// Product assignments compare as sets, by recipient.
+const comparableAssignments = (map) => Object.keys(map || {}).sort().map((email) => {
+  const a = map[email]
+  return [email, !!a.legacy, !!a.allProducts, [...(a.productIds || [])].sort()]
+})
+
 const comparable = (form) => Object.fromEntries(Object.entries(form).map(([k, v]) => [
   k,
-  Array.isArray(v) ? v.map(normaliseEmail)
-    : typeof v === 'string' ? (k === 'senderName' || k === 'clientSecret' ? v.trim() : v.trim().toLowerCase())
-      : v
+  k === 'recipientProducts' ? comparableAssignments(v)
+    : Array.isArray(v) ? v.map(normaliseEmail)
+      : typeof v === 'string' ? (k === 'senderName' || k === 'clientSecret' ? v.trim() : v.trim().toLowerCase())
+        : v
 ]))
 
 export const isDirty = (form, baseline) => JSON.stringify(comparable(form)) !== JSON.stringify(comparable(baseline))
@@ -251,24 +270,58 @@ export const notificationReadiness = (config) => {
   return { ready: true, reason: '' }
 }
 
-// ── Product Notification Rules (Email Settings) ───────────────────────────────
+// ── Recipient product assignments (Email Settings) ────────────────────────────
 //
-// Which products' new loan applications are emailed. An empty selection is no
-// filter: every application is emailed, as before the rules existed. The
+// Which loan products each additional recipient is emailed about. The primary
+// recipient is emailed about every application and has no assignment. The
 // server checks every id against the product catalogue and matches it with the
-// product saved on each application.
+// product saved on each application; this only shapes the form.
+//
+// An assignment: { productIds, allProducts, legacy }. `legacy` marks a
+// recipient saved before assignments existed — emailed about every
+// application until products are assigned to it.
 
-export const productIdsFromConfig = (config) => [...(config?.productRules?.productIds || [])]
+const LEGACY_ASSIGNMENT = { allProducts: true, legacy: true, productIds: [] }
+const EMPTY_ASSIGNMENT = { allProducts: false, legacy: false, productIds: [] }
 
-// Order does not matter: the rule is a set.
-export const productRulesDirty = (ids, baseline) => {
-  const a = new Set(ids || [])
-  const b = new Set(baseline || [])
-  return a.size !== b.size || [...a].some((id) => !b.has(id))
+export const assignmentsFromConfig = (config) => {
+  const map = {}
+  for (const a of config?.settings?.recipientProducts || []) {
+    map[normaliseEmail(a.email)] = { allProducts: !!a.allProducts, legacy: !!a.legacy, productIds: (a.productIds || []).map(String) }
+  }
+  return map
+}
+
+// A recipient the form knows nothing about is treated as the server treats it.
+export const assignmentOf = (form, email) => form?.recipientProducts?.[normaliseEmail(email)] || LEGACY_ASSIGNMENT
+
+// A recipient added on this page starts with no products.
+export const withNewRecipientAssignment = (map, email) => ({ ...(map || {}), [normaliseEmail(email)]: { ...EMPTY_ASSIGNMENT } })
+
+export const withoutRecipientAssignment = (map, email) => {
+  const next = { ...(map || {}) }
+  delete next[normaliseEmail(email)]
+  return next
+}
+
+// Choosing products, or removing "every application", makes the assignment
+// specific: from then on the recipient is emailed about these products only.
+export const withRecipientProducts = (map, email, productIds) => ({
+  ...(map || {}),
+  [normaliseEmail(email)]: { allProducts: false, legacy: false, productIds: [...new Set(productIds)] }
+})
+
+export const assignmentSummary = (assignment) => {
+  const a = assignment || LEGACY_ASSIGNMENT
+  if (a.legacy) return 'Receives every loan application, as before product assignments. Assign products to limit it.'
+  if (a.allProducts) return 'Receives every loan application.'
+  const n = (a.productIds || []).length
+  if (!n) return 'No products assigned: receives no loan application emails.'
+  return `Receives applications for ${n === 1 ? '1 assigned product' : `${n} assigned products`} only.`
 }
 
 // One option per product: the catalogue as the products API returns it, plus
-// any selected product it does not include (deleted since, or a list that
+// any assigned product it does not include (deleted since, or a list that
 // could not be loaded), described by what the settings say about it.
 export const productOptions = (catalogue = [], config = null) => {
   const options = (catalogue || []).map((p) => ({
@@ -279,8 +332,13 @@ export const productOptions = (catalogue = [], config = null) => {
     exists: true
   }))
   const known = new Set(options.map((o) => o._id))
-  for (const p of config?.productRules?.products || []) {
-    if (!known.has(String(p._id))) options.push({ ...p, _id: String(p._id) })
+  for (const a of config?.settings?.recipientProducts || []) {
+    for (const p of a.products || []) {
+      if (!known.has(String(p._id))) {
+        known.add(String(p._id))
+        options.push({ ...p, _id: String(p._id) })
+      }
+    }
   }
   return options
 }
@@ -290,13 +348,7 @@ export const productOptionLabel = (option) => `${productName(option)} — ${opti
 // What the search box matches: name, category and id.
 export const productSearchText = (option) => `${productName(option)} ${option?.category || ''} ${option?._id || ''}`
 
-export const productRulesSummary = (ids) => {
-  const n = (ids || []).length
-  if (!n) return 'No products selected: every new loan application sends the email (no product filter).'
-  return `Only applications for the ${n === 1 ? 'selected product' : `${n} selected products`} send the email. Applications for any other product, or submitted without a product, do not.`
-}
-
-export const PRODUCTS_ACCESS_NEEDED = 'Choosing products needs view access to Products. Selected products are still listed and can be removed.'
+export const PRODUCTS_ACCESS_NEEDED = 'Assigning products needs view access to Products. Assigned products are still listed and can be removed.'
 
 export const productCatalogueError = (err) => (err?.response?.status === 403
   ? PRODUCTS_ACCESS_NEEDED

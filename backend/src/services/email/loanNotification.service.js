@@ -8,7 +8,7 @@ const emailConfig = require('./emailConfig.service');
 const { buildLoanApplicationEmail, buildMime } = require('./loanApplicationEmail');
 const { describeDocuments } = require('../loanApplications/applicationDocuments');
 const { fieldKeysOf } = require('../loanApplications/applicationFields');
-const { normaliseEmail, productSelected } = require('./emailRules');
+const { recipientsFor } = require('./emailRules');
 
 // "New Loan Application Received" emails.
 //
@@ -55,9 +55,6 @@ const track = (promise) => {
 };
 const whenIdle = async () => { while (inFlight.size) await Promise.allSettled([...inFlight]); };
 
-// The recipients, from the saved Email Settings only — never from a request.
-const recipientsOf = (doc) => [...new Set([doc.primaryRecipient, ...(doc.additionalRecipients || [])].map(normaliseEmail).filter(Boolean))];
-
 const MAX_EVENTS = 20;
 
 const finish = (record, $set) => LoanApplicationNotification.updateOne(
@@ -90,15 +87,12 @@ const attempt = async (record) => {
     const application = await LoanApplication.findById(record.application)
         .populate('product', 'name');
     if (!application) return { status: 'skipped', outcomeCode: 'APPLICATION_NOT_FOUND' };
-    // Product Notification Rules, as saved when this attempt runs, against the
-    // product saved on the application (set by the server from the catalogue).
-    // No products selected means no filter. An application with no product
-    // matches only when there is no filter.
-    if (!productSelected(settings.notifyProductIds, application.product)) {
-        return { status: 'skipped', outcomeCode: 'PRODUCT_NOT_SELECTED' };
-    }
 
-    const to = recipientsOf(sending.doc);
+    // The recipients, from the saved Email Settings only — never from a
+    // request: the primary recipient always, and each additional recipient
+    // whose products include the one saved on the application (set by the
+    // server from the catalogue). Settings as saved when this attempt runs.
+    const to = recipientsFor(sending.doc, application.product);
     // The provider can be set up before anyone is named on Email Settings.
     if (!to.length) return { status: 'skipped', outcomeCode: 'NO_RECIPIENTS' };
     // Document statuses ask storage whether each file is there; a storage

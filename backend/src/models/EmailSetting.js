@@ -44,14 +44,31 @@ const emailSettingSchema = new mongoose.Schema({
     },
     // Saved now; acted on when loan-application emails are connected.
     notifyNewLoanApplication: { type: Boolean, default: true },
-    // Product Notification Rules: the products whose new applications are
-    // emailed. Empty means no product filter — every application is emailed,
-    // as before the rules existed. Matched against the product saved on the
+    // Which loan products each additional recipient is emailed about. The
+    // primary recipient is not listed: it receives every application.
+    //
+    //   productIds    emailed only about applications for these products
+    //   allProducts   emailed about every application, as before assignments
+    //                 existed
+    //
+    // An additional recipient with no entry here was added before assignments
+    // existed and keeps receiving every application (allProducts) until an
+    // administrator assigns it products. One added on the page starts with an
+    // entry and no products. Matched against the product saved on the
     // application, never against anything the applicant's browser sent.
-    notifyProductIds: {
-        type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+    recipientProducts: {
+        type: [{
+            _id: false,
+            email: { type: String, trim: true, lowercase: true, maxlength: 254 },
+            allProducts: { type: Boolean, default: false },
+            productIds: {
+                type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+                default: [],
+                validate: { validator: (v) => v.length <= 100, message: 'At most 100 products per recipient' }
+            }
+        }],
         default: [],
-        validate: { validator: (v) => v.length <= 100, message: 'At most 100 products' }
+        validate: { validator: (v) => v.length <= 10, message: 'At most 10 recipient assignments' }
     },
     // The most recent Test Connection or Send Test Email, whichever was last.
     lastTest: {

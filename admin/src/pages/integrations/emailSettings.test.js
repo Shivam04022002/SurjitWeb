@@ -82,10 +82,13 @@ test('the recipients form validates on its own — no credentials involved', () 
 
 test('saved recipients load, and save back without credential fields', () => {
   const form = recipientsFromConfig(savedConfig())
-  assert.deepEqual(form, { primaryRecipient: 'primary@example.test', additionalRecipients: ['second@example.test'], notifyNewLoanApplication: false })
+  assert.deepEqual(form, { primaryRecipient: 'primary@example.test', additionalRecipients: ['second@example.test'], notifyNewLoanApplication: false, recipientProducts: {} })
   const payload = recipientsPayload({ ...form, primaryRecipient: ' Primary@Example.test ' })
-  assert.deepEqual(Object.keys(payload).sort(), ['additionalRecipients', 'notifyNewLoanApplication', 'primaryRecipient'])
+  assert.deepEqual(Object.keys(payload).sort(), ['additionalRecipients', 'notifyNewLoanApplication', 'primaryRecipient', 'recipientProducts'])
   assert.equal(payload.primaryRecipient, 'primary@example.test')
+  // A recipient from before product assignments, left as it is, is not sent:
+  // the server keeps it on every application.
+  assert.deepEqual(payload.recipientProducts, [])
   assert.deepEqual(recipientsFromConfig({ saved: false, settings: null }), defaultRecipients())
   // A copy, so editing the form cannot alter the loaded config.
   form.additionalRecipients.push('x@y.test')
