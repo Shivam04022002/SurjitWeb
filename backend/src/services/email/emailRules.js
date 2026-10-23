@@ -30,6 +30,17 @@ const unsupportedMessage = (provider, authMethod) => {
 };
 
 const MAX_ADDITIONAL_RECIPIENTS = 10;
+const MAX_NOTIFY_PRODUCTS = 100;
+
+// Product Notification Rules: whether an application for this product is
+// emailed. An empty list is no filter. `productId` is the product saved on the
+// application (an id, a populated product, or nothing).
+const productSelected = (notifyProductIds, productId) => {
+    const ids = (notifyProductIds || []).map(String);
+    if (!ids.length) return true;
+    const id = productId?._id ?? productId;
+    return !!id && ids.includes(String(id));
+};
 
 // Deliberately the same plain rule as the page: one @, no spaces or control
 // characters, a dot in the domain.
@@ -56,6 +67,8 @@ module.exports = {
     isSupported,
     unsupportedMessage,
     MAX_ADDITIONAL_RECIPIENTS,
+    MAX_NOTIFY_PRODUCTS,
+    productSelected,
     isEmail,
     normaliseEmail,
     isTenantId,

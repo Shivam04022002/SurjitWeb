@@ -95,6 +95,25 @@ const saveProviderValidation = [...providerRules({ required: false }), ...creden
 // PUT /recipients — Email Settings.
 const saveRecipientsValidation = recipientRules;
 
+// PUT /product-rules — Email Settings' Product Notification Rules. An empty
+// list is allowed: it means no product filter. Whether each id names a real
+// product is checked by the service against the catalogue.
+const saveProductRulesValidation = [
+    body('productIds')
+        .exists().withMessage('productIds is required').bail()
+        .isArray({ max: rules.MAX_NOTIFY_PRODUCTS }).withMessage(`productIds must be a list of at most ${rules.MAX_NOTIFY_PRODUCTS} product ids`).bail()
+        .custom((list) => {
+            const seen = new Set();
+            for (const id of list) {
+                if (typeof id !== 'string' || !/^[a-f0-9]{24}$/i.test(id)) throw new Error('Every product must be chosen from the product list');
+                const n = id.toLowerCase();
+                if (seen.has(n)) throw new Error('A product is listed more than once');
+                seen.add(n);
+            }
+            return true;
+        })
+];
+
 const sendTestEmailValidation = [emailField('recipient', 'Test recipient')];
 
 // Email Delivery Log filters. Days are calendar days in the business timezone;
@@ -119,6 +138,6 @@ const listNotificationsValidation = [
 const notificationIdValidation = [param('id').isMongoId().withMessage('Invalid notification id')];
 
 module.exports = {
-    saveEmailSettingsValidation, saveProviderValidation, saveRecipientsValidation,
+    saveEmailSettingsValidation, saveProviderValidation, saveRecipientsValidation, saveProductRulesValidation,
     sendTestEmailValidation, listNotificationsValidation, notificationIdValidation
 };

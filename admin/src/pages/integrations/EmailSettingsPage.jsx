@@ -9,6 +9,7 @@ import {
 } from '@mui/icons-material'
 import { usePagePermission } from '../../hooks/usePermissions'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import ProductRulesCard from './ProductRulesCard'
 import { emailSettingsService } from '../../services/emailSettings.service'
 import {
   MAX_ADDITIONAL_RECIPIENTS, addRecipient, removeRecipient, validateRecipients, recipientsFromConfig,
@@ -258,7 +259,7 @@ const EmailSettingsPage = () => {
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" fontWeight={700} component="h1">Email Settings</Typography>
         <Typography variant="body2" color="text.secondary">
-          Who is emailed about new loan applications, and whether they are
+          Who is emailed about new loan applications, whether they are, and for which products
         </Typography>
       </Box>
 
@@ -282,195 +283,200 @@ const EmailSettingsPage = () => {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
-          <Box component="form" noValidate onSubmit={handleSave} aria-label="Email notification settings">
-            <Stack spacing={3}>
-              {/* ── Recipients ──────────────────────────────────────────────── */}
-              <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-                <SectionTitle icon={People}>Notification recipients</SectionTitle>
-                <Stack spacing={2.5}>
-                  <TextField
-                    id={fieldId('primaryRecipient')}
-                    label="Primary recipient"
-                    type="email"
-                    required
-                    autoComplete="off"
-                    value={form.primaryRecipient}
-                    onChange={update('primaryRecipient')}
-                    onBlur={() => setTouched((t) => ({ ...t, primaryRecipient: true }))}
-                    error={!!errorFor('primaryRecipient')}
-                    helperText={errorFor('primaryRecipient') || 'Receives every notification.'}
-                    disabled={readOnly || saving}
-                    fullWidth
-                  />
-
-                  <Box>
-                    <Typography variant="body2" fontWeight={600} id="email-additional-label">
-                      Additional recipients ({additionalCount} of {MAX_ADDITIONAL_RECIPIENTS})
-                    </Typography>
-                    {additionalCount === 0 ? (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>None added.</Typography>
-                    ) : (
-                      <List dense aria-labelledby="email-additional-label" sx={{ py: 0.5 }}>
-                        {form.additionalRecipients.map((r, i) => {
-                          // Shown at once: an entry passed its check when added, so
-                          // an error here means the primary recipient changed to match it.
-                          const err = errors[`additionalRecipients.${i}`]
-                          return (
-                            <ListItem
-                              key={r}
-                              disableGutters
-                              secondaryAction={(
-                                <IconButton
-                                  edge="end"
-                                  id={`${fieldId(`additionalRecipients.${i}`)}-remove`}
-                                  aria-label={`Remove ${r}`}
-                                  onClick={() => handleRemoveRecipient(i)}
-                                  disabled={readOnly || saving}
-                                >
-                                  <DeleteOutline />
-                                </IconButton>
-                              )}
-                              sx={{ borderBottom: 1, borderColor: 'divider', pr: 6 }}
-                            >
-                              <ListItemText
-                                primary={r}
-                                secondary={err || null}
-                                slotProps={{
-                                  primary: { sx: { wordBreak: 'break-all' } },
-                                  secondary: { color: 'error', role: 'alert' }
-                                }}
-                              />
-                            </ListItem>
-                          )
-                        })}
-                      </List>
-                    )}
-                  </Box>
-
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
+          <Stack spacing={3}>
+            <Box component="form" noValidate onSubmit={handleSave} aria-label="Email notification settings">
+              <Stack spacing={3}>
+                {/* ── Recipients ──────────────────────────────────────────────── */}
+                <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
+                  <SectionTitle icon={People}>Notification recipients</SectionTitle>
+                  <Stack spacing={2.5}>
                     <TextField
-                      id={fieldId('newRecipient')}
-                      label="Add recipient"
+                      id={fieldId('primaryRecipient')}
+                      label="Primary recipient"
                       type="email"
+                      required
                       autoComplete="off"
-                      value={newRecipient}
-                      onChange={(e) => { setNewRecipient(e.target.value); setNewRecipientError('') }}
-                      onKeyDown={(e) => {
-                        // Enter adds the address rather than submitting the form.
-                        if (e.key === 'Enter') { e.preventDefault(); handleAddRecipient() }
-                      }}
-                      error={!!(newRecipientError || errorFor('additionalRecipients'))}
-                      helperText={newRecipientError || errorFor('additionalRecipients') || 'Press Enter or select Add.'}
-                      disabled={readOnly || saving || additionalCount >= MAX_ADDITIONAL_RECIPIENTS}
+                      value={form.primaryRecipient}
+                      onChange={update('primaryRecipient')}
+                      onBlur={() => setTouched((t) => ({ ...t, primaryRecipient: true }))}
+                      error={!!errorFor('primaryRecipient')}
+                      helperText={errorFor('primaryRecipient') || 'Receives every notification.'}
+                      disabled={readOnly || saving}
                       fullWidth
                     />
-                    <Button
-                      variant="outlined"
-                      startIcon={<Add />}
-                      onClick={handleAddRecipient}
-                      disabled={readOnly || saving || additionalCount >= MAX_ADDITIONAL_RECIPIENTS}
-                      sx={{ flexShrink: 0, height: 56 }}
-                    >
-                      Add
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Paper>
 
-              {/* ── Notifications and test ──────────────────────────────────── */}
-              <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-                <SectionTitle icon={NotificationsActive}>Notifications</SectionTitle>
-                <Stack spacing={2.5}>
-                  <Box>
-                    <FormControlLabel
-                      control={(
-                        <Switch
-                          id={fieldId('notifyNewLoanApplication')}
-                          checked={form.notifyNewLoanApplication}
-                          onChange={update('notifyNewLoanApplication')}
-                          disabled={readOnly || saving}
-                          slotProps={{ input: { 'aria-describedby': 'email-notify-help' } }}
-                        />
+                    <Box>
+                      <Typography variant="body2" fontWeight={600} id="email-additional-label">
+                        Additional recipients ({additionalCount} of {MAX_ADDITIONAL_RECIPIENTS})
+                      </Typography>
+                      {additionalCount === 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>None added.</Typography>
+                      ) : (
+                        <List dense aria-labelledby="email-additional-label" sx={{ py: 0.5 }}>
+                          {form.additionalRecipients.map((r, i) => {
+                            // Shown at once: an entry passed its check when added, so
+                            // an error here means the primary recipient changed to match it.
+                            const err = errors[`additionalRecipients.${i}`]
+                            return (
+                              <ListItem
+                                key={r}
+                                disableGutters
+                                secondaryAction={(
+                                  <IconButton
+                                    edge="end"
+                                    id={`${fieldId(`additionalRecipients.${i}`)}-remove`}
+                                    aria-label={`Remove ${r}`}
+                                    onClick={() => handleRemoveRecipient(i)}
+                                    disabled={readOnly || saving}
+                                  >
+                                    <DeleteOutline />
+                                  </IconButton>
+                                )}
+                                sx={{ borderBottom: 1, borderColor: 'divider', pr: 6 }}
+                              >
+                                <ListItemText
+                                  primary={r}
+                                  secondary={err || null}
+                                  slotProps={{
+                                    primary: { sx: { wordBreak: 'break-all' } },
+                                    secondary: { color: 'error', role: 'alert' }
+                                  }}
+                                />
+                              </ListItem>
+                            )
+                          })}
+                        </List>
                       )}
-                      label="Email the recipients when a new loan application is submitted"
-                    />
-                    <Typography variant="caption" color="text.secondary" display="block" id="email-notify-help">
-                      Sent only when the email provider is set up, this is on, and a primary recipient is saved.
-                    </Typography>
-                  </Box>
+                    </Box>
 
-                  <Divider />
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
+                      <TextField
+                        id={fieldId('newRecipient')}
+                        label="Add recipient"
+                        type="email"
+                        autoComplete="off"
+                        value={newRecipient}
+                        onChange={(e) => { setNewRecipient(e.target.value); setNewRecipientError('') }}
+                        onKeyDown={(e) => {
+                          // Enter adds the address rather than submitting the form.
+                          if (e.key === 'Enter') { e.preventDefault(); handleAddRecipient() }
+                        }}
+                        error={!!(newRecipientError || errorFor('additionalRecipients'))}
+                        helperText={newRecipientError || errorFor('additionalRecipients') || 'Press Enter or select Add.'}
+                        disabled={readOnly || saving || additionalCount >= MAX_ADDITIONAL_RECIPIENTS}
+                        fullWidth
+                      />
+                      <Button
+                        variant="outlined"
+                        startIcon={<Add />}
+                        onClick={handleAddRecipient}
+                        disabled={readOnly || saving || additionalCount >= MAX_ADDITIONAL_RECIPIENTS}
+                        sx={{ flexShrink: 0, height: 56 }}
+                      >
+                        Add
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Paper>
 
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
-                    <TextField
-                      label="Test email recipient"
-                      type="email"
-                      autoComplete="off"
-                      id={fieldId('testRecipient')}
-                      value={testRecipient}
-                      onChange={(e) => { setTestRecipient(e.target.value); setTestRecipientMessage('') }}
-                      onKeyDown={(e) => {
-                        // Enter sends the test rather than saving the form.
-                        if (e.key === 'Enter') { e.preventDefault(); sendTest() }
-                      }}
-                      error={!!testRecipientMessage}
-                      helperText={testRecipientMessage || 'Receives one fixed test message from the sender mailbox.'}
-                      disabled={readOnly || busy}
-                      fullWidth
-                    />
+                {/* ── Notifications and test ──────────────────────────────────── */}
+                <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
+                  <SectionTitle icon={NotificationsActive}>Notifications</SectionTitle>
+                  <Stack spacing={2.5}>
+                    <Box>
+                      <FormControlLabel
+                        control={(
+                          <Switch
+                            id={fieldId('notifyNewLoanApplication')}
+                            checked={form.notifyNewLoanApplication}
+                            onChange={update('notifyNewLoanApplication')}
+                            disabled={readOnly || saving}
+                            slotProps={{ input: { 'aria-describedby': 'email-notify-help' } }}
+                          />
+                        )}
+                        label="Email the recipients when a new loan application is submitted"
+                      />
+                      <Typography variant="caption" color="text.secondary" display="block" id="email-notify-help">
+                        Sent only when the email provider is set up, this is on, and a primary recipient is saved.
+                      </Typography>
+                    </Box>
+
+                    <Divider />
+
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'flex-start' }}>
+                      <TextField
+                        label="Test email recipient"
+                        type="email"
+                        autoComplete="off"
+                        id={fieldId('testRecipient')}
+                        value={testRecipient}
+                        onChange={(e) => { setTestRecipient(e.target.value); setTestRecipientMessage('') }}
+                        onKeyDown={(e) => {
+                          // Enter sends the test rather than saving the form.
+                          if (e.key === 'Enter') { e.preventDefault(); sendTest() }
+                        }}
+                        error={!!testRecipientMessage}
+                        helperText={testRecipientMessage || 'Receives one fixed test message from the sender mailbox.'}
+                        disabled={readOnly || busy}
+                        fullWidth
+                      />
+                      <Button
+                        variant="outlined"
+                        startIcon={sending ? <CircularProgress size={16} /> : <Send />}
+                        onClick={sendTest}
+                        disabled={!!testBlockedReason || busy}
+                        aria-describedby={testBlockedReason ? 'email-test-reason' : undefined}
+                        sx={{ flexShrink: 0, height: 56 }}
+                      >
+                        {sending ? 'Sending…' : 'Send Test Email'}
+                      </Button>
+                    </Stack>
+                    {testBlockedReason && (
+                      <Typography variant="caption" color="text.secondary" id="email-test-reason" sx={{ mt: -1.5 }}>
+                        {testBlockedReason}
+                      </Typography>
+                    )}
+                    {testResult && (
+                      <Alert severity={testResult.ok ? 'success' : 'error'} role="alert">{testResult.message}</Alert>
+                    )}
+                  </Stack>
+                </Paper>
+
+                {saveNotice && (
+                  <Alert severity={saveNotice.severity} role="alert">{saveNotice.message}</Alert>
+                )}
+
+                {!readOnly && (
+                  <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save />}
+                      disabled={busy}
+                    >
+                      {saving ? 'Saving…' : 'Save'}
+                    </Button>
                     <Button
                       variant="outlined"
-                      startIcon={sending ? <CircularProgress size={16} /> : <Send />}
-                      onClick={sendTest}
-                      disabled={!!testBlockedReason || busy}
-                      aria-describedby={testBlockedReason ? 'email-test-reason' : undefined}
-                      sx={{ flexShrink: 0, height: 56 }}
+                      startIcon={<Close />}
+                      onClick={handleCancel}
+                      disabled={busy || (!dirty && !newRecipient.trim())}
                     >
-                      {sending ? 'Sending…' : 'Send Test Email'}
+                      Cancel
                     </Button>
+                    {dirty && (
+                      <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                        Unsaved changes
+                      </Typography>
+                    )}
                   </Stack>
-                  {testBlockedReason && (
-                    <Typography variant="caption" color="text.secondary" id="email-test-reason" sx={{ mt: -1.5 }}>
-                      {testBlockedReason}
-                    </Typography>
-                  )}
-                  {testResult && (
-                    <Alert severity={testResult.ok ? 'success' : 'error'} role="alert">{testResult.message}</Alert>
-                  )}
-                </Stack>
-              </Paper>
+                )}
+              </Stack>
+            </Box>
 
-              {saveNotice && (
-                <Alert severity={saveNotice.severity} role="alert">{saveNotice.message}</Alert>
-              )}
-
-              {!readOnly && (
-                <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save />}
-                    disabled={busy}
-                  >
-                    {saving ? 'Saving…' : 'Save'}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Close />}
-                    onClick={handleCancel}
-                    disabled={busy || (!dirty && !newRecipient.trim())}
-                  >
-                    Cancel
-                  </Button>
-                  {dirty && (
-                    <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                      Unsaved changes
-                    </Typography>
-                  )}
-                </Stack>
-              )}
-            </Stack>
-          </Box>
+            {/* ── Product Notification Rules: saved on its own ──────────────── */}
+            <ProductRulesCard config={config} readOnly={readOnly} onSaved={setConfig} />
+          </Stack>
         </Grid>
 
         <Grid item xs={12} md={4}>
@@ -492,6 +498,13 @@ const EmailSettingsPage = () => {
                 {config?.recipients?.configured
                   ? `${1 + (config.settings.additionalRecipients?.length || 0)} saved`
                   : 'None saved'}
+              </Typography>
+            </StatusRow>
+            <StatusRow label="Product filter">
+              <Typography variant="body2">
+                {config?.productRules?.productIds?.length
+                  ? `${config.productRules.productIds.length} product${config.productRules.productIds.length === 1 ? '' : 's'} selected`
+                  : 'All products (no filter)'}
               </Typography>
             </StatusRow>
             <StatusRow label="Loan emails">

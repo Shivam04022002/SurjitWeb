@@ -1,4 +1,5 @@
 const EmailSetting = require('../../models/EmailSetting');
+const Product = require('../../models/Product');
 const { encrypt, decrypt } = require('../../utils/secretBox');
 const { AppError } = require('../../middleware/errorHandler');
 const HTTP_STATUS = require('../../constants/httpStatus');
@@ -49,6 +50,28 @@ const providerMissing = (doc, secretReadable) => {
 // What is missing before loan-application emails have anyone to go to.
 const recipientsMissing = (doc) => (doc?.primaryRecipient ? [] : ['Primary notification recipient']);
 
+// Product Notification Rules as the page shows them: each selected product's
+// name, category and whether it is active, from the catalogue as it is now. A
+// product deleted since it was selected is listed by id alone.
+const productRulesOf = async (doc) => {
+    const productIds = (doc?.notifyProductIds || []).map(String);
+    if (!productIds.length) return { productIds, products: [] };
+    const found = await Product.find({ _id: { $in: productIds } })
+        .select('name isActive category')
+        .populate('category', 'name')
+        .lean();
+    const byId = new Map(found.map((p) => [String(p._id), p]));
+    return {
+        productIds,
+        products: productIds.map((id) => {
+            const p = byId.get(id);
+            return p
+                ? { _id: id, name: p.name, isActive: !!p.isActive, category: p.category?.name || '', exists: true }
+                : { _id: id, name: '', isActive: false, category: '', exists: false };
+        })
+    };
+};
+
 const publicStatus = async () => {
     const doc = await load(true);
     const secretReadable = !!(doc?.encryptedClientSecret && decrypt(doc.encryptedClientSecret));
@@ -73,6 +96,8 @@ const publicStatus = async () => {
             additionalRecipients: doc.additionalRecipients,
             notifyNewLoanApplication: doc.notifyNewLoanApplication
         } : null,
+        // Empty productIds: every application is emailed (no product filter).
+        productRules: await productRulesOf(doc),
         clientSecret: {
             configured: !!doc?.encryptedClientSecret,
             readable: secretReadable,
@@ -164,6 +189,26 @@ const saveRecipients = async (input, userId) => {
     const existing = await load(true);
     await persist(existing, recipientSettingsOf(input), { userId });
     logger.info('Email notification recipients updated', { by: String(userId || '') });
+    return publicStatus();
+};
+
+// Product Notification Rules: which products' new applications are emailed.
+// Every id must name a product in the catalogue — the page's list is a
+// convenience, this check is what counts. Recipients, credentials and the
+// last test are left as they are, and nothing is sent or queued.
+const saveProductRules = async (input, userId) => {
+    const productIds = [...new Set((input.productIds || []).map((id) => String(id).toLowerCase()))];
+    if (productIds.length) {
+        const found = await Product.find({ _id: { $in: productIds } }).select('_id').lean();
+        const known = new Set(found.map((p) => String(p._id)));
+        const unknown = productIds.filter((id) => !known.has(id));
+        if (unknown.length) {
+            throw fieldError('productIds', `${unknown.length === 1 ? 'This product does' : 'These products do'} not exist: ${unknown.join(', ')}. Remove ${unknown.length === 1 ? 'it' : 'them'} and save again.`);
+        }
+    }
+    const existing = await load(true);
+    await persist(existing, { notifyProductIds: productIds }, { userId });
+    logger.info('Loan email product rules updated', { by: String(userId || ''), products: productIds.length });
     return publicStatus();
 };
 
@@ -274,4 +319,4 @@ const sendTestEmail = async (recipient, actor) => {
     return result;
 };
 
-module.exports = { publicStatus, save, saveProvider, saveRecipients, testConnection, sendTestEmail, resolveSending, TEST_SUBJECT, PROVIDER_FIELDS, RECIPIENT_FIELDS };
+module.exports = { publicStatus, save, saveProvider, saveRecipients, saveProductRules, testConnection, sendTestEmail, resolveSending, TEST_SUBJECT, PROVIDER_FIELDS, RECIPIENT_FIELDS };

@@ -36,6 +36,11 @@ const saveRecipients = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Email notification settings saved', { config });
 });
 
+const saveProductRules = asyncHandler(async (req, res) => {
+    const config = await emailConfig.saveProductRules(req.body, req.user._id);
+    return sendSuccess(res, 'Product notification rules saved', { config });
+});
+
 // A failed test is a result, not an error: the request worked and the answer
 // is "no". The page reads result.ok, as it does for the Gemini test.
 const testConnection = asyncHandler(async (req, res) => {
@@ -79,4 +84,4 @@ const retryNotification = asyncHandler(async (req, res) => {
     return sendSuccess(res, notification.status === 'sent' ? 'Email accepted by Microsoft' : 'Retry attempted', { notification });
 });
 
-module.exports = { getSettings, saveSettings, saveProvider, saveRecipients, testConnection, sendTestEmail, listNotifications, getNotification, retryNotification };
+module.exports = { getSettings, saveSettings, saveProvider, saveRecipients, saveProductRules, testConnection, sendTestEmail, listNotifications, getNotification, retryNotification };

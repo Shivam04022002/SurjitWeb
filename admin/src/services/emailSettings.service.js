@@ -30,6 +30,13 @@ const saveRecipients = async (data) => {
   return response.data
 }
 
+// Email Settings: Product Notification Rules only. An empty list removes the
+// product filter. The server checks every id against the product catalogue.
+const saveProductRules = async (productIds) => {
+  const response = await api.put(`${BASE}/product-rules`, { productIds })
+  return response.data
+}
+
 // Both tests use the saved configuration, never what is typed on the page.
 const testConnection = async () => {
   const response = await api.post(`${BASE}/test-connection`)
@@ -66,6 +73,7 @@ export const emailSettingsService = {
   saveSettings,
   saveProvider,
   saveRecipients,
+  saveProductRules,
   testConnection,
   sendTestEmail,
   getNotifications,

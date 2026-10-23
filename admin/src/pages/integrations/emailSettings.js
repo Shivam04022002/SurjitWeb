@@ -251,5 +251,56 @@ export const notificationReadiness = (config) => {
   return { ready: true, reason: '' }
 }
 
+// ── Product Notification Rules (Email Settings) ───────────────────────────────
+//
+// Which products' new loan applications are emailed. An empty selection is no
+// filter: every application is emailed, as before the rules existed. The
+// server checks every id against the product catalogue and matches it with the
+// product saved on each application.
+
+export const productIdsFromConfig = (config) => [...(config?.productRules?.productIds || [])]
+
+// Order does not matter: the rule is a set.
+export const productRulesDirty = (ids, baseline) => {
+  const a = new Set(ids || [])
+  const b = new Set(baseline || [])
+  return a.size !== b.size || [...a].some((id) => !b.has(id))
+}
+
+// One option per product: the catalogue as the products API returns it, plus
+// any selected product it does not include (deleted since, or a list that
+// could not be loaded), described by what the settings say about it.
+export const productOptions = (catalogue = [], config = null) => {
+  const options = (catalogue || []).map((p) => ({
+    _id: String(p._id),
+    name: p.name || '',
+    category: p.category?.name || '',
+    isActive: p.isActive !== false,
+    exists: true
+  }))
+  const known = new Set(options.map((o) => o._id))
+  for (const p of config?.productRules?.products || []) {
+    if (!known.has(String(p._id))) options.push({ ...p, _id: String(p._id) })
+  }
+  return options
+}
+
+export const productName = (option) => option?.name || (option?.exists === false ? 'Deleted product' : 'Unknown product')
+export const productOptionLabel = (option) => `${productName(option)} — ${option?._id || ''}`
+// What the search box matches: name, category and id.
+export const productSearchText = (option) => `${productName(option)} ${option?.category || ''} ${option?._id || ''}`
+
+export const productRulesSummary = (ids) => {
+  const n = (ids || []).length
+  if (!n) return 'No products selected: every new loan application sends the email (no product filter).'
+  return `Only applications for the ${n === 1 ? 'selected product' : `${n} selected products`} send the email. Applications for any other product, or submitted without a product, do not.`
+}
+
+export const PRODUCTS_ACCESS_NEEDED = 'Choosing products needs view access to Products. Selected products are still listed and can be removed.'
+
+export const productCatalogueError = (err) => (err?.response?.status === 403
+  ? PRODUCTS_ACCESS_NEEDED
+  : requestErrorMessage(err, 'Could not load the product list.'))
+
 // Where the Email API card lives on the API page.
 export const EMAIL_API_PATH = '/integrations/api#email-provider'

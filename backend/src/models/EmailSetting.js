@@ -44,6 +44,15 @@ const emailSettingSchema = new mongoose.Schema({
     },
     // Saved now; acted on when loan-application emails are connected.
     notifyNewLoanApplication: { type: Boolean, default: true },
+    // Product Notification Rules: the products whose new applications are
+    // emailed. Empty means no product filter — every application is emailed,
+    // as before the rules existed. Matched against the product saved on the
+    // application, never against anything the applicant's browser sent.
+    notifyProductIds: {
+        type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+        default: [],
+        validate: { validator: (v) => v.length <= 100, message: 'At most 100 products' }
+    },
     // The most recent Test Connection or Send Test Email, whichever was last.
     lastTest: {
         _id: false,

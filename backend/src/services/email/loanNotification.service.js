@@ -8,7 +8,7 @@ const emailConfig = require('./emailConfig.service');
 const { buildLoanApplicationEmail, buildMime } = require('./loanApplicationEmail');
 const { describeDocuments } = require('../loanApplications/applicationDocuments');
 const { fieldKeysOf } = require('../loanApplications/applicationFields');
-const { normaliseEmail } = require('./emailRules');
+const { normaliseEmail, productSelected } = require('./emailRules');
 
 // "New Loan Application Received" emails.
 //
@@ -90,6 +90,13 @@ const attempt = async (record) => {
     const application = await LoanApplication.findById(record.application)
         .populate('product', 'name');
     if (!application) return { status: 'skipped', outcomeCode: 'APPLICATION_NOT_FOUND' };
+    // Product Notification Rules, as saved when this attempt runs, against the
+    // product saved on the application (set by the server from the catalogue).
+    // No products selected means no filter. An application with no product
+    // matches only when there is no filter.
+    if (!productSelected(settings.notifyProductIds, application.product)) {
+        return { status: 'skipped', outcomeCode: 'PRODUCT_NOT_SELECTED' };
+    }
 
     const to = recipientsOf(sending.doc);
     // The provider can be set up before anyone is named on Email Settings.
